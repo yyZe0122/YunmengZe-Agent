@@ -100,7 +100,7 @@ func TestThinkingBlockCollapsed(t *testing.T) {
 		}},
 	}}
 	out := renderTimelineExpanded(items, expandState{})
-	if !strings.Contains(out, "thinking") || !strings.Contains(out, "expand") {
+	if !strings.Contains(out, "THINK") || !strings.Contains(out, "collapsed") {
 		t.Fatalf("expected collapsed thinking: %s", out)
 	}
 	if strings.Count(out, "reason step") > 2 {
@@ -121,7 +121,7 @@ func TestDoneBanner(t *testing.T) {
 		Kind: tlDone, Title: "done · idle", State: gatewayclient.TaskStateCompleted,
 	}}
 	out := renderTimeline(items)
-	if !strings.Contains(out, "done") || !strings.Contains(out, "─") {
+	if !strings.Contains(out, "done") || !strings.Contains(out, "█") {
 		t.Fatalf("render = %s", out)
 	}
 }
@@ -145,7 +145,7 @@ func TestMessageRenderFlattened(t *testing.T) {
 func TestLiveThinkingTail(t *testing.T) {
 	items := upsertLiveDraft(nil, strings.Repeat("think line\n", 30), "", nil)
 	out := renderTimeline(items)
-	if !strings.Contains(out, "thinking") {
+	if !strings.Contains(out, "THINK") {
 		t.Fatalf("missing thinking: %s", out)
 	}
 	// Live fold shows tail marker with line count.
@@ -170,13 +170,12 @@ func TestDropLiveDraft(t *testing.T) {
 }
 
 func TestClearTaskResetsLiveStream(t *testing.T) {
-	m := model{
-		liveContent:   "partial",
-		streamDirty:   true,
-		streamPaintOn: true,
-		streamMD:      streamingMD{cut: 4, src: "hi\n\n"},
-		timeline:      []timelineItem{{Key: "live"}},
-	}
+	m := newModel(paths.ModeUser, &fakeGateway{})
+	m.liveContent = "partial"
+	m.streamDirty = true
+	m.streamPaintOn = true
+	m.streamMD = streamingMD{cut: 4, src: "hi\n\n"}
+	m.timeline = []timelineItem{{Key: "live"}}
 	updated, _ := m.Update(commandDoneMsg{clearTask: true})
 	got := updated.(model)
 	if got.liveContent != "" || got.streamDirty || got.streamPaintOn || got.streamMD.cut != 0 {
@@ -364,10 +363,10 @@ func TestPinViewportBottomIsIdempotent(t *testing.T) {
 	m.stickBottom = true
 	m.timeline = []timelineItem{{Kind: tlUser, Title: "you", Body: strings.Repeat("line\n", 40)}}
 	m.syncViewport(true)
-	first := m.viewport.YOffset
+	first := m.viewport.YOffset()
 	m.syncViewport(false)
-	if m.viewport.YOffset != first {
-		t.Fatalf("pin jumped: %d -> %d", first, m.viewport.YOffset)
+	if m.viewport.YOffset() != first {
+		t.Fatalf("pin jumped: %d -> %d", first, m.viewport.YOffset())
 	}
 	if !m.viewport.AtBottom() {
 		t.Fatal("expected pinned at bottom")

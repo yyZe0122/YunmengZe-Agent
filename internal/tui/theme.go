@@ -3,10 +3,11 @@ package tui
 import (
 	"encoding/json"
 	"fmt"
+	"image/color"
 	"os"
 	"path/filepath"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 
 	"github.com/yyZe0122/yunmengze-agent/internal/platform/paths"
 )
@@ -19,82 +20,78 @@ const (
 
 	tuiPrefsFilename = "tui.json"
 	defaultTheme     = ThemeNight
+
+	hexNightPaper = "#0C0C0B"
+	hexNightInk   = "#1A1916"
+	hexNightWash  = "#2A2824"
+	hexNightHair  = "#4A4740"
+	hexNightBone  = "#C8C2B4"
+	hexNightFly   = "#7A756C"
+	hexNightSeal  = "#C73E3A"
+	hexNightStamp = "#8A1F1A"
+	hexNightMix   = "#E8DCC8"
+	hexPlanOchre  = "#A67C52"
+
+	hexDayPaper = "#EDE6D6"
+	hexDayInk   = "#F7F1E4"
+	hexDayWash  = "#D9D0BE"
+	hexDayHair  = "#8A8374"
+	hexDayBone  = "#1A1916"
+	hexDaySeal  = "#9B2D28"
+	hexDayStamp = "#6E1A16"
 )
 
-// Theme is a named lipgloss palette for TUI chrome.
+// Theme is the 焦墨 pixel palette (night xuan / day xuan-paper).
 type Theme struct {
 	Name ThemeName
 
-	Accent    lipgloss.Color
-	Dim       lipgloss.Color
-	Muted     lipgloss.Color
-	Border    lipgloss.Color
-	OK        lipgloss.Color
-	Warn      lipgloss.Color
-	Err       lipgloss.Color
-	Input     lipgloss.Color
-	Title     lipgloss.Color
-	Surface   lipgloss.Color
-	Heart     lipgloss.Color
-	ModeAgent lipgloss.Color
-	ModePlan  lipgloss.Color
-	ModeAuto  lipgloss.Color
-	Thinking  lipgloss.Color
-	Tool      lipgloss.Color
-	Reply     lipgloss.Color
-	Journey   lipgloss.Color
-	Done      lipgloss.Color
-	Keyword   lipgloss.Color
+	Paper color.Color
+	Ink   color.Color
+	Wash  color.Color
+	Hair  color.Color
+	Bone  color.Color
+	Fly   color.Color
+	Seal  color.Color
+	Stamp color.Color
+	Mix   color.Color
+
+	ModeAgent color.Color
+	ModePlan  color.Color
+	ModeAuto  color.Color
 }
 
-// Day: 泽昼 — moon-white paper, deep mist-teal, cinnabar seal.
+// Day: 宣纸昼 — warm paper, cinnabar seal.
 var dayTheme = Theme{
 	Name:      ThemeDay,
-	Accent:    lipgloss.Color("#2F6B62"),
-	Dim:       lipgloss.Color("#4A4F48"),
-	Muted:     lipgloss.Color("#7A8078"),
-	Border:    lipgloss.Color("#C4C8BC"),
-	OK:        lipgloss.Color("#2A5A40"),
-	Warn:      lipgloss.Color("#8A6418"),
-	Err:       lipgloss.Color("#8B3A30"),
-	Input:     lipgloss.Color("#161814"),
-	Title:     lipgloss.Color("#161814"),
-	Surface:   lipgloss.Color("#E6E8E2"),
-	Heart:     lipgloss.Color("#B8322C"),
-	ModeAgent: lipgloss.Color("#2F6B62"),
-	ModePlan:  lipgloss.Color("#8A6418"),
-	ModeAuto:  lipgloss.Color("#8B3A30"),
-	Thinking:  lipgloss.Color("#5A5C56"),
-	Tool:      lipgloss.Color("#3A524E"),
-	Reply:     lipgloss.Color("#161814"),
-	Journey:   lipgloss.Color("#4A444C"),
-	Done:      lipgloss.Color("#1A7A58"),
-	Keyword:   lipgloss.Color("#A56B12"),
+	Paper:     lipgloss.Color(hexDayPaper),
+	Ink:       lipgloss.Color(hexDayInk),
+	Wash:      lipgloss.Color(hexDayWash),
+	Hair:      lipgloss.Color(hexDayHair),
+	Bone:      lipgloss.Color(hexDayBone),
+	Fly:       lipgloss.Color(hexDayHair),
+	Seal:      lipgloss.Color(hexDaySeal),
+	Stamp:     lipgloss.Color(hexDayStamp),
+	Mix:       lipgloss.Color(hexDayBone),
+	ModeAgent: lipgloss.Color(hexDayBone),
+	ModePlan:  lipgloss.Color(hexPlanOchre),
+	ModeAuto:  lipgloss.Color(hexDaySeal),
 }
 
-// Night: 泽夜 — xuan ink, mist teal, reed gold; Heart/Done are the seal.
+// Night: 焦墨夜 — xuan paper, cinnabar seal.
 var nightTheme = Theme{
 	Name:      ThemeNight,
-	Accent:    lipgloss.Color("#9EC9B8"),
-	Dim:       lipgloss.Color("#B4BAAF"),
-	Muted:     lipgloss.Color("#7A8278"),
-	Border:    lipgloss.Color("#2C3228"),
-	OK:        lipgloss.Color("#7AAD90"),
-	Warn:      lipgloss.Color("#D4B46A"),
-	Err:       lipgloss.Color("#D07060"),
-	Input:     lipgloss.Color("#F4F5EE"),
-	Title:     lipgloss.Color("#F4F5EE"),
-	Surface:   lipgloss.Color("#121410"),
-	Heart:     lipgloss.Color("#C73E3A"),
-	ModeAgent: lipgloss.Color("#9EC9B8"),
-	ModePlan:  lipgloss.Color("#D4B46A"),
-	ModeAuto:  lipgloss.Color("#D07060"),
-	Thinking:  lipgloss.Color("#8A9094"),
-	Tool:      lipgloss.Color("#8AA098"),
-	Reply:     lipgloss.Color("#F4F5EE"),
-	Journey:   lipgloss.Color("#9A8E9C"),
-	Done:      lipgloss.Color("#3AA88A"),
-	Keyword:   lipgloss.Color("#F0D78A"),
+	Paper:     lipgloss.Color(hexNightPaper),
+	Ink:       lipgloss.Color(hexNightInk),
+	Wash:      lipgloss.Color(hexNightWash),
+	Hair:      lipgloss.Color(hexNightHair),
+	Bone:      lipgloss.Color(hexNightBone),
+	Fly:       lipgloss.Color(hexNightFly),
+	Seal:      lipgloss.Color(hexNightSeal),
+	Stamp:     lipgloss.Color(hexNightStamp),
+	Mix:       lipgloss.Color(hexNightMix),
+	ModeAgent: lipgloss.Color(hexNightBone),
+	ModePlan:  lipgloss.Color(hexPlanOchre),
+	ModeAuto:  lipgloss.Color(hexNightSeal),
 }
 
 type tuiPrefs struct {
@@ -120,25 +117,33 @@ func toggleTheme(name ThemeName) ThemeName {
 }
 
 func applyTheme(t Theme) {
-	colorAccent = t.Accent
-	colorDim = t.Dim
-	colorOK = t.OK
-	colorWarn = t.Warn
-	colorErr = t.Err
-	colorMuted = t.Muted
-	colorBorder = t.Border
-	colorHeart = t.Heart
-	colorTitle = t.Title
-	colorInput = t.Input
-	colorSurface = t.Surface
+	colorPaper = t.Paper
+	colorInk = t.Ink
+	colorWash = t.Wash
+	colorHair = t.Hair
+	colorBone = t.Bone
+	colorFly = t.Fly
+	colorSeal = t.Seal
+	colorMix = t.Mix
+
+	colorDim = t.Fly
+	colorOK = t.Bone
+	colorWarn = t.ModePlan
+	colorErr = t.Seal
+	colorMuted = t.Fly
+	colorBorder = t.Hair
+	colorHeart = t.Seal
+	colorTitle = t.Mix
+	colorInput = t.Bone
+	colorSurface = t.Wash
 	colorModeAgent = t.ModeAgent
 	colorModePlan = t.ModePlan
 	colorModeAuto = t.ModeAuto
-	colorBubbleUser = t.Accent
-	colorBubbleAssistant = t.OK
-	colorBubbleThinking = t.Thinking
-	colorBubbleTool = t.Tool
-	colorKeyword = t.Keyword
+	colorBubbleUser = t.Seal
+	colorBubbleAssistant = t.Ink
+	colorBubbleThinking = t.Hair
+	colorBubbleTool = t.Wash
+	colorKeyword = t.Seal
 
 	styleTitle = lipgloss.NewStyle().Bold(true).Foreground(colorTitle)
 	styleDim = lipgloss.NewStyle().Foreground(colorDim)
@@ -146,34 +151,35 @@ func applyTheme(t Theme) {
 	styleError = lipgloss.NewStyle().Foreground(colorErr)
 	styleOK = lipgloss.NewStyle().Foreground(colorOK)
 	styleWarn = lipgloss.NewStyle().Foreground(colorWarn)
-	styleBadge = lipgloss.NewStyle().Foreground(colorAccent).Bold(true)
-	styleStatus = lipgloss.NewStyle().Foreground(colorDim)
-	styleInput = lipgloss.NewStyle().Foreground(colorInput)
+	styleBadge = lipgloss.NewStyle().Foreground(colorSeal).Bold(true)
+	styleStatus = lipgloss.NewStyle().Foreground(colorHair)
+	styleInput = lipgloss.NewStyle().Foreground(colorInput).Background(colorInk)
 	styleKeyword = lipgloss.NewStyle().Foreground(colorKeyword).Bold(true)
-	styleCompSel = lipgloss.NewStyle().Foreground(colorKeyword).Bold(true)
+	styleCompSel = lipgloss.NewStyle().Foreground(colorSeal).Bold(true)
 	styleComp = lipgloss.NewStyle().Foreground(colorDim)
-	styleHelpBox = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(colorAccent).Background(colorSurface).Padding(0, 1)
+	styleHelpBox = inkPanel(colorWash, colorHair, 0).Padding(0, 1)
 	styleRiskHi = lipgloss.NewStyle().Foreground(colorErr).Bold(true)
 	styleRiskMed = lipgloss.NewStyle().Foreground(colorWarn)
 	styleRiskLo = lipgloss.NewStyle().Foreground(colorOK)
-	styleTLUser = lipgloss.NewStyle().Foreground(colorAccent).Bold(true)
+	styleTLUser = lipgloss.NewStyle().Foreground(colorSeal).Bold(true)
 	styleTLSys = lipgloss.NewStyle().Foreground(colorDim)
-	styleTLPlan = lipgloss.NewStyle().Foreground(colorWarn)
-	styleTLRun = lipgloss.NewStyle().Foreground(colorOK)
+	styleTLPlan = lipgloss.NewStyle().Foreground(colorModePlan)
+	styleTLRun = lipgloss.NewStyle().Foreground(colorBone)
 	styleTLErr = lipgloss.NewStyle().Foreground(colorErr)
-	styleTLTool = lipgloss.NewStyle().Foreground(t.Tool)
-	styleTLThinking = lipgloss.NewStyle().Foreground(t.Thinking)
-	styleTLReply = lipgloss.NewStyle().Foreground(t.Reply)
+	styleTLTool = lipgloss.NewStyle().Foreground(colorBone)
+	styleTLThinking = lipgloss.NewStyle().Foreground(colorBone)
+	styleTLReply = lipgloss.NewStyle().Foreground(colorBone)
 	styleTLBody = lipgloss.NewStyle().Foreground(colorDim)
-	styleTLJourney = lipgloss.NewStyle().Foreground(t.Journey)
-	styleDone = lipgloss.NewStyle().Foreground(t.Done).Bold(true)
+	styleTLJourney = lipgloss.NewStyle().Foreground(colorFly)
+	styleDone = lipgloss.NewStyle().Foreground(colorSeal).Bold(true)
 	styleHeart = lipgloss.NewStyle().Foreground(colorHeart)
-	styleMetricsTitle = lipgloss.NewStyle().Bold(true).Foreground(colorAccent)
-	stylePanelLabel = lipgloss.NewStyle().Foreground(colorMuted)
+	styleMetricsTitle = lipgloss.NewStyle().Bold(true).Foreground(colorMix)
+	stylePanelLabel = lipgloss.NewStyle().Foreground(colorFly)
 	styleModeAgent = lipgloss.NewStyle().Foreground(colorModeAgent).Bold(true)
 	styleModePlan = lipgloss.NewStyle().Foreground(colorModePlan).Bold(true)
 	styleModeAuto = lipgloss.NewStyle().Foreground(colorModeAuto).Bold(true)
-	stylePickerBox = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(colorAccent).Background(colorSurface).Padding(0, 1)
+	stylePickerBox = inkPanel(colorWash, colorHair, 0).Padding(0, 1)
+	stylePaper = lipgloss.NewStyle().Foreground(colorBone).Background(colorPaper)
 }
 
 func tuiPrefsPath(mode paths.Mode) (string, error) {

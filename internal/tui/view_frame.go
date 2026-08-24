@@ -4,26 +4,28 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
-
-	"github.com/yyZe0122/yunmengze-agent/internal/version"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
-func (m model) View() string {
+func (m model) View() tea.View {
 	if m.quitting {
-		return ""
+		v := tea.NewView("")
+		v.AltScreen = true
+		return v
 	}
 	width := m.innerWidth()
 
 	header := m.renderHeader()
 	chat := m.viewport.View()
 	if m.showContextPanel() {
-		ctx := m.renderMetricsPanel(m.viewport.Height)
-		divider := lipgloss.NewStyle().Foreground(colorBorder).Render(" │ ")
+		ctx := m.renderMetricsPanel(m.viewport.Height())
 		chat = lipgloss.JoinHorizontal(lipgloss.Top,
 			chat,
-			divider,
-			lipgloss.NewStyle().Width(contextPanelWidth).MaxHeight(m.viewport.Height).Render(ctx),
+			stylePaper.Width(1).Render(" "),
+			inkPanel(colorWash, colorHair, contextPanelWidth).
+				MaxHeight(m.viewport.Height()).
+				Render(ctx),
 		)
 	}
 
@@ -40,69 +42,140 @@ func (m model) View() string {
 		}
 	}
 
+	pills := m.renderPills(width)
 	footer := m.renderFooter()
 	inputBox := m.renderInputBox(width)
 
 	parts := []string{header, "", chat}
 	parts = append(parts, floatParts...)
+	if pills != "" {
+		parts = append(parts, "", pills)
+	}
 	parts = append(parts, "", footer, inputBox)
 	frame := lipgloss.JoinVertical(lipgloss.Left, parts...)
-	box := lipgloss.NewStyle().Padding(framePadY, framePadX)
+	box := lipgloss.NewStyle().
+		Foreground(colorBone).
+		Background(colorPaper).
+		Padding(framePadY, framePadX)
 	if m.width > 0 {
 		box = box.MaxWidth(m.width)
 	}
-	return box.Render(frame)
+	v := tea.NewView(box.Render(frame))
+	v.AltScreen = true
+	return v
 }
 
 func (m model) renderHeader() string {
-	parts := []string{styleTitle.Render("ymz " + version.Version)}
+	width := m.innerWidth()
+	if width < 1 {
+		width = 1
+	}
+	parts := []string{styleTitle.Background(colorWash).Render("ymz")}
 	if m.modelName != "" {
-		parts = append(parts, styleMuted.Render(truncate(m.modelName, 28)))
+		parts = append(parts, sealChip(truncate(m.modelName, 28), colorBone, colorInk))
 	}
 	parts = append(parts, sseDot(m.sseState))
 	if m.task != nil {
-		parts = append(parts, styleDim.Render(shortID(string(m.task.ID))), stateBadge(m.task.State))
+		parts = append(parts, styleDim.Background(colorWash).Render(shortID(string(m.task.ID))), stateBadge(m.task.State))
 	}
-	return truncate(strings.Join(parts, "  ·  "), m.innerWidth())
+	line := truncate(strings.Join(parts, "  ·  "), max(1, width-2))
+	return lipgloss.NewStyle().
+		Foreground(colorBone).
+		Background(colorWash).
+		Width(width).
+		Padding(1, 1).
+		Render(line)
 }
 
 func (m model) renderInputBox(width int) string {
 	modeColor := colorModeAgent
-	modeLabel := "agent"
-	modeStyle := styleModeAgent
+	modeLabel := "AGENT"
 	switch m.draftMode {
 	case modePlan:
 		modeColor = colorModePlan
-		modeLabel = "plan"
-		modeStyle = styleModePlan
+		modeLabel = "PLAN"
 	case modeAuto:
 		modeColor = colorModeAuto
-		modeLabel = "auto"
-		modeStyle = styleModeAuto
+		modeLabel = "AUTO"
 	}
 	busy := ""
 	if m.busy || m.runActivity() == activityActive {
 		busy = " " + styleWarn.Render(m.spinner.View())
 	}
 	innerW := max(1, width-2)
-	m.input.Width = max(1, innerW-4)
-	m.input.PlaceholderStyle = styleMuted
-	if strings.HasPrefix(strings.TrimSpace(m.input.Value()), "/") {
-		m.input.TextStyle = styleKeyword
-	} else {
-		m.input.TextStyle = styleInput
+	m.applyInputStyles()
+	if busy != "" {
+		m.input.Placeholder = strings.TrimSpace(m.input.Placeholder)
 	}
-	prompt := styleInput.Render("› ")
-	if strings.HasPrefix(strings.TrimSpace(m.input.Value()), "/") {
-		prompt = styleKeyword.Render("› ")
-	}
-	line := truncate(prompt+m.input.View()+busy, width)
-	rule := lipgloss.NewStyle().Foreground(modeColor).Render(strings.Repeat("─", max(1, width)))
-	meta := modeStyle.Render(modeLabel)
+	body := m.input.View()
+	hint := ""
 	if m.sessionID == "" && m.task == nil && len(m.messages) == 0 {
-		meta += "  " + styleMuted.Render("Tab plan/agent/auto · type to start")
+		hint = styleMuted.Background(colorInk).Render("Tab plan/agent/auto · Ctrl+PgUp/Dn sessions")
+	} else {
+		hint = styleMuted.Background(colorInk).Render("Enter send · Esc Esc undo · Ctrl+PgUp/Dn sessions")
 	}
-	return rule + "\n" + line + "\n" + truncate(meta, width)
+	if busy != "" {
+		hint += busy
+	}
+	inner := body
+	if hint != "" {
+		inner += "\n" + truncate(hint, max(1, innerW-2))
+	}
+	return textureFrame(inner, width, modeLabel, modeColor)
+}
+
+func (m model) renderPills(width int) string {
+	if len(m.todos) == 0 {
+		return ""
+	}
+	done, total := 0, 0
+	current := ""
+	for _, item := range m.todos {
+		switch strings.ToLower(strings.TrimSpace(item.Status)) {
+		case "completed", "cancelled", "canceled":
+			done++
+			total++
+		case "in_progress", "in-progress":
+			total++
+			if current == "" {
+				current = item.Content
+			}
+		default:
+			total++
+		}
+	}
+	if total == 0 {
+		return ""
+	}
+	label := styleOK.Background(colorWash).Render(fmt.Sprintf("To-Do %d/%d", done, total))
+	if current != "" && !m.pillsExpanded {
+		label += "  " + styleMuted.Background(colorWash).Render(truncate(current, max(12, width-24)))
+	}
+	hint := styleMuted.Background(colorWash).Render("ctrl+t")
+	line := truncate(label+"  "+hint, width)
+	bar := lipgloss.NewStyle().Background(colorWash).Width(width)
+	if !m.pillsExpanded {
+		return bar.Render(line)
+	}
+	var b strings.Builder
+	b.WriteString(bar.Render(line))
+	for _, item := range m.todos {
+		mark := "○"
+		st := styleMuted.Background(colorWash)
+		switch strings.ToLower(strings.TrimSpace(item.Status)) {
+		case "completed":
+			mark = "●"
+			st = styleOK.Background(colorWash)
+		case "in_progress", "in-progress":
+			mark = "◌"
+			st = styleWarn.Background(colorWash)
+		case "cancelled", "canceled":
+			mark = "–"
+		}
+		b.WriteByte('\n')
+		b.WriteString(bar.Render(truncate("  "+st.Render(mark)+" "+item.Content, width)))
+	}
+	return b.String()
 }
 
 func (m model) renderContextStrip() string {
@@ -155,7 +228,11 @@ func (m model) renderContextStrip() string {
 			}
 		}
 	}
-	return styleStatus.Render(truncate(strings.Join(parts, "  ·  "), width))
+	return lipgloss.NewStyle().
+		Foreground(colorBone).
+		Background(colorHair).
+		Width(width).
+		Render(truncate(strings.Join(parts, "  ·  "), width))
 }
 
 func (m model) renderFooter() string {
@@ -163,8 +240,9 @@ func (m model) renderFooter() string {
 	if width < 1 {
 		width = 1
 	}
+	bar := lipgloss.NewStyle().Foreground(colorBone).Background(colorHair).Width(width)
 	if m.errMsg != "" {
-		return styleError.Render(truncate(m.errMsg, width))
+		return lipgloss.NewStyle().Foreground(colorMix).Background(colorSeal).Width(width).Render(truncate(m.errMsg, width))
 	}
 	if m.pendingPermCount > 0 {
 		line := fmt.Sprintf("%d tool permission(s) pending · 1–4 decide · /perm", m.pendingPermCount)
@@ -174,23 +252,23 @@ func (m model) renderFooter() string {
 				line = line[:idx] + "…"
 			}
 		}
-		return styleError.Render(truncate(line, width))
+		return lipgloss.NewStyle().Foreground(colorMix).Background(colorSeal).Width(width).Render(truncate(line, width))
 	}
 	if m.statusMsg != "" && m.statusMsg != "daemon ok" {
 		line := m.statusMsg
 		if idx := strings.IndexByte(line, '\n'); idx >= 0 {
 			line = line[:idx] + "…"
 		}
-		return styleStatus.Render(truncate(line, width))
+		return bar.Render(truncate(line, width))
 	}
 	return m.renderContextStrip()
 }
 
 func (m model) renderMetricsPanel(height int) string {
 	var b strings.Builder
-	b.WriteString(styleMetricsTitle.Render("context") + "\n\n")
+	b.WriteString(styleMetricsTitle.Background(colorWash).Render("context") + "\n\n")
 
-	b.WriteString(stylePanelLabel.Render("tokens") + "\n")
+	b.WriteString(stylePanelLabel.Background(colorWash).Render("tokens") + "\n")
 	if used, maxTok, ok := m.metrics().TaskTokenUsage(); ok {
 		if maxTok > 0 {
 			b.WriteString(fmt.Sprintf("  %s / %s\n", formatTokens(used), formatTokens(maxTok)))
@@ -198,55 +276,55 @@ func (m model) renderMetricsPanel(height int) string {
 			b.WriteString(fmt.Sprintf("  %s\n", formatTokens(used)))
 		}
 		if m.usage.InputTokens > 0 || m.usage.OutputTokens > 0 {
-			b.WriteString(styleDim.Render(fmt.Sprintf("  in %s · out %s\n",
+			b.WriteString(styleDim.Background(colorWash).Render(fmt.Sprintf("  in %s · out %s\n",
 				formatTokens(m.usage.InputTokens), formatTokens(m.usage.OutputTokens))))
 		}
 		if m.usage.CostMicros > 0 {
-			b.WriteString(styleDim.Render(fmt.Sprintf("  cost %dµ\n", m.usage.CostMicros)))
+			b.WriteString(styleDim.Background(colorWash).Render(fmt.Sprintf("  cost %dµ\n", m.usage.CostMicros)))
 		}
 		if m.runUsageOK && m.runUsage.ChildRunCount > 0 {
-			b.WriteString(styleDim.Render(fmt.Sprintf("  parent %s · children %s (%d)\n",
+			b.WriteString(styleDim.Background(colorWash).Render(fmt.Sprintf("  parent %s · children %s (%d)\n",
 				formatTokens(m.runUsage.Self.TotalTokens),
 				formatTokens(m.runUsage.Children.TotalTokens),
 				m.runUsage.ChildRunCount)))
 		}
 	} else {
-		b.WriteString(styleDim.Render("  —") + "\n")
+		b.WriteString(styleDim.Background(colorWash).Render("  —") + "\n")
 	}
 	if p, ok := m.metrics().ContextPressure(); ok {
-		b.WriteString(styleDim.Render(fmt.Sprintf("  window %d%%", int(p*100+0.5))))
+		b.WriteString(styleDim.Background(colorWash).Render(fmt.Sprintf("  window %d%%", int(p*100+0.5))))
 		if m.contextOK && m.taskContext.LastPromptTokens > 0 {
-			b.WriteString(styleDim.Render(fmt.Sprintf(" · prompt %s", formatTokens(m.taskContext.LastPromptTokens))))
+			b.WriteString(styleDim.Background(colorWash).Render(fmt.Sprintf(" · prompt %s", formatTokens(m.taskContext.LastPromptTokens))))
 		}
 		if m.contextOK && m.taskContext.Compacted {
-			b.WriteString(styleDim.Render(" · compacted"))
+			b.WriteString(styleDim.Background(colorWash).Render(" · compacted"))
 		}
 		b.WriteString("\n")
 	}
 
 	if summary := m.budgetSummary(); summary != "" {
 		b.WriteString("\n")
-		b.WriteString(stylePanelLabel.Render("budget") + "\n")
+		b.WriteString(stylePanelLabel.Background(colorWash).Render("budget") + "\n")
 		b.WriteString("  " + summary + "\n")
 	}
 	if m.dataDir != "" {
 		b.WriteString("\n")
-		b.WriteString(stylePanelLabel.Render("data") + "\n")
+		b.WriteString(stylePanelLabel.Background(colorWash).Render("data") + "\n")
 		b.WriteString("  " + truncate(m.dataDir, 36) + "\n")
 	}
 
 	if rate, ok := m.metrics().CacheHitRate(); ok {
 		b.WriteString("\n")
-		b.WriteString(stylePanelLabel.Render("cache") + "\n")
+		b.WriteString(stylePanelLabel.Background(colorWash).Render("cache") + "\n")
 		b.WriteString(fmt.Sprintf("  hit %.0f%%\n", rate*100))
 		if m.usage.CacheReadTokens > 0 || m.usage.CacheWriteTokens > 0 {
-			b.WriteString(styleDim.Render(fmt.Sprintf("  read %s · write %s\n",
+			b.WriteString(styleDim.Background(colorWash).Render(fmt.Sprintf("  read %s · write %s\n",
 				formatTokens(m.usage.CacheReadTokens), formatTokens(m.usage.CacheWriteTokens))))
 		}
 	}
 	if mcp := m.metrics().MCPStatus(); mcp.Enabled {
 		b.WriteString("\n")
-		b.WriteString(stylePanelLabel.Render("MCP") + "\n")
+		b.WriteString(stylePanelLabel.Background(colorWash).Render("MCP") + "\n")
 		line := fmt.Sprintf("  %d ok · %d err · %d total", mcp.OK, mcp.Error, mcp.Total)
 		if mcp.Detail != "" {
 			line += " · " + mcp.Detail
@@ -298,7 +376,7 @@ func (m *model) syncViewport(force bool) {
 
 func (m *model) pinViewportBottom() {
 	total := m.viewport.TotalLineCount()
-	h := m.viewport.Height
+	h := m.viewport.Height()
 	if h < 1 {
 		h = 1
 	}
@@ -306,8 +384,63 @@ func (m *model) pinViewportBottom() {
 	if y < 0 {
 		y = 0
 	}
-	if m.viewport.YOffset == y {
+	if m.viewport.YOffset() == y {
 		return
 	}
 	m.viewport.SetYOffset(y)
+}
+
+func (m *model) layout() {
+	header := 3
+	footer := 1
+	if m.completer.visible {
+		footer += min(6, len(m.completer.items)) + 2
+	}
+	if m.list != listNone {
+		n := min(overlayMaxLines, max(1, m.listLen()))
+		footer += n + 3
+	}
+	if m.helpOpen {
+		footer += helpOverlayMax + 2
+	}
+	footer += 4 + m.input.Height()
+	if len(m.todos) > 0 {
+		footer += 1
+		if m.pillsExpanded {
+			footer += len(m.todos)
+		}
+	}
+	h := m.height - framePadY*2 - header - footer - moduleGap*2
+	if h < 5 {
+		h = 5
+	}
+	w := m.width - framePadX*2 - 1
+	if m.showContextPanel() {
+		w -= contextPanelWidth + 1
+	}
+	if w < 1 {
+		w = 1
+	}
+	m.viewport.SetWidth(w)
+	m.viewport.SetHeight(h)
+	m.input.SetWidth(max(1, m.innerWidth()-4))
+}
+
+func (m model) innerWidth() int {
+	w := m.width - framePadX*2
+	if w < 1 {
+		return 1
+	}
+	return w
+}
+
+func (m *model) showContextPanel() bool {
+	if m.width < contextBreakWidth {
+		return false
+	}
+	if m.sessionID == "" && m.task == nil {
+		return false
+	}
+	_, _, ok := m.metrics().TaskTokenUsage()
+	return ok
 }

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 )
 
 // renderOpts controls bubble width and markdown theme for one paint.
@@ -27,14 +27,6 @@ func bubbleWidth(termW int) int {
 		w = 8
 	}
 	return w
-}
-
-func cardStyle(border lipgloss.Color, width int) lipgloss.Style {
-	return lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(border).
-		Padding(0, 1).
-		Width(width)
 }
 
 // wrapBody wraps plain text to width (rune-aware, soft break on spaces).
@@ -75,36 +67,10 @@ func wrapLine(line string, width int) []string {
 	return lines
 }
 
-func renderBubbleCard(title, body string, border lipgloss.Color, titleStyle, bodyStyle lipgloss.Style, width int) string {
-	innerW := width - 4
-	if innerW < 12 {
-		innerW = 12
-	}
-	head := titleStyle.Render(title)
-	var content string
-	if body != "" {
-		if strings.Contains(body, "\x1b[") {
-			content = head + "\n" + body
-		} else {
-			wrapped := wrapBody(body, innerW)
-			var b strings.Builder
-			b.WriteString(head)
-			for _, ln := range strings.Split(wrapped, "\n") {
-				b.WriteByte('\n')
-				b.WriteString(bodyStyle.Render(ln))
-			}
-			content = b.String()
-		}
-	} else {
-		content = head
-	}
-	return cardStyle(border, width).Render(content)
-}
-
-func renderLeftBar(body string, bar lipgloss.Color, width int) string {
+func renderUserBlock(body string, width int) string {
 	innerW := width - 2
-	if innerW < 12 {
-		innerW = 12
+	if innerW < 8 {
+		innerW = 8
 	}
 	var content string
 	if strings.Contains(body, "\x1b[") {
@@ -112,19 +78,15 @@ func renderLeftBar(body string, bar lipgloss.Color, width int) string {
 	} else {
 		content = wrapBody(body, innerW)
 	}
-	return lipgloss.NewStyle().
-		BorderLeft(true).
-		BorderStyle(lipgloss.Border{Left: "│"}).
-		BorderForeground(bar).
-		PaddingLeft(1).
-		Width(width).
-		Render(content)
+	bar := lipgloss.NewStyle().Background(colorSeal).Foreground(colorSeal).Width(2)
+	text := lipgloss.NewStyle().Background(colorWash).Foreground(colorBone).Width(max(1, width-2)).Padding(0, 1).Render(content)
+	return lipgloss.JoinHorizontal(lipgloss.Top, bar.Render("  "), text)
 }
 
-func renderPlainBlock(body string, bodyStyle lipgloss.Style, width int) string {
+func renderAssistantBlock(body string, width int) string {
 	innerW := width
-	if innerW < 12 {
-		innerW = 12
+	if innerW < 8 {
+		innerW = 8
 	}
 	var content string
 	if strings.Contains(body, "\x1b[") {
@@ -135,11 +97,23 @@ func renderPlainBlock(body string, bodyStyle lipgloss.Style, width int) string {
 			if i > 0 {
 				b.WriteByte('\n')
 			}
-			b.WriteString(bodyStyle.Render(ln))
+			b.WriteString(styleTLReply.Background(colorInk).Render(ln))
 		}
 		content = b.String()
 	}
-	return content
+	return lipgloss.NewStyle().Background(colorInk).Foreground(colorBone).Width(width).Render(content)
+}
+
+func renderThinkingLine(title string, width int) string {
+	return lipgloss.NewStyle().
+		Background(colorHair).
+		Foreground(colorBone).
+		Width(max(1, width)).
+		Render(truncate(title, width))
+}
+
+func renderToolCard(body string, width int) string {
+	return inkPanel(colorWash, colorHair, width).Padding(0, 1).Render(body)
 }
 
 func renderDoneBanner(title string, state string, width int) string {
@@ -150,16 +124,11 @@ func renderDoneBanner(title string, state string, width int) string {
 	if state != "" && state != title {
 		label += " · " + state
 	}
-	barW := max(8, min(width-lipgloss.Width(label)-3, 48))
-	if barW < 4 {
-		barW = 4
-	}
-	bar := styleDone.Render(strings.Repeat("─", barW))
-	return bar + "  " + styleDone.Render(label)
-}
-
-func renderChip(label string) string {
-	return styleMuted.Render(label)
+	return lipgloss.NewStyle().
+		Foreground(colorSeal).
+		Bold(true).
+		Width(max(1, width)).
+		Render(truncate("█ "+label, width))
 }
 
 func renderSystemLine(prefix, title, state string, titleStyle lipgloss.Style) string {
@@ -171,13 +140,12 @@ func renderSystemLine(prefix, title, state string, titleStyle lipgloss.Style) st
 }
 
 func blockTitleThinking(lines int, folded, live bool) string {
-	if live {
-		return fmt.Sprintf("thinking · live · last %d lines", thinkingLiveMaxLines)
+	n := lines
+	if n < 1 {
+		n = 1
 	}
-	if folded {
-		return fmt.Sprintf("thinking · %d lines · e expand", lines)
-	}
-	return "thinking"
+	_, _ = folded, live
+	return fmt.Sprintf("THINK %d", n)
 }
 
 func blockTitleTool(name, preview string) string {

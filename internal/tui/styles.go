@@ -1,27 +1,39 @@
 package tui
 
-import "github.com/charmbracelet/lipgloss"
+import (
+	"image/color"
+
+	"charm.land/lipgloss/v2"
+)
 
 var (
-	colorAccent          lipgloss.Color
-	colorDim             lipgloss.Color
-	colorOK              lipgloss.Color
-	colorWarn            lipgloss.Color
-	colorErr             lipgloss.Color
-	colorMuted           lipgloss.Color
-	colorBorder          lipgloss.Color
-	colorHeart           lipgloss.Color
-	colorTitle           lipgloss.Color
-	colorInput           lipgloss.Color
-	colorSurface         lipgloss.Color
-	colorModeAgent       lipgloss.Color
-	colorModePlan        lipgloss.Color
-	colorModeAuto        lipgloss.Color
-	colorBubbleUser      lipgloss.Color
-	colorBubbleAssistant lipgloss.Color
-	colorBubbleThinking  lipgloss.Color
-	colorBubbleTool      lipgloss.Color
-	colorKeyword         lipgloss.Color
+	colorPaper color.Color
+	colorInk   color.Color
+	colorWash  color.Color
+	colorHair  color.Color
+	colorBone  color.Color
+	colorFly   color.Color
+	colorSeal  color.Color
+	colorMix   color.Color
+
+	colorDim             color.Color
+	colorOK              color.Color
+	colorWarn            color.Color
+	colorErr             color.Color
+	colorMuted           color.Color
+	colorBorder          color.Color
+	colorHeart           color.Color
+	colorTitle           color.Color
+	colorInput           color.Color
+	colorSurface         color.Color
+	colorModeAgent       color.Color
+	colorModePlan        color.Color
+	colorModeAuto        color.Color
+	colorBubbleUser      color.Color
+	colorBubbleAssistant color.Color
+	colorBubbleThinking  color.Color
+	colorBubbleTool      color.Color
+	colorKeyword         color.Color
 
 	styleTitle        lipgloss.Style
 	styleDim          lipgloss.Style
@@ -57,6 +69,7 @@ var (
 	styleModePlan     lipgloss.Style
 	styleModeAuto     lipgloss.Style
 	stylePickerBox    lipgloss.Style
+	stylePaper        lipgloss.Style
 )
 
 func init() {

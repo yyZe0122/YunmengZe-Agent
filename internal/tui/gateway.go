@@ -31,6 +31,7 @@ type Gateway interface {
 	SetSessionPreferredModel(ctx context.Context, id gatewayclient.SessionID, model string) (gatewayclient.Session, error)
 	SetSessionPermissionStance(ctx context.Context, id gatewayclient.SessionID, stance string) (gatewayclient.Session, error)
 	SessionMessages(ctx context.Context, id gatewayclient.SessionID, limit int) ([]gatewayclient.TranscriptMessage, error)
+	ListSessionTodos(ctx context.Context, id gatewayclient.SessionID) ([]gatewayclient.SessionTodo, error)
 	TaskMessages(ctx context.Context, id gatewayclient.TaskID, limit int) ([]gatewayclient.TranscriptMessage, error)
 	CompactSession(ctx context.Context, id gatewayclient.SessionID, focus string) (gatewayclient.CompactResult, error)
 	SteerSession(ctx context.Context, id gatewayclient.SessionID, text string) (gatewayclient.SteerResult, error)

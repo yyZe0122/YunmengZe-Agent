@@ -40,6 +40,31 @@ func TestFormatToolCallLineTask(t *testing.T) {
 	}
 }
 
+func TestPaintProcessToolResult(t *testing.T) {
+	bl := contentBlock{
+		Kind:     blockToolResult,
+		ToolName: "process_exec",
+		ToolID:   "c1",
+		Text:     `{"command":"go","arguments":["test","./..."],"exit_code":1,"stdout":"FAIL pkg"}`,
+	}
+	got := renderToolResultBlock(bl, false, 72)
+	if !strings.Contains(got, "$") || !strings.Contains(got, "go test") || !strings.Contains(got, "exit 1") {
+		t.Fatalf("process card = %q", got)
+	}
+}
+
+func TestPaintProcessToolResultCommandOnly(t *testing.T) {
+	bl := contentBlock{
+		Kind:     blockToolResult,
+		ToolName: "process_shell",
+		Text:     `{"command":"go test ./internal/tui","exit_code":0,"stdout":"ok"}`,
+	}
+	got := renderToolResultBlock(bl, false, 72)
+	if !strings.Contains(got, "go test ./internal/tui") || !strings.Contains(got, "exit 0") {
+		t.Fatalf("process card = %q", got)
+	}
+}
+
 func TestFormatToolResultTitle(t *testing.T) {
 	if got := formatToolResultTitle("call-abcdef", "fs_read"); !strings.Contains(got, "fs_read") {
 		t.Fatalf("got %q", got)

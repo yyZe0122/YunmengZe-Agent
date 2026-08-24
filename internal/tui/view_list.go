@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/yyZe0122/yunmengze-agent/internal/gatewayclient"
 	"github.com/yyZe0122/yunmengze-agent/pkg/schedulerapi"
@@ -76,7 +76,7 @@ func (m *model) listHint() string {
 	case listJobs:
 		return "↑↓ · Enter details · Esc · /cron <every> <obj> create"
 	case listSessions:
-		return "↑↓ select · Enter open chat · Esc close · PgUp scroll"
+		return "↑↓ select · Enter open · Esc · Ctrl+PgUp/Dn cycle"
 	case listTasks:
 		return "↑↓ select · Enter focus task · Esc close"
 	case listSkills:
@@ -481,7 +481,51 @@ func (m *model) focusSessionAt(i int) tea.Cmd {
 	m.messages = nil
 	m.viewportContent = ""
 	m.stickBottom = true
+	m.statusMsg = fmt.Sprintf("session %s · %d/%d", shortID(string(s.ID)), i+1, len(m.sessions))
 	return m.scheduleRefresh(refreshFull)
+}
+
+// cycleSession moves among m.sessions (updated_at DESC: 0 = newest).
+// delta +1 = older (Ctrl+PgUp), -1 = newer (Ctrl+PgDn). Wraps.
+func (m *model) cycleSession(delta int) tea.Cmd {
+	if len(m.sessions) == 0 {
+		m.statusMsg = "no sessions"
+		return nil
+	}
+	if m.helpOpen {
+		m.helpOpen = false
+	}
+	if m.completer.visible {
+		m.completer.dismiss()
+	}
+	if m.list != listNone {
+		m.closeList()
+	}
+	cur := -1
+	if m.sessionID != "" && m.sessionID != "…" {
+		for i, s := range m.sessions {
+			if s.ID == m.sessionID {
+				cur = i
+				break
+			}
+		}
+	}
+	n := len(m.sessions)
+	var next int
+	if cur < 0 {
+		if delta < 0 {
+			next = 0
+		} else {
+			next = n - 1
+		}
+	} else {
+		next = (cur + delta) % n
+		if next < 0 {
+			next += n
+		}
+	}
+	m.layout()
+	return m.focusSessionAt(next)
 }
 
 func formatJobDetail(job schedulerapi.Job) string {

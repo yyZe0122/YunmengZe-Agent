@@ -3,7 +3,7 @@ package tui
 import (
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/yyZe0122/yunmengze-agent/internal/gatewayclient"
 	"github.com/yyZe0122/yunmengze-agent/internal/platform/paths"
@@ -102,7 +102,7 @@ func TestEnterCompletesThenExecutesModel(t *testing.T) {
 		t.Fatalf("selected = %q items=%v", m.completer.selectedName(), m.completer.items)
 	}
 
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	updated, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	mm := updated.(model)
 	if mm.input.Value() != "/model" {
 		t.Fatalf("after first enter input=%q want /model", mm.input.Value())
@@ -118,7 +118,7 @@ func TestEnterCompletesThenExecutesModel(t *testing.T) {
 
 	// Re-sync completer for full command (visible with single match).
 	mm.completer.update(mm.input.Value())
-	updated, cmd = mm.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	updated, cmd = mm.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if cmd == nil {
 		t.Fatal("second enter should return execute cmd")
 	}
@@ -141,7 +141,7 @@ func TestEnterOnCompleteQuitExecutes(t *testing.T) {
 	m := newModel(paths.ModeUser, &fakeGateway{})
 	m.input.SetValue("/quit")
 	m.completer.update(m.input.Value())
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	_, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if cmd == nil {
 		t.Fatal("expected quit cmd")
 	}
@@ -162,7 +162,7 @@ func TestTabCompletesWithoutExecute(t *testing.T) {
 			break
 		}
 	}
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	updated, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	mm := updated.(model)
 	if mm.input.Value() != "/model " {
 		t.Fatalf("tab input=%q", mm.input.Value())

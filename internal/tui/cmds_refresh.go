@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/yyZe0122/yunmengze-agent/internal/gatewayclient"
 )
@@ -109,6 +109,10 @@ func (m model) refreshCmd(gen uint64, kind refreshKind) tea.Cmd {
 		if sessionID != "" {
 			if messages, err := gw.SessionMessages(ctx, sessionID, 200); err == nil {
 				msg.messages = messages
+			}
+			if todos, err := gw.ListSessionTodos(ctx, sessionID); err == nil {
+				msg.todos = todos
+				msg.todosOK = true
 			}
 		} else if taskID != "" {
 			if messages, err := gw.TaskMessages(ctx, taskID, 200); err == nil {

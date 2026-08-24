@@ -5,11 +5,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/spinner"
-	"github.com/charmbracelet/bubbles/textinput"
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/spinner"
+	"charm.land/bubbles/v2/textarea"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/yyZe0122/yunmengze-agent/internal/gatewayclient"
@@ -51,7 +52,7 @@ const (
 	commandTimeout      = 30 * time.Second
 	historyLimit        = 50
 	contextBreakWidth   = 100
-	contextPanelWidth   = 26
+	contextPanelWidth   = 22
 	overlayMaxLines     = 10
 	helpOverlayMax      = 14
 	framePadY           = 1
@@ -82,7 +83,7 @@ type model struct {
 	// draftMode is the Tab-selected mode for the next task submission.
 	draftMode execMode
 
-	input     textinput.Model
+	input     textarea.Model
 	viewport  viewport.Model
 	spinner   spinner.Model
 	completer completer
@@ -117,6 +118,8 @@ type model struct {
 	plan             *gatewayclient.Plan
 	runs             []gatewayclient.Run
 	messages         []gatewayclient.TranscriptMessage
+	todos            []gatewayclient.SessionTodo
+	pillsExpanded    bool
 	// live assistant draft from model-stream (typewriter); cleared on complete or when this turn's transcript covers it.
 	liveContent   string
 	liveThinking  string
@@ -195,6 +198,8 @@ type refreshDoneMsg struct {
 	runUsageOK  bool
 	taskContext gatewayclient.TaskContext
 	contextOK   bool
+	todos       []gatewayclient.SessionTodo
+	todosOK     bool
 	err         error
 }
 
@@ -264,13 +269,21 @@ type modelStreamMsg struct {
 }
 
 func newModel(mode paths.Mode, gateway Gateway) model {
-	ti := textinput.New()
+	ti := textarea.New()
 	ti.Placeholder = "message or /command"
-	ti.Focus()
 	ti.CharLimit = 4000
-	ti.Width = 80
-	ti.Prompt = ""
-	vp := viewport.New(80, 20)
+	ti.ShowLineNumbers = false
+	ti.Prompt = "› "
+	ti.SetWidth(80)
+	ti.SetHeight(1)
+	ti.DynamicHeight = true
+	ti.MinHeight = 1
+	ti.MaxHeight = 6
+	km := textarea.DefaultKeyMap()
+	km.InsertNewline = key.NewBinding(key.WithKeys("shift+enter", "ctrl+j"))
+	ti.KeyMap = km
+	ti.Focus()
+	vp := viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	sp := spinner.New()
 	sp.Spinner = spinner.MiniDot
 	cwd, _ := os.Getwd()
@@ -286,7 +299,7 @@ func newModel(mode paths.Mode, gateway Gateway) model {
 }
 
 func (m model) Init() tea.Cmd {
-	return tea.Batch(textinput.Blink, m.spinner.Tick, m.loadStatusCmd(), m.scheduleRefresh(refreshFull))
+	return tea.Batch(textarea.Blink, m.spinner.Tick, m.loadStatusCmd(), m.scheduleRefresh(refreshFull))
 }
 
 func tickCmd() tea.Cmd {
@@ -367,8 +380,7 @@ func applyPermissionStance(m *model, stance string) {
 }
 
 func (m *model) applyPlaceholder() {
-	m.input.PlaceholderStyle = styleMuted
-	m.input.TextStyle = styleInput
+	m.applyInputStyles()
 	switch m.draftMode {
 	case modePlan:
 		m.input.Placeholder = "plan mode · read-only analysis (no edits)"
@@ -377,6 +389,27 @@ func (m *model) applyPlaceholder() {
 	default:
 		m.input.Placeholder = "agent mode · build · /perm for tests/git"
 	}
+}
+
+func (m *model) applyInputStyles() {
+	s := m.input.Styles()
+	core := lipgloss.NewStyle().Foreground(colorBone).Background(colorInk)
+	s.Focused.Base = core
+	s.Blurred.Base = core
+	s.Focused.Placeholder = styleMuted.Background(colorInk)
+	s.Blurred.Placeholder = styleMuted.Background(colorInk)
+	if strings.HasPrefix(strings.TrimSpace(m.input.Value()), "/") {
+		s.Focused.Text = styleKeyword.Background(colorInk)
+		s.Blurred.Text = styleKeyword.Background(colorInk)
+		s.Focused.Prompt = styleKeyword.Background(colorInk)
+		s.Blurred.Prompt = styleKeyword.Background(colorInk)
+	} else {
+		s.Focused.Text = styleInput
+		s.Blurred.Text = styleInput
+		s.Focused.Prompt = styleInput
+		s.Blurred.Prompt = styleInput
+	}
+	m.input.SetStyles(s)
 }
 
 func min(a, b int) int {

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 
 	"github.com/yyZe0122/yunmengze-agent/internal/gatewayclient"
 )
@@ -328,17 +328,17 @@ func renderTimelineItem(item timelineItem, exp expandState, opts renderOpts) str
 	}
 	switch item.Kind {
 	case tlUser:
-		return renderLeftBar(text, colorBubbleUser, w)
+		return renderUserBlock(text, w)
 	case tlRun:
-		return renderPlainBlock(text, styleTLReply, w)
+		return renderAssistantBlock(text, w)
 	case tlTool:
 		title := item.Title
 		if title == "" {
 			title = "tool"
 		}
-		return styleTLTool.Render(blockTitleTool(title, text))
+		return renderToolCard(styleTLTool.Render(blockTitleTool(title, text)), w)
 	}
-	return renderPlainBlock(text, styleTLBody, w)
+	return renderAssistantBlock(text, w)
 }
 
 func itemChrome(item timelineItem) (prefix string, titleStyle lipgloss.Style) {
@@ -380,79 +380,47 @@ func renderBlock(bl contentBlock, exp expandState, opts renderOpts, parent timel
 			}
 		}
 		title := blockTitleThinking(lines, folded, bl.Live)
+		if folded {
+			title += fmt.Sprintf("  %d lines collapsed · press e", lines)
+		}
+		line := renderThinkingLine(title, w)
 		if folded || text == "" {
-			line := styleTLThinking.Render(title)
-			if folded {
-				line += "  " + styleDim.Render(fmt.Sprintf("%d lines collapsed · press e", lines))
-			}
 			return line
 		}
-		body := styleTLThinking.Render(title) + "\n" + styleDim.Render(wrapBody(text, max(12, w-2)))
-		return renderLeftBar(body, colorBubbleThinking, w)
+		return line + "\n" + styleDim.Render(wrapBody(text, max(12, w-2)))
 
 	case blockToolCall:
-		return styleTLTool.Render(blockTitleTool(bl.ToolName, bl.Text))
+		return renderToolCard(styleTLTool.Render(blockTitleTool(bl.ToolName, bl.Text)), w)
 
 	case blockToolResult:
-		text := bl.Text
-		label := bl.ToolName
-		if label == "" {
-			label = "result"
-		}
-		if bl.ToolID != "" {
-			label = label + " " + shortID(bl.ToolID)
-		}
-		if !open && looksLikeUnifiedDiff(text) {
-			n := lineCount(text)
-			preview := firstDiffHunkLine(text)
-			line := styleTLTool.Render("· " + label + " · diff " + fmt.Sprintf("%d lines · e expand", n))
-			if preview != "" {
-				line += "\n" + styleDim.Render("  "+truncate(preview, 80))
-			}
-			return line
-		}
-		if !open && needsFold(text, toolResultMaxLines, toolResultMaxChars) {
-			n := lineCount(text)
-			preview := firstLine(text)
-			line := styleTLTool.Render("· " + label + " · " + fmt.Sprintf("%d lines · e expand", n))
-			if preview != "" {
-				line += "\n" + styleDim.Render("  "+truncate(preview, 80))
-			}
-			return line
-		}
-		body := text
-		if !open {
-			body = foldHead(text, toolResultMaxLines, toolResultMaxChars)
-		}
-		head := styleTLTool.Render("· " + label)
-		return head + "\n" + styleDim.Render(wrapBody(body, max(12, w-2)))
+		return renderToolCard(renderToolResultBlock(bl, open, w), w)
 
 	case blockReply:
 		text := bl.Text
 		if bl.Live {
 			if text == "" {
-				return renderPlainBlock(text, styleTLReply, w)
+				return renderAssistantBlock(text, w)
 			}
 			if opts.Stream == nil {
-				return renderPlainBlock(text, styleTLReply, w)
+				return renderAssistantBlock(text, w)
 			}
-			return renderPlainBlock(opts.Stream.render(text, w, opts.Theme), styleTLReply, w)
+			return renderAssistantBlock(opts.Stream.render(text, w, opts.Theme), w)
 		}
 		if !open && needsFold(text, timelineBodyMaxLines, timelineBodyMaxChars) {
 			text = foldHead(text, timelineBodyMaxLines, timelineBodyMaxChars)
-			return renderPlainBlock(text, styleTLReply, w)
+			return renderAssistantBlock(text, w)
 		}
 		if text != "" {
-			return renderPlainBlock(renderMarkdown(text, w, opts.Theme), styleTLReply, w)
+			return renderAssistantBlock(renderMarkdown(text, w, opts.Theme), w)
 		}
-		return renderPlainBlock(text, styleTLReply, w)
+		return renderAssistantBlock(text, w)
 
 	default:
 		text := bl.Text
 		if !open {
 			text = foldHead(text, timelineBodyMaxLines, timelineBodyMaxChars)
 		}
-		return renderPlainBlock(text, styleDim, w)
+		return renderAssistantBlock(text, w)
 	}
 }
 

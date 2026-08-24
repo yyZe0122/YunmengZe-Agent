@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/mattn/go-isatty"
 
 	"github.com/yyZe0122/yunmengze-agent/internal/gatewayclient"
@@ -39,10 +39,7 @@ func Run(config Config) error {
 	defer cancel()
 
 	m := newModel(config.Mode, gw)
-	program := tea.NewProgram(m,
-		tea.WithAltScreen(),
-		tea.WithContext(ctx),
-	)
+	program := tea.NewProgram(m, tea.WithContext(ctx))
 
 	go streamSSE(ctx, gw, program)
 	go streamModel(ctx, gw, program)

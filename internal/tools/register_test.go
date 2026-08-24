@@ -32,6 +32,16 @@ func (t *namedTool) Execute(context.Context, json.RawMessage) (json.RawMessage, 
 	return json.RawMessage(`{"ok":true}`), nil
 }
 
+func TestAskUserSchemaRegisters(t *testing.T) {
+	broker := &Broker{registry: make(map[string]Tool)}
+	if _, err := RegisterAskUserTool(broker, nil); err != nil {
+		t.Fatalf("RegisterAskUserTool: %v", err)
+	}
+	if _, err := RegisterTodoTools(broker, nil); err != nil {
+		t.Fatalf("RegisterTodoTools: %v", err)
+	}
+}
+
 func TestRegisterRejectsInvalidToolName(t *testing.T) {
 	broker := &Broker{registry: make(map[string]Tool)}
 	err := broker.Register(&namedTool{name: "bad.name"})

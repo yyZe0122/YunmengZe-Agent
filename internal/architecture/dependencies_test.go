@@ -99,6 +99,7 @@ func clientForbiddenImports() []string {
 		"/internal/tools",
 		"/internal/agent",
 		"/internal/chatsession",
+		"/internal/sessiontodo",
 		"/internal/store/sqlite",
 		"/internal/providerruntime",
 		"/internal/providers",

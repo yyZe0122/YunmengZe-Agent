@@ -4,7 +4,7 @@ import (
 	"strings"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/yyZe0122/yunmengze-agent/internal/gatewayclient"
 )
@@ -70,6 +70,12 @@ func (m model) applyRefresh(msg refreshDoneMsg) (tea.Model, tea.Cmd) {
 		}
 		if msg.messages != nil && !m.keepLiveDraft() {
 			m.resetLiveStream()
+		}
+		if msg.todosOK {
+			m.todos = msg.todos
+			if len(m.todos) == 0 {
+				m.pillsExpanded = false
+			}
 		}
 		m.timeline = buildChatTimeline(m.messages, m.task, m.plan, m.runs)
 		if len(m.journeyRows) > 0 {
@@ -250,6 +256,8 @@ func (m model) applyCommand(msg commandDoneMsg) (tea.Model, tea.Cmd) {
 		m.autoOpenedPermList = false
 		m.questions = nil
 		m.autoOpenedQList = false
+		m.todos = nil
+		m.pillsExpanded = false
 		if m.list == listPermissions {
 			m.closeList()
 		}

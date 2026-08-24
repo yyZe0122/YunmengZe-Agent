@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/yyZe0122/yunmengze-agent/internal/gatewayclient"
 	"github.com/yyZe0122/yunmengze-agent/internal/modelstream"
 	"github.com/yyZe0122/yunmengze-agent/internal/platform/paths"
@@ -47,8 +49,8 @@ func TestCanonicalAliases(t *testing.T) {
 }
 
 func TestHelpTextListsCommands(t *testing.T) {
-	text := helpText()
-	for _, want := range []string{"/new", "/tasks", "/cron", "/compact", "/perm", "/expand", "/journey", "/memory", "/refresh-memory", "/model", "/skills", "/theme", "Tab", "every", "skill-id", "e / E / c"} {
+	text := ansi.Strip(helpText())
+	for _, want := range []string{"/new", "/tasks", "/cron", "/compact", "/perm", "/expand", "/journey", "/memory", "/refresh-memory", "/model", "/skills", "/theme", "Tab", "every", "skill-id", "e / E / c", "Ctrl+PgUp"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("help missing %q", want)
 		}
@@ -107,7 +109,7 @@ func TestBareNewClearsToReady(t *testing.T) {
 			got.sessionID, got.task, len(got.messages), len(got.timeline))
 	}
 	view := renderSessionView(&got)
-	if !strings.Contains(view, "ready") {
+	if !strings.Contains(ansi.Strip(view), "local coding agent") {
 		t.Fatalf("expected ready page:\n%s", view)
 	}
 }
@@ -125,7 +127,7 @@ func TestBareNewDropsOldStream(t *testing.T) {
 	if got.liveContent != "" {
 		t.Fatalf("unfocused TUI accepted old stream: %q", got.liveContent)
 	}
-	if view := renderSessionView(&got); !strings.Contains(view, "ready") {
+	if view := renderSessionView(&got); !strings.Contains(ansi.Strip(view), "local coding agent") {
 		t.Fatalf("expected ready page:\n%s", view)
 	}
 }
@@ -171,6 +173,24 @@ func TestBareNewClearsPermissionUI(t *testing.T) {
 	footer := got.renderFooter()
 	if strings.Contains(footer, "permission") {
 		t.Fatalf("footer still shows pending perms:\n%s", footer)
+	}
+}
+
+func TestBareNewClearsTodos(t *testing.T) {
+	m := newModel(paths.ModeUser, &fakeGateway{})
+	m.sessionID = "sess-old"
+	m.todos = []gatewayclient.SessionTodo{
+		{ID: "1", Content: "patch fs.go", Status: "in_progress"},
+		{ID: "2", Content: "write tests", Status: "pending"},
+	}
+	m.pillsExpanded = true
+	updated, _ := m.Update(commandDoneMsg{clearTask: true, status: "new session"})
+	got := updated.(model)
+	if len(got.todos) != 0 || got.pillsExpanded {
+		t.Fatalf("todo leftover n=%d expanded=%v", len(got.todos), got.pillsExpanded)
+	}
+	if pills := got.renderPills(80); pills != "" {
+		t.Fatalf("pills still rendered:\n%s", pills)
 	}
 }
 
@@ -271,7 +291,7 @@ func TestBareNewCancelFailureStillLeaves(t *testing.T) {
 	if !strings.Contains(got.errMsg, "cancel denied") {
 		t.Fatalf("footer err = %q", got.errMsg)
 	}
-	if view := renderSessionView(&got); !strings.Contains(view, "ready") {
+	if view := renderSessionView(&got); !strings.Contains(ansi.Strip(view), "local coding agent") {
 		t.Fatalf("expected ready page:\n%s", view)
 	}
 }

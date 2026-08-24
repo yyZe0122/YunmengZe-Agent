@@ -28,6 +28,7 @@ type fakeGateway struct {
 	permissions      []gatewayclient.Permission
 	steers           []string
 	questions        []gatewayclient.UserQuestion
+	todos            []gatewayclient.SessionTodo
 }
 
 func (f *fakeGateway) StreamEvents(context.Context, uint64, func(eventapi.Envelope) error) error {
@@ -61,6 +62,10 @@ func (f *fakeGateway) SetSessionPermissionStance(_ context.Context, id gatewaycl
 
 func (f *fakeGateway) SessionMessages(context.Context, gatewayclient.SessionID, int) ([]gatewayclient.TranscriptMessage, error) {
 	return nil, nil
+}
+
+func (f *fakeGateway) ListSessionTodos(context.Context, gatewayclient.SessionID) ([]gatewayclient.SessionTodo, error) {
+	return f.todos, nil
 }
 
 func (f *fakeGateway) CompactSession(context.Context, gatewayclient.SessionID, string) (gatewayclient.CompactResult, error) {

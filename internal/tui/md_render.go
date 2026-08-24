@@ -7,9 +7,9 @@ import (
 	"sync"
 	"unicode/utf8"
 
-	"github.com/charmbracelet/glamour"
-	"github.com/charmbracelet/glamour/ansi"
-	"github.com/charmbracelet/glamour/styles"
+	"charm.land/glamour/v2"
+	"charm.land/glamour/v2/ansi"
+	"charm.land/glamour/v2/styles"
 )
 
 const (
@@ -216,25 +216,25 @@ func safeMarkdownCut(src string) int {
 func mdStyle(theme ThemeName) ansi.StyleConfig {
 	if theme == ThemeDay {
 		s := styles.LightStyleConfig
-		s.Document.Color = mdStr("#161814")
-		s.Heading.Color = mdStr("#2F6B62")
-		s.H1.Color = mdStr("#161814")
-		s.H1.BackgroundColor = mdStr("#E6E8E2")
-		s.Link.Color = mdStr("#2F6B62")
-		s.LinkText.Color = mdStr("#2F6B62")
-		s.Code.Color = mdStr("#A56B12")
-		s.Code.BackgroundColor = mdStr("#DDE0D6")
+		s.Document.Color = mdStr(hexDayBone)
+		s.Heading.Color = mdStr(hexDaySeal)
+		s.H1.Color = mdStr(hexDayBone)
+		s.H1.BackgroundColor = mdStr(hexDayInk)
+		s.Link.Color = mdStr(hexDaySeal)
+		s.LinkText.Color = mdStr(hexDaySeal)
+		s.Code.Color = mdStr(hexPlanOchre)
+		s.Code.BackgroundColor = mdStr(hexDayWash)
 		return s
 	}
 	s := styles.DarkStyleConfig
-	s.Document.Color = mdStr("#F4F5EE")
-	s.Heading.Color = mdStr("#F0D78A")
-	s.H1.Color = mdStr("#F4F5EE")
-	s.H1.BackgroundColor = mdStr("#121410")
-	s.Link.Color = mdStr("#9EC9B8")
-	s.LinkText.Color = mdStr("#9EC9B8")
-	s.Code.Color = mdStr("#F0D78A")
-	s.Code.BackgroundColor = mdStr("#1A1E18")
+	s.Document.Color = mdStr(hexNightBone)
+	s.Heading.Color = mdStr(hexNightSeal)
+	s.H1.Color = mdStr(hexNightMix)
+	s.H1.BackgroundColor = mdStr(hexNightInk)
+	s.Link.Color = mdStr(hexNightSeal)
+	s.LinkText.Color = mdStr(hexNightSeal)
+	s.Code.Color = mdStr(hexNightMix)
+	s.Code.BackgroundColor = mdStr(hexNightWash)
 	return s
 }
 

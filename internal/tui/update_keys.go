@@ -4,15 +4,16 @@ import (
 	"strings"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/yyZe0122/yunmengze-agent/internal/gatewayclient"
 )
 
-func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	key := msg.String()
 	// Permission modal hotkeys (four tiers) while listPermissions is open.
-	if m.list == listPermissions && msg.Type == tea.KeyRunes && len(msg.Runes) == 1 {
-		if decision, ok := permHotkeyDecision(string(msg.Runes)); ok {
+	if m.list == listPermissions && len(key) == 1 {
+		if decision, ok := permHotkeyDecision(key); ok {
 			if m.permInGrace() {
 				m.statusMsg = "permission grace · 1–4 after a moment"
 				return m, nil
@@ -25,15 +26,15 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, m.permDecideCmd(p.ID, decision)
 		}
 	}
-	if m.list == listQuestions && msg.Type == tea.KeyRunes && len(msg.Runes) == 1 {
-		r := msg.Runes[0]
+	if m.list == listQuestions && len(key) == 1 {
+		r := key[0]
 		if r >= '1' && r <= '9' {
 			return m, m.answerSelectedQuestion(int(r - '1'))
 		}
 	}
 
-	switch msg.Type {
-	case tea.KeyCtrlC:
+	switch key {
+	case "ctrl+c":
 		m.input.SetValue("")
 		m.errMsg = ""
 		m.statusMsg = "use /quit to exit"
@@ -41,7 +42,27 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.completer.update("")
 		return m, nil
 
-	case tea.KeyEsc:
+	case "ctrl+p":
+		m.input.SetValue("/")
+		m.input.MoveToEnd()
+		m.refreshCompleter()
+		m.layout()
+		return m, nil
+	case "ctrl+l":
+		return m, m.handleLineCmd("/model")
+	case "ctrl+s":
+		return m, m.handleLineCmd("/sessions")
+	case "ctrl+t":
+		if len(m.todos) == 0 {
+			m.statusMsg = "no session todos"
+			return m, nil
+		}
+		m.pillsExpanded = !m.pillsExpanded
+		m.layout()
+		m.syncViewport(false)
+		return m, nil
+
+	case "esc":
 		if m.helpOpen {
 			m.helpOpen = false
 			m.layout()
@@ -62,19 +83,19 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.statusMsg = "cancelling…"
 			return m, m.taskActionCmd(gatewayclient.TaskActionCancel, "esc")
 		}
-		if m.lastEscAt.IsZero() || time.Since(m.lastEscAt) > 800*time.Millisecond {
-			m.lastEscAt = time.Now()
-			m.input.SetValue("")
-			m.errMsg = ""
-			m.historyIdx = -1
-			m.completer.update("")
-			m.statusMsg = "esc again to undo last file edit"
-			return m, nil
+		if m.escUndoPending() {
+			m.lastEscAt = time.Time{}
+			return m, m.undoCmd()
 		}
-		m.lastEscAt = time.Time{}
-		return m, m.undoCmd()
+		m.lastEscAt = time.Now()
+		m.input.SetValue("")
+		m.errMsg = ""
+		m.historyIdx = -1
+		m.completer.update("")
+		m.statusMsg = "esc again to undo last file edit"
+		return m, nil
 
-	case tea.KeyTab:
+	case "tab":
 		if m.completer.visible {
 			if name := m.completer.accept(); name != "" {
 				if strings.HasPrefix(name, "/") {
@@ -89,7 +110,7 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 						m.input.SetValue(name + " ")
 					}
 				}
-				m.input.CursorEnd()
+				m.input.MoveToEnd()
 				m.refreshCompleter()
 			}
 			m.layout()
@@ -99,48 +120,55 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.statusMsg = "mode " + string(m.draftMode)
 		return m, m.patchStanceCmd()
 
-	case tea.KeyShiftTab:
+	case "shift+tab":
 		m.cycleDraftMode(-1)
 		m.statusMsg = "mode " + string(m.draftMode)
 		return m, m.patchStanceCmd()
 
-	case tea.KeyPgUp:
+	case "ctrl+pgup":
+		return m, m.cycleSession(1)
+	case "ctrl+pgdown":
+		return m, m.cycleSession(-1)
+
+	case "pgup":
 		// Always scroll conversation — pickers do not steal this.
-		m.viewport.LineUp(5)
+		m.viewport.ScrollUp(5)
 		m.stickBottom = m.viewport.AtBottom()
 		return m, nil
 
-	case tea.KeyPgDown:
-		m.viewport.LineDown(5)
+	case "pgdown":
+		m.viewport.ScrollDown(5)
 		m.stickBottom = m.viewport.AtBottom()
 		return m, nil
 
-	case tea.KeyRunes:
+	case "e", "E", "shift+e":
 		if m.list == listNone && !m.completer.visible && !m.helpOpen &&
-			strings.TrimSpace(m.input.Value()) == "" && len(msg.Runes) == 1 {
-			switch msg.Runes[0] {
-			case 'e':
+			strings.TrimSpace(m.input.Value()) == "" {
+			if key == "e" {
 				keys := collectExpandKeys(m.timeline)
 				if len(keys) > 0 {
 					m.expand.toggle(keys[len(keys)-1])
 					m.statusMsg = "expand toggled · /expand all|none"
 					m.syncViewport(true)
 				}
-				return m, nil
-			case 'E':
+			} else {
 				m.expand.setAll(true)
 				m.statusMsg = "expanded all · c or /expand none to collapse"
 				m.syncViewport(true)
-				return m, nil
-			case 'c':
-				m.expand.setAll(false)
-				m.statusMsg = "collapsed"
-				m.syncViewport(true)
-				return m, nil
 			}
+			return m, nil
 		}
 
-	case tea.KeyUp:
+	case "c":
+		if m.list == listNone && !m.completer.visible && !m.helpOpen &&
+			strings.TrimSpace(m.input.Value()) == "" {
+			m.expand.setAll(false)
+			m.statusMsg = "collapsed"
+			m.syncViewport(true)
+			return m, nil
+		}
+
+	case "up":
 		if m.completer.visible {
 			m.completer.move(-1)
 			return m, nil
@@ -155,11 +183,11 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.historyPrev()
 			return m, nil
 		}
-		m.viewport.LineUp(1)
+		m.viewport.ScrollUp(1)
 		m.stickBottom = false
 		return m, nil
 
-	case tea.KeyDown:
+	case "down":
 		if m.completer.visible {
 			m.completer.move(1)
 			return m, nil
@@ -174,11 +202,11 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.historyNext()
 			return m, nil
 		}
-		m.viewport.LineDown(1)
+		m.viewport.ScrollDown(1)
 		m.stickBottom = m.viewport.AtBottom()
 		return m, nil
 
-	case tea.KeyEnter:
+	case "enter":
 		// Two-stage slash completer: first Enter completes prefix → full name;
 		// second Enter (or Enter when already complete) executes.
 		// In arg mode, first Enter inserts the arg into the line.
@@ -206,7 +234,7 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				if !inputIsCompleteCommand(typed, name) {
 					m.completer.dismiss()
 					m.input.SetValue(name)
-					m.input.CursorEnd()
+					m.input.MoveToEnd()
 					m.historyIdx = -1
 					m.refreshCompleter()
 					m.layout()
@@ -256,6 +284,10 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.layout()
 	}
 	return m, cmd
+}
+
+func (m model) escUndoPending() bool {
+	return !m.lastEscAt.IsZero() && time.Since(m.lastEscAt) <= 800*time.Millisecond
 }
 
 // optimisticNew paints a local user message before Submit returns.
@@ -328,7 +360,7 @@ func (m *model) historyPrev() {
 		m.historyIdx--
 	}
 	m.input.SetValue(m.history[m.historyIdx])
-	m.input.CursorEnd()
+	m.input.MoveToEnd()
 	m.completer.update(m.input.Value())
 }
 
@@ -344,49 +376,8 @@ func (m *model) historyNext() {
 	}
 	m.historyIdx++
 	m.input.SetValue(m.history[m.historyIdx])
-	m.input.CursorEnd()
+	m.input.MoveToEnd()
 	m.completer.update(m.input.Value())
-}
-
-func (m *model) layout() {
-	header := 1
-	footer := 4
-	if m.completer.visible {
-		footer += min(6, len(m.completer.items)) + 2
-	}
-	if m.list != listNone {
-		n := min(overlayMaxLines, max(1, m.listLen()))
-		footer += n + 3
-	}
-	if m.helpOpen {
-		footer += helpOverlayMax + 2
-	}
-	h := m.height - framePadY*2 - header - footer - moduleGap*2
-	if h < 5 {
-		h = 5
-	}
-	w := m.width - framePadX*2 - 1
-	if m.showContextPanel() {
-		w -= contextPanelWidth + 3
-	}
-	if w < 1 {
-		w = 1
-	}
-	m.viewport.Width = w
-	m.viewport.Height = h
-	m.input.Width = max(10, m.innerWidth()-6)
-}
-
-func (m model) innerWidth() int {
-	w := m.width - framePadX*2
-	if w < 1 {
-		return 1
-	}
-	return w
-}
-
-func (m *model) showContextPanel() bool {
-	return m.width >= contextBreakWidth
 }
 
 func (m *model) needsRunPoll() bool {

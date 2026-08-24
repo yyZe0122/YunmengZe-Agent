@@ -28,6 +28,117 @@ func formatToolCallLine(tc gatewayclient.TranscriptToolCall) string {
 }
 
 // formatToolResultTitle labels a tool result row with call id (and optional name if known).
+func renderToolResultBlock(bl contentBlock, open bool, width int) string {
+	text := bl.Text
+	label := bl.ToolName
+	if label == "" {
+		label = "result"
+	}
+	if bl.ToolID != "" {
+		label = label + " " + shortID(bl.ToolID)
+	}
+	if painted := paintToolResult(label, text, open, width); painted != "" {
+		return painted
+	}
+	if !open && looksLikeUnifiedDiff(text) {
+		n := lineCount(text)
+		preview := firstDiffHunkLine(text)
+		line := styleTLTool.Render("· " + label + " · diff " + fmt.Sprintf("%d lines · e expand", n))
+		if preview != "" {
+			line += "\n" + styleDim.Render("  "+truncate(preview, 80))
+		}
+		return line
+	}
+	if !open && needsFold(text, toolResultMaxLines, toolResultMaxChars) {
+		n := lineCount(text)
+		preview := firstLine(text)
+		line := styleTLTool.Render("· " + label + " · " + fmt.Sprintf("%d lines · e expand", n))
+		if preview != "" {
+			line += "\n" + styleDim.Render("  "+truncate(preview, 80))
+		}
+		return line
+	}
+	body := text
+	if !open {
+		body = foldHead(text, toolResultMaxLines, toolResultMaxChars)
+	}
+	head := styleTLTool.Render("· " + label)
+	return head + "\n" + styleDim.Render(wrapBody(body, max(12, width-2)))
+}
+
+func paintToolResult(label, text string, open bool, width int) string {
+	name := strings.TrimSpace(label)
+	if i := strings.IndexByte(name, ' '); i > 0 {
+		name = name[:i]
+	}
+	raw := strings.TrimSpace(text)
+	if raw == "" {
+		return ""
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
+		payload = nil
+	}
+	switch {
+	case strings.HasPrefix(name, "process_"):
+		cmd := processToolPreview(payload)
+		code := stringField(payload, "exit_code")
+		out := stringField(payload, "stdout")
+		errOut := stringField(payload, "stderr")
+		head := styleTLTool.Render("$ " + truncate(firstNonEmpty(cmd, name), 72))
+		if code != "" {
+			head += "  " + styleDim.Render("exit "+code)
+		}
+		if !open {
+			preview := firstLine(firstNonEmpty(out, errOut, raw))
+			if preview != "" {
+				return head + "\n" + styleDim.Render("  "+truncate(preview, 80))
+			}
+			return head
+		}
+		body := firstNonEmpty(out, errOut, raw)
+		return head + "\n" + styleDim.Render(wrapBody(body, max(12, width-2)))
+	case name == "fs_patch" || looksLikeUnifiedDiff(raw):
+		n := lineCount(raw)
+		head := styleTLTool.Render("· " + label + " · diff")
+		if !open {
+			head += " " + styleDim.Render(fmt.Sprintf("%d lines · e expand", n))
+			if preview := firstDiffHunkLine(raw); preview != "" {
+				return head + "\n" + styleDim.Render("  "+truncate(preview, 80))
+			}
+			return head
+		}
+		return head + "\n" + styleDim.Render(wrapBody(raw, max(12, width-2)))
+	case strings.HasPrefix(name, "fs_grep") || name == "fs_glob":
+		count := stringField(payload, "count", "matches", "total")
+		head := styleTLTool.Render("· " + label)
+		if count != "" {
+			head += "  " + styleDim.Render(count+" hits")
+		}
+		if !open {
+			return head + "\n" + styleDim.Render("  "+truncate(firstLine(raw), 80))
+		}
+		return head + "\n" + styleDim.Render(wrapBody(raw, max(12, width-2)))
+	case name == "todo_list" || name == "todo_write":
+		head := styleTLTool.Render("· " + label)
+		if !open {
+			return head
+		}
+		return head + "\n" + styleDim.Render(wrapBody(raw, max(12, width-2)))
+	default:
+		return ""
+	}
+}
+
+func firstNonEmpty(parts ...string) string {
+	for _, p := range parts {
+		if s := strings.TrimSpace(p); s != "" {
+			return s
+		}
+	}
+	return ""
+}
+
 func formatToolResultTitle(toolCallID, toolName string) string {
 	id := strings.TrimSpace(toolCallID)
 	name := strings.TrimSpace(toolName)
@@ -123,10 +234,10 @@ func gitToolPreview(name string, args map[string]any) string {
 func processToolPreview(args map[string]any) string {
 	cmd := stringField(args, "command", "cmd")
 	if cmd == "" {
-		if argv := stringSliceField(args, "argv", "args"); len(argv) > 0 {
+		if argv := stringSliceField(args, "arguments", "argv", "args"); len(argv) > 0 {
 			cmd = strings.Join(argv, " ")
 		}
-	} else if extra := stringSliceField(args, "args", "argv"); len(extra) > 0 {
+	} else if extra := stringSliceField(args, "arguments", "args", "argv"); len(extra) > 0 {
 		cmd = cmd + " " + strings.Join(extra, " ")
 	}
 	if cmd == "" {
