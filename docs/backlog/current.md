@@ -1,26 +1,26 @@
 # YunmengZe Agent 当前状态
 
-更新：2026-08-17（**Phase R** 编码循环 harness · **R1–R5 已关闭**）
+更新：2026-08-24（**Phase IDE-launcher V0–V3 树内** · Release 挂 VSIX；V4–V5 等用户再提）
 
 **本文件是唯一活着的优化/backlog 文档。** 只写未完成与暂缓项；已落地细节见 ADR（`docs/wiki/adr/`）、[`docs/wiki/database.md`](../wiki/database.md)、changelog 与 git。目录：[`docs/README.md`](../README.md)。
 
 ## 现状
 
 生产形态稳定：`ymzd` + CLI·TUI（`ymz`）+ `core.db`。设计知识库：`docs/wiki/`。  
-当前发布线：**v0.3.1**（编码循环 harness + Tab Auto + 产品 README）。v0.3.0 = TUI `/new` 离焦 + 划选。v0.2.8 = Phase Q 编码循环 + Q-harden。
+当前发布线：**v0.3.1**。下一版目标 **v0.4.0** = 焦墨像素 TUI（ADR-053 视觉重绘）。Charm v2 机械迁已在树内。v0.3.0 = TUI `/new` 离焦。v0.2.8 = Phase Q。
 
 | 对标 | 契约重叠（粗） | 说明 |
 | --- | --- | --- |
 | OpenCode 配置/协议 | ~80–90% | + `import-opencode`；stdio + 远程 MCP（O2） |
 | OpenCode 产品手感 | ~85–90% | + Phase Q 编码循环（ContextView / fs 行窗+hash / `process_shell` / session todo / rewind） |
 | OpenCode API/SDK | ~10–15% 路径类比 | 本地 `/v1/*` + Go `gatewayclient`；**不追**全量 OC OpenAPI |
-| Crush TUI | 契约 ~95% | T1–T8 + C1–C4 + UX-A/B；无新 list 引擎 |
+| Crush TUI | 契约 ~95%；画面不对标 | 快捷键/perm/steer/折叠仍学 Crush 契约；**chrome 改为焦墨像素块**（不抄 Crush 圆角/渐变/字母表） |
 | Hermes 分层记忆 | 架构 ~90% | + H6；**H1-lite curator**；**H5-lite** `default_ttl` + 过期软归档（冻结块仍手动 refresh） |
 | Hermes 自进化 | ~40% | H3 草稿+人工 apply；H4 习惯提示；H5-skill 软归档（ADR-050）；无自动 apply / yolo |
 | Hermes 消息网关 | ~0% | 仅本机 UDS/loopback；**暂不上**飞书/微信（本机编码/定时为主） |
 
 **产品焦点：** 本机编码循环质量（工具观察 + turn/step/inbox + TUI 跟手）+ 简单任务 + 定时任务。通道/SDK 是添头。  
-**下一优先：** O5–O6 / H2 / M* **等用户再提**，不插队。Phase Q + Q-harden = **v0.2.8**。TUI `/new` + 划选 = **v0.3.0**。Phase R + Tab Auto + 产品 README = **v0.3.1**（ADR-052）。
+**下一优先：** TUI-ink + IDE-launcher V0–V3 已树内，等发 **v0.4.0**。原生聊天 / Marketplace（V4–V5）与 O5–O6 / H2 / M* 等用户再提。
 
 ## 原则（不变）
 
@@ -29,7 +29,7 @@
 - Skill 仅指令文本，不扩大授权；`skill_ids` 仅显式预载（TUI/job）；Prefix 注入技能目录（id+一句话）；正文仍 `skills_list` → `skill_view`（ADR-036 / 052）。用户规则：`<ConfigDir>/AGENTS.md` + 可选项目 `.yunmengze/AGENTS.md`（子代理同样继承）。
 - plan 永远只读；高风险工具仅 agent。TUI Tab **Plan → Agent → Auto**：Agent 未预授则 `/perm`；Auto 为本 session 预授 process+git（切走结束）。记住放行：`chat.permission.allow` 或 `chat.tools.*`（OR）。cron / CLI 永不 wait。见 ADR-038 / 043 / 046。
 - 会话记忆为 in-process MemoryManager（ADR-044），非独立 Memory 进程。
-- **客户端分层（ADR-018/022）：** 业务用例只在 daemon；Gateway 仅 HTTP 适配；CLI 与 TUI 经 `gatewayclient` 并列，TUI **不** exec CLI、**不** import tools/providers/agent。
+- **客户端分层（ADR-018/022/054）：** 业务用例只在 daemon；Gateway 仅 HTTP 适配；CLI 与 TUI 经 `gatewayclient` 并列，TUI **不** exec CLI、**不** import tools/providers/agent。VS Code 扩展（本相）只启动 TUI，不走 Gateway HTTP。
 - **消息通道（规划）：** 第二客户端 → `tasksubmission` / `taskcontrol`；**不**在 Gateway 内跑 tool/provider/grant。
 - **Go 精神：** 具体类型 + 调用方小接口；composition root 在 `cmd/`；无 DI 容器 / ORM / 通用事件总线。
 
@@ -54,6 +54,7 @@
 | **Tab stance** | Tab Plan→Agent→Auto；内核仍 agent\|plan；交互 Agent `/perm`；Auto = session 预授 process+git；`permission.allow` OR `tools.*` | **v0.3.1** |
 | **R** | 观察合同 · turn/step/inbox · steer · `ask_user` · Prefix 技能目录 · agent `http_get`（plan/cron 不广告） | **v0.3.1**（ADR-052 · migration 027） |
 | **README** | 产品向 README + `README.zh.md`；删过时架构 SVG | **v0.3.1** |
+| **TUI-ink** | 焦墨像素 chrome：直角块 + 宣纸/朱砂盘 + 居中 landing；无 `RoundedBorder` | **树内 → v0.4.0** |
 
 同包大文件拆分已落地（`tui/cmds_*`+`update_*`、`kernel/repository_*`、`tools/fs_*`、`cmd/ymzd/wire_*`）。再拆触发：新 slash / 新聚合 SQL / `ymzd` 接线难 review → 同包再拆。
 
@@ -69,16 +70,139 @@ Phase 2：C1–C4 + UX-A/B ✅ · T8 live MD ✅
 Phase 3：H* 已落地 ✅（除 H2）
 Phase Q：编码循环 QA–QH + Q-harden ✅（v0.2.8；细节 ADR-051）
 Phase R：harness 循环语义（ADR-052）✅
-H2 / O5–O6 / M* ── 用户再提（不插队）
+Phase TUI-v2：Charm v2 机械迁（引擎/textarea/快捷键/todos）✅ 树内
+Phase TUI-ink：焦墨像素 chrome 彻底重绘 ✅ 树内 → v0.4.0
+Phase IDE-launcher：VS Code 终端启动器（ADR-054）V0–V3 ✅ 树内；V4–V5 等用户再提
+H2 / O5–O6 / M* / IDE-webview / Marketplace ── 用户再提（不插队）
 ```
+
+### Phase TUI-ink（焦墨像素 chrome）
+
+当前画面问题：空屏被 ≥100 列 `context` 栏切开；landing 是左对齐小字；header 露出 `0.0.0-dev`；圆角 + mist teal 过于简约，不像一块产品。
+
+**决策：** 视觉层彻底重写。分隔 = 直角色块，不是细线/圆角。主题 = 焦墨宣纸 + 朱砂印（不是青绿山水、不是 Crush clone）。逻辑层不动（Elm、slash、perm 四档、steer、textarea、Gateway、T8、todos API）。不抢鼠标。不拷贝 Crush 字母表（FSL）。
+
+**不做（本相）：** Ultraviolet 整页、lazy list、独立 dialog Overlay、Makefile git-describe、圆角残留、teal 主色。
+
+#### 视觉语言
+
+- 每个模块：直角框（`NormalBorder` / `┌┐└┘`）+ 实底 `Background`。模块间 1 行纸色缝。禁止 `RoundedBorder`。
+- 字标用 `█▄▀▌▐` 拼。输入卡外圈 `░▒` 纹理、内芯另一色。
+- `/theme` 仍切昼夜，语义改为 **焦墨夜 / 宣纸昼**。Accent 不再是 teal。
+
+#### 色盘
+
+夜（默认，玄纸）：Paper `#0C0C0B` · Ink `#1A1916`（面板/输入芯）· Wash `#2A2824`（header/picker/工具）· Hair `#4A4740`（纹理/次框）· Bone `#C8C2B4`（正文）· Fly `#7A756C`（dim）· Seal `#C73E3A`（朱砂：字标点/running/auto/错）· Stamp `#8A1F1A` · Mix `#E8DCC8`（飞白/标题）。
+
+昼（宣纸）：Paper `#EDE6D6` · Ink `#F7F1E4`（输入芯比纸更亮）· Wash `#D9D0BE` · Hair `#8A8374` · Bone `#1A1916` · Seal `#9B2D28`。
+
+Mode：plan = 焦赭 `#A67C52`；agent = 浓墨 Bone；auto = Seal。slash/keyword = Seal。
+
+`Theme` token：`Paper, Ink, Wash, Hair, Bone, Fly, Seal, Stamp, Mix`。删 `#9EC9B8` / `#2F6B62` 青绿主色。
+
+#### 分区
+
+```text
+█ HEADER  全宽 Wash：ymz │ 模型芯片 │ ●          高 3
+█ MAIN    Paper：landing 或对话色块              弹性
+█ CONTEXT 仅已有 session 且宽≥100：右侧 Wash     22 列
+█ PILLS   有 todos 时 Wash 条
+█ EDITOR  ░▒ 外框 + Ink 内芯 + mode 印章         3–8
+█ STATUS  一行 Hair：错误 / perm / ctx
+```
+
+空会话 MAIN 全宽，不画 CONTEXT。`showContextPanel()` = 有 session/task **且** 宽≥100 **且** 有 usage 数据。
+
+输入卡：
+
+```text
+░▒░▒░▒░▒░▒░▒░▒░▒░▒░▒░▒░▒░▒░▒
+┌ AGENT ░░░░░░░░░░░░░░░░░░░┐
+│████ 内芯 Ink ████████████│
+│█ › type a message       █│
+└░░░░░░░░░░░░░░░░░░░░░░░░░░┘
+```
+
+外圈纹理与内芯必须两色。PLAN/AGENT/AUTO 是框上印章，不是单独 `────`。
+
+#### Landing（居中）
+
+viewport 内垂直+水平居中：4–6 行 `YMZ` 块字（宽&lt;60 回退单行 `ymz`）+ 副题 `local coding agent` + 三枚直角芯片（Tab 模式 / Ctrl+P / Ctrl+S）+ 最多 5 张近期会话直角卡。全文小写 `ymz`。仅非 dev 版本画在字标旁。
+
+#### 对话块
+
+| 角色 | 画法 |
+| --- | --- |
+| user | 左 2 列 Seal 实底 + Wash 正文块 |
+| assistant | 全宽 Ink 底；完成态 glamour 用 Bone/Seal |
+| thinking | Hair 底一行 `THINK n` |
+| tool | Wash 直角卡；process `$ cmd` / patch diff 逻辑保留 |
+| done | 一行 Seal `█`，不是 `════` |
+
+#### 版本
+
+`displayVersion()`：`0.0.0-dev` / 空 → header 与 landing **不渲染**。Makefile / goreleaser 不动。`ymz version` 与 `/status` 仍可打出 dev。
+
+#### 文件（同包；视觉层重写，无双轨）
+
+| 文件 | 动作 |
+| --- | --- |
+| `theme.go` / `styles.go` | 焦墨盘；直角；删 Rounded / teal |
+| `logo.go` | **新建** YMZ 块字 |
+| `panel.go` | **新建** `inkPanel` / `textureFrame` / `sealChip` |
+| `view_frame.go` | header 条、输入纹理卡、Paper 底、空会话关 sidebar |
+| `view_agent.go` | 居中 landing |
+| `bubble.go` / `timeline.go` | 色块对话 |
+| `view_list.go` / `md_render.go` / `metrics.go` | picker/glamour/context 接到新盘 |
+
+**不动：** `update*` / `cmds*` / `gateway*` / `completer` / `tool_render.go`（process/diff 逻辑）/ `run.go`（AltScreen、无 MouseMode）。
+
+#### 步骤
+
+1. token + `panel.go` + `logo.go`，编译过。
+2. header / 输入卡 / Paper 底 / 关空会话 sidebar。
+3. 居中 landing。
+4. 对话色块；picker / help / metrics / glamour。
+5. 测试 + `gofmt`；`go test ./internal/tui ./internal/architecture -count=1`。
+
+#### 验收
+
+- 空屏：居中块字 `YMZ` + 三枚直角芯片；无 `│ context`；无 `ready`。
+- header：`ymz · <model> · ●`，无 `0.0.0-dev`。
+- 输入：外 ░▒、内另一色、直角、mode 印章。
+- 对话：色块分隔，源码无 `RoundedBorder`。
+- `/theme` 切宣纸昼。Tab / 四档 perm / Shift+Enter / 无鼠标不变。
+
+| ID | 项 | 状态 |
+| --- | --- | --- |
+| **I0** | 色盘 + `inkPanel` / `textureFrame` / `logo` | ✅ |
+| **I1** | header / 输入卡 / Paper / 空会话无 sidebar | ✅ |
+| **I2** | 居中 landing + 芯片 + 会话卡 | ✅ |
+| **I3** | 对话/picker/glamour 接到焦墨块 | ✅ |
+| **I4** | 测试：landing、header 无 dev、空会话无 context、Tab | ✅ |
+
+### Phase IDE-launcher（VS Code 终端启动器）
+
+V0–V3 已树内：`extensions/vscode` 启动 TUI；`make vscode` 本机打包；发版脚本 / Actions 在 goreleaser 之后挂 `ymz-vscode_{version}.vsix`。用户说明：[`docs/wiki/vscode.md`](../wiki/vscode.md)。架构：[ADR-054](../wiki/adr/054-vscode-terminal-launcher.md)。
+
+| ID | 项 | 状态 |
+| --- | --- | --- |
+| **V0** | ADR-054 + 脚手架 | ✅ |
+| **V1** | 三命令 + PATH + `@file#L` | ✅ |
+| **V2** | `make vscode` 本机 VSIX | ✅ |
+| **V3** | Release 挂 VSIX | ✅ |
+| **V4** | 原生侧栏 Webview 聊天 | 等用户再提 |
+| **V5** | Marketplace / Open VSX | 等用户再提 |
 
 ### 等用户再提
 
 | ID | 项 | 目标 | 约束 / 验收 |
 | --- | --- | --- | --- |
 | **O5** | 薄 compat 子集（可选） | `/compat/opencode/*` 映射 session/message/compact/skills/health | 文档 **compat profile v0.1**；PTY/LSP → 501；**非** SDK drop-in |
-| **O6** | 最小 OpenAPI + 可选 TS 客户端（可选） | 只覆盖真路径或 O5 | 不宣称全量 OC SDK |
+| **O6** | 最小 OpenAPI + 可选 TS 客户端（可选） | 只覆盖真路径或 O5 | 不宣称全量 OC SDK；IDE Webview 若落地再触发最小契约 |
 | **H2** | write_approval | messaging/cron 来源的 memory/skill 写入先 stage | 跟 M* |
+| **V4** | VS Code 原生聊天面板 | 侧栏 Webview + Gateway HTTP/SSE；`interactive: true` | 仍不在扩展进程跑 tool/provider/db |
+| **V5** | Marketplace / Open VSX | publisher + `vsce publish` | 用户量上来再做 |
 
 ### Phase 4 — 消息通道（飞书 / 企微 / 微信）
 
@@ -113,6 +237,7 @@ H2 / O5–O6 / M* ── 用户再提（不插队）
 用例（daemon services）     → 已统一
 外观（gatewayclient）       → 已共享
 语法（CLI argv / TUI slash / HTTP）→ 故意分叉
+IDE（extensions/vscode）    → 本相只启动 TUI；Webview 以后才走 HTTP
 通道（channel adapter）     → 规划中；与 gatewayclient 并列的 Core 客户端
 ```
 
@@ -121,7 +246,7 @@ H2 / O5–O6 / M* ── 用户再提（不插队）
 | 项 | 说明 |
 | --- | --- |
 | 全量 OpenCode API/SDK 兼容 | ~162 路径 + 生成 SDK；与三件套冲突；只用 O5 子集或体验兼容 |
-| 新 viewport/list 引擎 | 不引入 Crush-style lazy list / Ultraviolet（气泡 = lipgloss 自绘） |
+| Crush 鼠标抓取 | 不设 `MouseMode`；终端原生划词复制 |
 | streaming 每 token 全量 glamour | 禁止；T8 = 合帧 + 冻结前缀 glamour + trail 永远 plain + 未闭合围栏不切 + 失败回退 C2 |
 | Crush 三档 permission | 保持 once/similar/permanent/deny 四档 |
 | 沙箱 phase-2+ | namespace / bubblewrap / seccomp |
@@ -146,5 +271,6 @@ H2 / O5–O6 / M* ── 用户再提（不插队）
 make check
 make build
 make all          # check + build + ymzd --check
+make vscode       # optional: package extensions/vscode → .vsix（需 Node）
 go test ./... -count=1
 ```

@@ -18,6 +18,7 @@ Do **not** restore deleted architecture: Module Runtime/Supervisor, out-of-proce
 | --- | --- | --- |
 | Format | `make format` | `.\scripts\dev.ps1 -Action format` |
 | Check (fmt + vet + test [+ systemd unit]) | `make check` | `.\scripts\dev.ps1 -Action check` |
+| Package VS Code VSIX (optional; Node) | `make vscode` | — |
 | Build → `bin/` | `make build` | `.\scripts\dev.ps1 -Action build` |
 | Install to PATH | `make install` → `~/.local/bin` | `.\scripts\dev.ps1 -Action install` |
 | check + build + daemon `--check` | `make all` | `.\scripts\dev.ps1 -Action all` |
@@ -48,7 +49,7 @@ Local release matrix: `goreleaser release --snapshot --clean --parallelism 1`.
 | `cmd/ymz` | Gateway client only — no tools, no provider, no grants; no-arg/`tui` → `internal/tui` |
 | `internal/gateway` | Local HTTP/UDS server only (`api.go` + `handlers_*.go` + LocalRunner) |
 | `internal/gatewayclient` | Shared CLI+TUI facade: HTTP/SSE transport + typed helpers (no import of gateway server) |
-| `internal/tui` | Bubble Tea UI (primary UX); Gateway-only; slash dispatch `cmds.go` + `cmds_*.go`; Elm `update.go` + `update_*.go`; **bubbles** + **lipgloss** cards; optional **glamour**; fold e/E/c; drag-select copy; no list/viewport engine swap |
+| `internal/tui` | Charm v2 TUI (ADR-053); Gateway-only; slash `cmds.go` + `cmds_*.go`; Elm `update.go` + `update_*.go`; **bubbles/v2** textarea + **lipgloss/v2** + **glamour/v2**; lipgloss 色块分区（无 Ultraviolet 整页 / lazy list）；fold e/E/c；**no mouse grab** |
 | `internal/kernel` | Session/Task/Run state machines (`model.go`) + repository (`repository.go` + `repository_{session,task}.go`) |
 | `internal/tools` | Tool Broker (`broker.go`) + builtins; FS `fs.go` + `fs_{read,write,search,edit}.go`; `process_exec` + `process_shell`; nested `internal/executor` unimportable |
 | `internal/architecture` | Import-boundary tests (ADR-022 / G4): pkg/gateway/TUI/CLI walls |
@@ -76,6 +77,7 @@ Local release matrix: `goreleaser release --snapshot --clean --parallelism 1`.
 | `docs/wiki/` | Design KB: ADR index `wiki/README.md`, `wiki/adr/`, `wiki/database.md` |
 | `docs/history/changelog/` | Per-tag release notes (`vX.Y.Z.md` + `unreleased.md`) |
 | `docs/backlog/current.md` | **Only** living optimization doc |
+| `extensions/vscode` | VS Code terminal launcher (ADR-054); not in `go.mod`; `make check` does not run npm. User/install: `docs/wiki/vscode.md` |
 
 ### Wiring rules
 
@@ -115,4 +117,4 @@ Local release matrix: `goreleaser release --snapshot --clean --parallelism 1`.
 
 ## Deep dives
 
-Index: `docs/README.md` → `docs/wiki/README.md`. Start with: `001-core-boundaries`, `004-database-ownership`, `012-tool-broker-execution-boundary`, `018-local-gateway-boundary`, `037-cli-daemon-lifecycle`, `038-session-chat-boundary`, `039-logical-child-runs`, `040-mcp-tool-broker`, `041-context-packing-and-pressure`, `042-chat-native-jobs`, `043-tool-call-permission-interaction`, `044-in-process-memory-boundary`, `045-model-roles`, `046-session-workspace-and-permission-tiers`, `047-structured-logging-and-debug-chain`, `048-provider-config-hot-reload`, `022-application-query-boundaries`, `050-in-process-self-improvement`, `051-coding-loop-contextview`, `052-coding-loop-harness`. Schema map: `docs/wiki/database.md`. Status / backlog: `docs/backlog/current.md`. PR norms: `CONTRIBUTING.md`.
+Index: `docs/README.md` → `docs/wiki/README.md`. Start with: `001-core-boundaries`, `004-database-ownership`, `012-tool-broker-execution-boundary`, `018-local-gateway-boundary`, `037-cli-daemon-lifecycle`, `038-session-chat-boundary`, `039-logical-child-runs`, `040-mcp-tool-broker`, `041-context-packing-and-pressure`, `042-chat-native-jobs`, `043-tool-call-permission-interaction`, `044-in-process-memory-boundary`, `045-model-roles`, `046-session-workspace-and-permission-tiers`, `047-structured-logging-and-debug-chain`, `048-provider-config-hot-reload`, `022-application-query-boundaries`, `050-in-process-self-improvement`, `051-coding-loop-contextview`, `052-coding-loop-harness`, `053-charm-v2-tui`, `054-vscode-terminal-launcher`. Schema map: `docs/wiki/database.md`. Status / backlog: `docs/backlog/current.md`. VS Code VSIX: `docs/wiki/vscode.md` (ADR-054). PR norms: `CONTRIBUTING.md`.

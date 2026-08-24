@@ -23,6 +23,7 @@ User install/run: [`README.md`](../README.md) · [`README.zh.md`](../README.zh.m
 | [`wiki/security/linux-sandbox-roadmap.md`](wiki/security/linux-sandbox-roadmap.md) | Linux isolation phases |
 | [`wiki/testing/scheduler.md`](wiki/testing/scheduler.md) | In-process job verify |
 | [`wiki/testing/skills.md`](wiki/testing/skills.md) | File-skill verify |
+| [`wiki/vscode.md`](wiki/vscode.md) | VS Code / Cursor VSIX install + Release asset |
 
 ## History
 

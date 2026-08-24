@@ -2,7 +2,7 @@
 
 - 状态：Accepted
 - 日期：2026-07-14
-- 更新：2026-08-17（ADR-052：`POST /v1/sessions/{id}/steer`；`GET /v1/questions` · `POST /v1/questions/{id}/answer`）
+- 更新：2026-08-24（ADR-054：VS Code 终端启动器是第三 peer，本相不走 Gateway HTTP）
 
 ## 决策
 
@@ -26,6 +26,7 @@ Linux/macOS 在 RuntimeDir 使用受文件权限保护的 Unix Domain Socket；W
 | `GET` | `/v1/sessions` · `/v1/sessions/{id}` | 列表 / 读 |
 | `PATCH` | `/v1/sessions/{id}` | `{preferred_model}`（O4；空串清除）和/或 `{permission_stance}`（agent\|auto\|plan） |
 | `GET` | `/v1/sessions/{id}/messages` | transcript |
+| `GET` | `/v1/sessions/{id}/todos` | session todos 只读（ADR-053 pills） |
 | `GET` | `/v1/sessions/{id}/context` | 窗压（ADR-041） |
 | `POST` | `/v1/sessions/{id}/compact` | `{focus?}`；TUI `/compact` |
 | `POST` | `/v1/sessions/{id}/rewind` | 人径撤回上次 agent 写文件（QG；TUI `/undo` · Esc Esc） |
@@ -59,14 +60,16 @@ Gateway 不持有通用 `*sql.DB` 业务能力。只读查询进入 `internal/co
 
 ```text
 cmd/ymz          flag / daemon ensure / 子命令与 tui.Run 入口
-internal/tui             Bubble Tea UI；消费窄 `tui.Gateway`（由 gatewayclient 满足）；主 UX
+internal/tui             Charm v2 TUI（ADR-053）；消费窄 `tui.Gateway`（由 gatewayclient 满足）；主 UX
                           分发：`cmds.go` + `cmds_{session,skills,memory,perm,cron,model,refresh}.go`
                           Elm：`update.go` + `update_{refresh,stream,keys}.go`
-                          表现：lipgloss 气泡卡 + contentBlock；完成态 glamour；streaming 冻结前缀 glamour + trail 永远 plain（T8）；
-                          折叠 e/E/c（thinking / tool 默认折；**live 回复不折**）；划选复制（无 bubblezone / mouse cell motion）；
-                          mid-turn refresh 保留 typewriter（transcript 已覆盖或回合结束才清）；吸底 pin，无新 list/viewport 引擎（见 docs/backlog/current.md）
+                          表现：`View() tea.View` + lipgloss 色块分区（无 UV 整页 / lazy list）；textarea；picker overlay；
+                          完成态 glamour v2；streaming 冻结前缀 glamour + trail 永远 plain（T8）；
+                          折叠 e/E/c（thinking / tool 默认折；**live 回复不折**）；**不设 MouseMode**（终端原生划词）；
+                          mid-turn refresh 保留 typewriter；吸底 pin；Tab = plan/agent/auto
 internal/gatewayclient   共享 HTTP/SSE 外观 + transport（不 import gateway server）
 internal/gateway         服务端 only：路由 / handlers / LocalRunner
+extensions/vscode        VS Code 扩展（ADR-054）；本相只开集成终端跑 `ymz` TUI，不调 Gateway
 ```
 
 TUI 与 CLI 不得 import `tools`、`providers`、`store/sqlite`、`agent`、`chatsession` 实现。主交互斜杠：`/new`（离焦 ready，运行中则 cancel）、`/undo`、`/cron`、`/compact`、`/perm`、`/memory`、`/expand`、`/journey`（memory + skill 事件）、`/skills`（含 apply/reject/archived；显式预载快照）、`/<skill-id>`、`/<command>`（`chat.commands`）、`/model`（全局）/ `/model prefer`（会话偏好并在 run 时生效）、`/status`（含 daemon 版本）。运行中普通回车 = steer（不 cancel）。`ask_user` 弹出问题卡（perm 优先）。折叠快捷键：`e` / `E` / `c`（输入为空时）。用户规则：`<ConfigDir>/AGENTS.md` + 可选项目 `.yunmengze/AGENTS.md`。Prefix 含技能目录；正文仍 `skill_view`。CLI：`ymz config import-opencode`（离线写 ConfigDir，不经 Gateway）。可选尾巴见 `docs/backlog/current.md`。

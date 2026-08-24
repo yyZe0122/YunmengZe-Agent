@@ -8,7 +8,7 @@
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Status](https://img.shields.io/badge/status-alpha-orange.svg)](#status)
 
-开源的**本机编码智能体**。失败回灌的 harness、Crush 风格 TUI、类型化工具 —— 不是把聊天贴在后台任务上。
+开源的**本机编码智能体**。失败回灌的 harness、焦墨色块 TUI、类型化工具 —— 不是把聊天贴在后台任务上。
 
 > **Alpha** — 接触重要数据或高权限凭据前，请先核对配置、工作区根与权限边界。
 
@@ -18,7 +18,7 @@
 
 - **编码循环** — 工具失败、非零退出以 JSON 观察回灌，turn 继续。运行中回车 steer 下一步。失败不是整轮死亡。
 - **Plan · Agent · Auto** — Tab 循环 **plan**（只读）→ **agent**（可写；测试/git 走 `/perm`）→ **auto**（本 session 预授 process + git）。
-- **TUI 为主** — 气泡、live markdown、可折叠 thinking/工具、划选复制。CLI 给脚本。
+- **TUI 为主** — 焦墨色块、live markdown、可折叠 thinking/工具、终端原生划选复制。CLI 给脚本。
 - **自带模型** — OpenAI / Anthropic / Gemini / OpenAI 兼容。`ymz config import-opencode` 可映射已有 OpenCode 配置。
 - **本机、有界** — 一个 daemon、一份 SQLite `core.db`。副作用只经 Tool Broker：Policy → Grant → 路径限制 → Audit。没有 yolo。
 
@@ -101,6 +101,8 @@ flowchart LR
 | `/quit` | 退出 TUI（`/q` `/exit`；daemon 仍在） |
 
 其余见 `/help`。斜杠优先级：内置 → `chat.commands` → skill id。
+
+VS Code / Cursor：可选 TUI 启动器（VSIX，不上 Marketplace）。[安装说明](docs/wiki/vscode.md)。
 
 ## 配置
 
