@@ -1,0 +1,82 @@
+{
+  "name": "ymz-vscode",
+  "displayName": "YunmengZe",
+  "description": "Open the YunmengZe TUI in the VS Code terminal",
+  "version": "0.0.1",
+  "publisher": "yunmengze",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yyZe0122/YunmengZe-Agent"
+  },
+  "engines": {
+    "vscode": "^1.94.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": [],
+  "main": "./dist/extension.js",
+  "icon": "images/icon.png",
+  "contributes": {
+    "commands": [
+      {
+        "command": "ymz.openTerminal",
+        "title": "YunmengZe: Open TUI",
+        "icon": {
+          "light": "images/button-dark.svg",
+          "dark": "images/button-light.svg"
+        }
+      },
+      {
+        "command": "ymz.openNewTerminal",
+        "title": "YunmengZe: Open TUI in new tab",
+        "icon": {
+          "light": "images/button-dark.svg",
+          "dark": "images/button-light.svg"
+        }
+      },
+      {
+        "command": "ymz.addFilepathToTerminal",
+        "title": "YunmengZe: Insert @-file reference"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "ymz.openNewTerminal",
+          "group": "navigation"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "ymz.openTerminal",
+        "key": "ctrl+escape",
+        "mac": "cmd+escape"
+      },
+      {
+        "command": "ymz.openNewTerminal",
+        "key": "ctrl+shift+escape",
+        "mac": "cmd+shift+escape"
+      },
+      {
+        "command": "ymz.addFilepathToTerminal",
+        "key": "ctrl+alt+k",
+        "mac": "cmd+alt+k"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run package",
+    "compile": "node esbuild.js",
+    "package": "node esbuild.js --production",
+    "check-types": "tsc --noEmit",
+    "vsix": "npm run check-types && npm run package && vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.0",
+    "@types/vscode": "^1.94.0",
+    "@vscode/vsce": "^3.2.2",
+    "esbuild": "^0.25.3",
+    "typescript": "^5.8.3"
+  }
+}

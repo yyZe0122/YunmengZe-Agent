@@ -32,7 +32,7 @@ jobs:
 
       - name: Validate packaging shell scripts
         run: |
-          for script in packaging/scripts/*.sh; do
+          for script in packaging/scripts/*.sh scripts/package-vscode.sh; do
             sh -n "$script"
           done
 
@@ -82,3 +82,23 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Homebrew tap + Scoop bucket (Contents R/W on both affiliate repos).
           PACKAGE_GITHUB_TOKEN: ${{ secrets.PACKAGE_GITHUB_TOKEN }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: extensions/vscode/package-lock.json
+
+      - name: Package and upload VS Code VSIX
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          ver="${tag#v}"
+          vsix="extensions/vscode/ymz-vscode_${ver}.vsix"
+          sh ./scripts/package-vscode.sh "$tag"
+          if [ ! -f "$vsix" ]; then
+            vsix="dist/vscode/ymz-vscode_${ver}.vsix"
+          fi
+          gh release upload "$tag" "$vsix" --clobber

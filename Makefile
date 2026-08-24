@@ -7,7 +7,7 @@ PREFIX ?= $(HOME)/.local
 BINDIR ?= $(PREFIX)/bin
 
 .PHONY: format format-check vet test check all build build-cross build-platforms \
-	build-windows-amd64 build-linux-amd64 install uninstall systemd-check clean
+	build-windows-amd64 build-linux-amd64 install uninstall systemd-check vscode clean
 
 format:
 	$(GO) fmt ./...
@@ -76,6 +76,11 @@ uninstall:
 	rm -f "$(BINDIR)/ymz" "$(BINDIR)/ymzd"
 	@echo "Removed from $(BINDIR): ymz ymzd"
 
+# Optional: package the VS Code terminal launcher (needs Node). Not part of check.
+vscode:
+	sh ./scripts/package-vscode.sh
+
 clean:
 	rm -rf bin dist
+	rm -rf extensions/vscode/dist extensions/vscode/node_modules extensions/vscode/*.vsix
 	$(GO) clean -cache

@@ -61,7 +61,7 @@ id_github_*
 
 # Local tools and editors
 .idea/
-.vscode/
+/.vscode/
 .fleet/
 *.swp
 *.swo
@@ -74,3 +74,9 @@ Thumbs.db
 
 # Local Go caches
 /.cache/
+
+# VS Code extension (ADR-054)
+extensions/vscode/node_modules/
+extensions/vscode/dist/
+extensions/vscode/*.vsix
+extensions/vscode/.vscode-test/

@@ -380,6 +380,7 @@ if [[ "$VIA_ACTIONS" -eq 1 ]]; then
     ymz_${VER_NUM}_windows_amd64.zip
     ymz_${VER_NUM}_windows_arm64.zip
     checksums.txt
+    ymz-vscode_${VER_NUM}.vsix
 EOF
   exit 0
 fi
@@ -473,6 +474,53 @@ EOF
   fi
 fi
 
+upload_vscode_vsix() {
+  local vsix owner pkg_ec
+  vsix="extensions/vscode/ymz-vscode_${VER_NUM}.vsix"
+  log "package VS Code VSIX (${TAG})"
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    log "would run: scripts/package-vscode.sh ${TAG} && gh release upload ${TAG} ${vsix}"
+    return 0
+  fi
+  owner=$(stat -c '%U' "$REPO_DIR" 2>/dev/null || echo yyze)
+  set +e
+  if [[ "$(id -u)" -eq 0 && "$owner" != "root" ]]; then
+    su -s /bin/sh "$owner" -c "cd '$REPO_DIR' && sh ./scripts/package-vscode.sh '$TAG'"
+    pkg_ec=$?
+  else
+    sh ./scripts/package-vscode.sh "$TAG"
+    pkg_ec=$?
+  fi
+  set -e
+  if [[ "$pkg_ec" -ne 0 ]]; then
+    log "WARN: VS Code VSIX skipped (need Node 18+ as user ${owner}; Go assets already uploaded). See docs/wiki/vscode.md"
+    return 0
+  fi
+  if [[ ! -f "$vsix" && -f "dist/vscode/ymz-vscode_${VER_NUM}.vsix" ]]; then
+    vsix="dist/vscode/ymz-vscode_${VER_NUM}.vsix"
+  fi
+  if [[ ! -f "$vsix" ]]; then
+    log "WARN: ${vsix} missing after package; skip upload"
+    return 0
+  fi
+  GH_BIN=""
+  if command -v gh >/dev/null 2>&1; then
+    GH_BIN=$(command -v gh)
+  elif [[ -x /usr/local/bin/gh ]]; then
+    GH_BIN=/usr/local/bin/gh
+  elif [[ -x /home/yyze/.local/bin/gh ]]; then
+    GH_BIN=/home/yyze/.local/bin/gh
+  fi
+  if [[ -z "$GH_BIN" ]]; then
+    log "WARN: gh not found; VSIX at ${vsix} not uploaded. Manual: gh release upload ${TAG} ${vsix}"
+    return 0
+  fi
+  log "upload ${vsix} to ${TAG}"
+  GITHUB_TOKEN="${GITHUB_TOKEN}" GH_TOKEN="${GITHUB_TOKEN}" "$GH_BIN" release upload "$TAG" "$vsix" --repo "$GITHUB_REPOSITORY" --clobber
+}
+
+upload_vscode_vsix
+
 cat <<EOF
 
 ==> local publish finished for ${TAG}
@@ -489,6 +537,7 @@ cat <<EOF
     ymz_${VER_NUM}_windows_amd64.zip
     ymz_${VER_NUM}_windows_arm64.zip
     checksums.txt
+    ymz-vscode_${VER_NUM}.vsix   # skipped if Node missing; docs/wiki/vscode.md
 
   Body: ${NOTES}
   Install (recommended):
