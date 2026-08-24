@@ -205,6 +205,15 @@ type TranscriptToolCall struct {
 	Arguments string `json:"arguments"`
 }
 
+// SessionTodo is a read projection of session_todos (ADR-053 pills).
+type SessionTodo struct {
+	ID        string `json:"id"`
+	Content   string `json:"content"`
+	Status    string `json:"status"`
+	Position  int    `json:"position"`
+	UpdatedAt string `json:"updated_at,omitempty"`
+}
+
 type StoredPlanDocument struct {
 	Revision  uint64
 	Hash      string

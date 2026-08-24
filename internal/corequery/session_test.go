@@ -2,6 +2,7 @@ package corequery
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -329,6 +330,39 @@ func TestListSkillEvents(t *testing.T) {
 	}
 	if len(items) != 1 || items[0].ID != "ev-1" || items[0].Action != "used" {
 		t.Fatalf("events = %+v", items)
+	}
+}
+
+func TestListSessionTodos(t *testing.T) {
+	ctx := context.Background()
+	db, err := coresqlite.Open(ctx, t.TempDir()+"/core.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	sqlDB := db.SQL()
+	stamp := time.Now().UTC().Format(time.RFC3339Nano)
+	if _, err := sqlDB.ExecContext(ctx, `INSERT INTO sessions(session_id,state,version,created_at,updated_at) VALUES(?,?,?,?,?)`,
+		"session-1", "active", 1, stamp, stamp); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sqlDB.ExecContext(ctx, `INSERT INTO session_todos(session_id,item_id,content,status,position,updated_at) VALUES(?,?,?,?,?,?)`,
+		"session-1", "t1", "patch fs.go", "in_progress", 0, stamp); err != nil {
+		t.Fatal(err)
+	}
+	store, err := New(sqlDB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	items, err := store.ListSessionTodos(ctx, "session-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || items[0].ID != "t1" || items[0].Status != "in_progress" {
+		t.Fatalf("todos = %+v", items)
+	}
+	if _, err := store.ListSessionTodos(ctx, "missing"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing session err = %v", err)
 	}
 }
 

@@ -28,6 +28,7 @@ type QueryService interface {
 	ListSessions(context.Context, corequery.SessionListOptions) ([]corequery.Session, error)
 	GetSession(context.Context, kernel.SessionID) (corequery.Session, error)
 	SessionTranscript(context.Context, kernel.SessionID, corequery.TranscriptOptions) ([]corequery.TranscriptMessage, error)
+	ListSessionTodos(context.Context, kernel.SessionID) ([]corequery.SessionTodo, error)
 	TaskTranscript(context.Context, kernel.TaskID, corequery.TranscriptOptions) ([]corequery.TranscriptMessage, error)
 	ListTasks(context.Context, corequery.TaskListOptions) ([]corequery.Task, error)
 	GetTask(context.Context, kernel.TaskID) (corequery.Task, error)
@@ -395,6 +396,8 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		a.handleSessions(w, r)
 	case strings.HasSuffix(r.URL.Path, "/messages") && strings.HasPrefix(r.URL.Path, "/v1/sessions/"):
 		a.handleSessionMessages(w, r)
+	case strings.HasSuffix(r.URL.Path, "/todos") && strings.HasPrefix(r.URL.Path, "/v1/sessions/"):
+		a.handleSessionTodos(w, r)
 	case strings.HasSuffix(r.URL.Path, "/context") && strings.HasPrefix(r.URL.Path, "/v1/sessions/"):
 		a.handleSessionContext(w, r)
 	case strings.HasSuffix(r.URL.Path, "/compact") && strings.HasPrefix(r.URL.Path, "/v1/sessions/"):

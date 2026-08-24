@@ -64,6 +64,27 @@ func (c *Client) SetSessionPermissionStance(ctx context.Context, id SessionID, s
 	return session, nil
 }
 
+type SessionTodo struct {
+	ID        string `json:"id"`
+	Content   string `json:"content"`
+	Status    string `json:"status"`
+	Position  int    `json:"position"`
+	UpdatedAt string `json:"updated_at,omitempty"`
+}
+
+type sessionTodoListResponse struct {
+	Todos []SessionTodo `json:"todos"`
+}
+
+func (c *Client) ListSessionTodos(ctx context.Context, id SessionID) ([]SessionTodo, error) {
+	path := "/v1/sessions/" + url.PathEscape(string(id)) + "/todos"
+	var response sessionTodoListResponse
+	if err := c.inner.DoJSON(ctx, http.MethodGet, path, nil, &response); err != nil {
+		return nil, fmt.Errorf("session todos: %w", err)
+	}
+	return response.Todos, nil
+}
+
 func (c *Client) SessionMessages(ctx context.Context, id SessionID, limit int) ([]TranscriptMessage, error) {
 	path := "/v1/sessions/" + url.PathEscape(string(id)) + "/messages"
 	if limit > 0 {

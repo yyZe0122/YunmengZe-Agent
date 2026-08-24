@@ -473,6 +473,36 @@ func firstNonEmpty(a, b string) string {
 	return b
 }
 
+func (s *Store) ListSessionTodos(ctx context.Context, id coreidentity.SessionID) ([]SessionTodo, error) {
+	if err := validateGet(ctx, string(id)); err != nil {
+		return nil, err
+	}
+	var exists int
+	if err := s.db.QueryRowContext(ctx, `SELECT 1 FROM sessions WHERE session_id = ?`, id).Scan(&exists); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT item_id, content, status, position, updated_at
+		FROM session_todos WHERE session_id = ?
+		ORDER BY position ASC, item_id ASC`, id)
+	if err != nil {
+		return nil, fmt.Errorf("list session todos: %w", err)
+	}
+	defer rows.Close()
+	out := make([]SessionTodo, 0)
+	for rows.Next() {
+		var item SessionTodo
+		if err := rows.Scan(&item.ID, &item.Content, &item.Status, &item.Position, &item.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, item)
+	}
+	return out, rows.Err()
+}
+
 func sortTranscript(items []TranscriptMessage) {
 	// Simple insertion sort — transcripts are small (page-limited).
 	for i := 1; i < len(items); i++ {

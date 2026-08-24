@@ -166,6 +166,29 @@ func (a *API) handleSessionMessages(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"messages": items, "page": request.metadata(len(items))})
 }
 
+func (a *API) handleSessionTodos(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
+	trimmed := strings.TrimPrefix(r.URL.Path, "/v1/sessions/")
+	id := strings.TrimSuffix(trimmed, "/todos")
+	id = strings.Trim(id, "/")
+	if id == "" || strings.Contains(id, "/") {
+		writeError(w, http.StatusBadRequest, "invalid_request", "session id required")
+		return
+	}
+	items, err := a.queries.ListSessionTodos(r.Context(), kernel.SessionID(id))
+	if errors.Is(err, corequery.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not_found", "session not found")
+		return
+	}
+	if err != nil {
+		writeInternal(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"todos": items})
+}
+
 func (a *API) handleTaskMessages(w http.ResponseWriter, r *http.Request) {
 	if !requireMethod(w, r, http.MethodGet) {
 		return
