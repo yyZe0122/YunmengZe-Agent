@@ -332,3 +332,57 @@ func TestPlainTextOnRunningTurnSteers(t *testing.T) {
 		t.Fatalf("steers = %#v", gw.steers)
 	}
 }
+
+func TestOptimisticNewIdleSessionDoesNotSteer(t *testing.T) {
+	gw := &fakeGateway{submitOK: true}
+	m := newModel(paths.ModeUser, gw)
+	m.sessionID = "sess-idle"
+	m.task = &gatewayclient.Task{ID: "task-done", State: gatewayclient.TaskStateCompleted}
+	cmd, ok := m.optimisticNew("next turn")
+	if !ok || cmd == nil {
+		t.Fatal("expected submit cmd")
+	}
+	if m.statusMsg != "sending…" {
+		t.Fatalf("status = %q", m.statusMsg)
+	}
+	msg := cmd()
+	done, ok := msg.(commandDoneMsg)
+	if !ok {
+		t.Fatalf("msg type %T", msg)
+	}
+	if done.err != nil {
+		t.Fatalf("submit err = %v", done.err)
+	}
+	if len(gw.steers) != 0 {
+		t.Fatalf("idle session steered: %#v", gw.steers)
+	}
+	if len(gw.submits) != 1 || gw.submits[0].Objective != "next turn" {
+		t.Fatalf("submits = %#v", gw.submits)
+	}
+}
+
+func TestSteerConflictFallsBackToSubmit(t *testing.T) {
+	task := gatewayclient.Task{ID: "task-run", Title: "old", State: gatewayclient.TaskStateRunning}
+	gw := &fakeGateway{
+		tasks:    []gatewayclient.Task{task},
+		steerErr: errors.New(`steer session: gateway returned 409 Conflict: {"error":{"code":"conflict","message":"request conflicts with current state","retryable":true}}`),
+		submitOK: true,
+	}
+	m := newModel(paths.ModeUser, gw)
+	m.sessionID = "sess-run"
+	m.task = &task
+	msg := m.handleLineCmd("after turn")()
+	done, ok := msg.(commandDoneMsg)
+	if !ok {
+		t.Fatalf("msg type %T", msg)
+	}
+	if done.err != nil {
+		t.Fatalf("fallback err = %v", done.err)
+	}
+	if done.status != "turn ended · sent as new message" {
+		t.Fatalf("status = %q", done.status)
+	}
+	if len(gw.steers) != 1 || len(gw.submits) != 1 {
+		t.Fatalf("steers=%#v submits=%#v", gw.steers, gw.submits)
+	}
+}

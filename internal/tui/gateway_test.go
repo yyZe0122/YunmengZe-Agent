@@ -27,6 +27,9 @@ type fakeGateway struct {
 	controlErr       error
 	permissions      []gatewayclient.Permission
 	steers           []string
+	steerErr         error
+	submits          []gatewayclient.TaskSubmissionRequest
+	submitOK         bool
 	questions        []gatewayclient.UserQuestion
 	todos            []gatewayclient.SessionTodo
 }
@@ -74,6 +77,9 @@ func (f *fakeGateway) CompactSession(context.Context, gatewayclient.SessionID, s
 
 func (f *fakeGateway) SteerSession(_ context.Context, _ gatewayclient.SessionID, text string) (gatewayclient.SteerResult, error) {
 	f.steers = append(f.steers, strings.TrimSpace(text))
+	if f.steerErr != nil {
+		return gatewayclient.SteerResult{}, f.steerErr
+	}
 	return gatewayclient.SteerResult{SessionID: "session-1", TaskID: "task-1", RunID: "run-1", ItemID: "steer-1"}, nil
 }
 
@@ -152,8 +158,20 @@ func (f *fakeGateway) TaskContext(_ context.Context, id gatewayclient.TaskID) (g
 	return gatewayclient.TaskContext{TaskID: id, Source: "none", Ratio: 1}, nil
 }
 
-func (f *fakeGateway) SubmitTask(context.Context, gatewayclient.TaskSubmissionRequest) (gatewayclient.TaskSubmissionResponse, error) {
-	return gatewayclient.TaskSubmissionResponse{}, errors.New("not implemented")
+func (f *fakeGateway) SubmitTask(_ context.Context, req gatewayclient.TaskSubmissionRequest) (gatewayclient.TaskSubmissionResponse, error) {
+	f.submits = append(f.submits, req)
+	if !f.submitOK {
+		return gatewayclient.TaskSubmissionResponse{}, errors.New("not implemented")
+	}
+	sid := gatewayclient.SessionID(req.SessionID)
+	task := gatewayclient.Task{
+		ID: "task-new", Title: req.Title, Objective: req.Objective,
+		State: gatewayclient.TaskStateRunning,
+	}
+	if sid != "" {
+		task.SessionID = &sid
+	}
+	return gatewayclient.TaskSubmissionResponse{Task: task}, nil
 }
 
 func (f *fakeGateway) ControlTask(_ context.Context, id gatewayclient.TaskID, action gatewayclient.TaskAction, _ uint64, _ string) (gatewayclient.Task, error) {

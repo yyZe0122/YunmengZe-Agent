@@ -276,12 +276,14 @@ func (m model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 
 	prevVisible := m.completer.visible
+	prevH := m.input.Height()
 	var cmd tea.Cmd
 	m.input, cmd = m.input.Update(msg)
 	m.completer.update(m.input.Value())
 	m.historyIdx = -1
-	if m.completer.visible != prevVisible {
+	if m.completer.visible != prevVisible || m.input.Height() != prevH {
 		m.layout()
+		m.syncViewport(false)
 	}
 	return m, cmd
 }
@@ -302,6 +304,7 @@ func (m *model) optimisticNew(line string) (tea.Cmd, bool) {
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	execMode := m.submitExecutionMode()
+	steering := m.canSteer()
 	// Both agent (build) and plan (read-only) are chat turns.
 	m.task = &gatewayclient.Task{
 		ID:            "…",
@@ -325,7 +328,7 @@ func (m *model) optimisticNew(line string) (tea.Cmd, bool) {
 		CreatedAt: now,
 	})
 	m.timeline = buildChatTimeline(m.messages, m.task, m.plan, m.runs)
-	if m.canSteer() {
+	if steering {
 		m.statusMsg = "steering…"
 	} else if m.sessionID != "" {
 		m.statusMsg = "sending…"
@@ -334,7 +337,10 @@ func (m *model) optimisticNew(line string) (tea.Cmd, bool) {
 	}
 	m.errMsg = ""
 	m.stickBottom = true
-	return m.handleLineCmd(line), true
+	if steering {
+		return m.steerCmd(objective), true
+	}
+	return m.newTaskCmd(objective), true
 }
 
 func (m *model) pushHistory(line string) {

@@ -103,7 +103,21 @@ func (m model) patchStanceCmd() tea.Cmd {
 }
 
 func (m model) canSteer() bool {
-	return m.sessionID != "" && m.sessionID != "…" && m.needsRunPoll()
+	if m.sessionID == "" || m.sessionID == "…" {
+		return false
+	}
+	if m.task == nil || m.task.ID == "" || m.task.ID == "…" {
+		return false
+	}
+	return m.task.State == gatewayclient.TaskStateRunning
+}
+
+func isSteerConflict(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := err.Error()
+	return strings.Contains(s, "409") && strings.Contains(s, "conflict")
 }
 
 func (m model) steerCmd(text string) tea.Cmd {
@@ -120,6 +134,14 @@ func (m model) steerCmd(text string) tea.Cmd {
 		defer cancel()
 		result, err := m.gateway.SteerSession(ctx, sessionID, text)
 		if err != nil {
+			if isSteerConflict(err) {
+				done := m.newTaskCmd(text)()
+				if msg, ok := done.(commandDoneMsg); ok && msg.err == nil {
+					msg.status = "turn ended · sent as new message"
+					return msg
+				}
+				return done
+			}
 			return commandDoneMsg{err: err}
 		}
 		return commandDoneMsg{
