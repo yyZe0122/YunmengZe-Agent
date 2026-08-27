@@ -2,7 +2,7 @@
 
 - 状态：Accepted
 - 日期：2026-08-20
-- 更新：2026-08-25（清宣纸 chrome；IME 硬件光标；slash 补全盖对话底）
+- 更新：2026-08-27（Shift+PgUp/Dn 切会话；`/edit` · `/editundo`）
 
 ## 背景
 
@@ -38,7 +38,7 @@ TUI 已对齐 Crush **契约**（slash、perm SSE、steer、折叠、T8 live MD�
 
 ### 焦点
 
-编辑器始终聚焦。PgUp/PgDn 滚 **当前** 对话。Ctrl+PgUp / Ctrl+PgDn 环形切会话。空输入时 e/E/c 折叠。Esc 链（overlay 先关）：running → cancel；否则 800ms 内再 Esc = `/undo`。
+编辑器始终聚焦。PgUp/PgDn 滚 **当前** 对话。Shift+PgUp / Shift+PgDn 环形切会话。空输入时 e/E/c 折叠。Esc 链（overlay 先关）：running → cancel；否则 800ms 内再 Esc = `/undo`。`/edit` 隐藏上一轮并填入编辑器；`/editundo` 同时撤回该轮文件（rewind 失败则不 hide）。running 状态行用 spinner；已完成气泡不因 Anim 重绘。
 
 ### 快捷键
 
@@ -48,7 +48,7 @@ TUI 已对齐 Crush **契约**（slash、perm SSE、steer、折叠、T8 live MD�
 | Ctrl+L | 模型盘 |
 | Ctrl+S | 会话盘 |
 | Ctrl+T | pills 展开/收起 |
-| Ctrl+PgUp / Ctrl+PgDn | 更旧 / 更新会话 |
+| Shift+PgUp / Shift+PgDn | 更旧 / 更新会话 |
 | Shift+Enter / Ctrl+J | textarea 换行 |
 
 ### Gateway

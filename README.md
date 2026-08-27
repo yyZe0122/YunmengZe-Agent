@@ -127,6 +127,8 @@ Packing is a single `ContextView` (prefix + summary + tail + ephemeral todos). D
 | `/new` | Leave to ready; cancels a running turn |
 | `/perm` | once · similar · permanent · deny |
 | `/undo` · **Esc Esc** | Rewind last agent file write |
+| `/edit` · `/editundo` | Hide last turn into the editor; `/editundo` rewinds that turn’s files first |
+| **Shift+PgUp** / **Shift+PgDn** | Older / newer session |
 | `/compact` · `/model` · `/skills` | Context, global/session model, skill preload |
 | `/cron` · `/memory` · `/journey` | Jobs, facts, memory+skill timeline |
 | **e** / **E** / **c** | Expand last fold · expand all · collapse |

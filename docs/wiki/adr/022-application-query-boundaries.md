@@ -2,7 +2,7 @@
 
 ## 状态
 
-Accepted，2026-07-16。交互 Planner / 人批路径已删除（见 [ADR-038](038-session-chat-boundary.md)）；本 ADR 仅保留仍有效的写入/查询边界。2026-08-13：`dependencies_test.go` 增补 TUI / CLI / Gateway 禁导入 effect 路径。
+Accepted，2026-07-16。交互 Planner / 人批路径已删除（见 [ADR-038](038-session-chat-boundary.md)）；本 ADR 仅保留仍有效的写入/查询边界。2026-08-13：`dependencies_test.go` 增补 TUI / CLI / Gateway 禁导入 effect 路径。2026-08-27：读模型跳过 `hidden_task_ids`。
 
 ## 背景
 
@@ -27,7 +27,7 @@ Gateway 与 Scheduler 都需要把外部请求转换为 Core Task。若每个适
 
 ### 查询应用层
 
-`internal/corequery.Store` 是 Core 本地读模型：只查询与 `PRAGMA quick_check`，公开 Task、Plan、Step、Approval、Run、TaskUsage、Plan Document 等窄 DTO。列表分页/排序见 ADR-027；时间 UTC 见 ADR-029。
+`internal/corequery.Store` 是 Core 本地读模型：只查询与 `PRAGMA quick_check`，公开 Task、Plan、Step、Approval、Run、TaskUsage、Plan Document 等窄 DTO。`sessions.metadata.hidden_task_ids` 从 transcript / ListTasks / GetTask / runs / session 计数中排除。列表分页/排序见 ADR-027；时间 UTC 见 ADR-029。
 
 Gateway 只依赖自声明的 `QueryService` 接口，不持有 `*sql.DB`。
 

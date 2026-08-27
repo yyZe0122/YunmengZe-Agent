@@ -1,13 +1,13 @@
 # YunmengZe Agent 当前状态
 
-更新：2026-08-25（**TUI-ink + IDE-launcher V0–V3 树内** · 等发 v0.4.0；V4–V5 等用户再提）
+更新：2026-08-27（**TUI-ink + IDE-launcher V0–V3 + QG retract 树内** · 等发 v0.4.0；V4–V5 等用户再提）
 
 **本文件是唯一活着的优化/backlog 文档。** 只写未完成与暂缓项；已落地细节见 ADR（`docs/wiki/adr/`）、[`docs/wiki/database.md`](../wiki/database.md)、changelog 与 git。目录：[`docs/README.md`](../README.md)。
 
 ## 现状
 
 生产形态稳定：`ymzd` + CLI·TUI（`ymz`）+ `core.db`。设计知识库：`docs/wiki/`。  
-当前发布线：**v0.3.1**。下一版目标 **v0.4.0** = 清宣纸 TUI（ADR-053）+ VS Code 启动器（ADR-054）。Charm v2 已树内。v0.3.0 = TUI `/new` 离焦。v0.2.8 = Phase Q。
+当前发布线：**v0.3.1**。下一版目标 **v0.4.0** = 清宣纸 TUI（ADR-053）+ VS Code 启动器（ADR-054）+ `/edit` retract + `fs_remove`。Charm v2 已树内。v0.3.0 = TUI `/new` 离焦。v0.2.8 = Phase Q。
 
 | 对标 | 契约重叠（粗） | 说明 |
 | --- | --- | --- |
@@ -55,6 +55,7 @@
 | **R** | 观察合同 · turn/step/inbox · steer · `ask_user` · Prefix 技能目录 · agent `http_get`（plan/cron 不广告） | **v0.3.1**（ADR-052 · migration 027） |
 | **README** | 产品向 README + `README.zh.md`；删过时架构 SVG | **v0.3.1** |
 | **TUI-ink** | 清宣纸 chrome + 盲文毛笔 landing（ADR-053） | **树内 → v0.4.0** |
+| **QG retract** | `/edit` · `/editundo`；`fs_remove`；`edit_revisions.kind`（028） | **树内 → v0.4.0** |
 
 同包大文件拆分已落地（`tui/cmds_*`+`update_*`、`kernel/repository_*`、`tools/fs_*`、`cmd/ymzd/wire_*`）。再拆触发：新 slash / 新聚合 SQL / `ymzd` 接线难 review → 同包再拆。
 
@@ -72,6 +73,7 @@ Phase Q：编码循环 QA–QH + Q-harden ✅（v0.2.8；细节 ADR-051）
 Phase R：harness 循环语义（ADR-052）✅
 Phase TUI-v2：Charm v2 机械迁（引擎/textarea/快捷键/todos）✅ 树内
 Phase TUI-ink：清宣纸 chrome ✅ 树内 → v0.4.0
+Phase QG retract：`/edit` · `fs_remove` · kind 028 ✅ 树内 → v0.4.0
 Phase IDE-launcher：VS Code 终端启动器（ADR-054）V0–V3 ✅ 树内；V4–V5 等用户再提
 H2 / O5–O6 / M* / IDE-webview / Marketplace ── 用户再提（不插队）
 ```

@@ -2,6 +2,7 @@
 
 - 状态：Accepted
 - 日期：2026-07-30
+- 更新：2026-08-27（retract：`metadata.hidden_task_ids`；records 仍保留）
 - 更新：2026-08-17（ADR-052：`AllowedTools` 按名 unique；ask 姿态 once+session scope 仍可双写 plan）
 
 ## 背景
@@ -67,7 +68,8 @@
 
 ### 历史与上下文（ADR-041）
 
-- transcript 在 `core.db` 全量保留；
+- transcript 在 `core.db` 全量保留（`agent_run_records` 不删）；
+- `sessions.metadata.hidden_task_ids` 软藏已 retract 的 turn；packing、`SessionTranscript`、ListTasks、GetTask、runs、session 计数跳过这些 task；
 - provider 视图经 `contextpack`；窗压经 Gateway context API 与 TUI。
 
 ### 不变

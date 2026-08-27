@@ -2,6 +2,7 @@
 
 - 状态：Accepted
 - 日期：2026-07-14
+- 更新：2026-08-27（`POST /v1/sessions/{id}/retract`；hidden task 不进 transcript/ListTasks）
 - 更新：2026-08-24（ADR-054：VS Code 终端启动器是第三 peer，本相不走 Gateway HTTP）
 
 ## 决策
@@ -25,16 +26,17 @@ Linux/macOS 在 RuntimeDir 使用受文件权限保护的 Unix Domain Socket；W
 | `POST` | `/v1/memory/actions` | refresh\|forget\|promote |
 | `GET` | `/v1/sessions` · `/v1/sessions/{id}` | 列表 / 读 |
 | `PATCH` | `/v1/sessions/{id}` | `{preferred_model}`（O4；空串清除）和/或 `{permission_stance}`（agent\|auto\|plan） |
-| `GET` | `/v1/sessions/{id}/messages` | transcript |
+| `GET` | `/v1/sessions/{id}/messages` | transcript（跳过 `hidden_task_ids`） |
 | `GET` | `/v1/sessions/{id}/todos` | session todos 只读（ADR-053 pills） |
 | `GET` | `/v1/sessions/{id}/context` | 窗压（ADR-041） |
 | `POST` | `/v1/sessions/{id}/compact` | `{focus?}`；TUI `/compact` |
 | `POST` | `/v1/sessions/{id}/rewind` | 人径撤回上次 agent 写文件（QG；TUI `/undo` · Esc Esc） |
+| `POST` | `/v1/sessions/{id}/retract` | `{rewind_files?}`；先停写再 rewind（可选）再隐藏上一轮（TUI `/edit` / `/editundo`）。rewind 失败不 hide。成功后清该轮 `transcript_search`、会话 todos、盖住该轮的 compaction。`agent_run_records` 仍保留。 |
 | `POST` | `/v1/sessions/{id}/steer` | `{text}`；运行中下一 step（ADR-052 R3） |
 | `GET` | `/v1/questions` | pending `ask_user`（`session_id` · `limit`） |
 | `POST` | `/v1/questions/{id}/answer` | `{answers, actor}`（ADR-052 R4） |
-| `GET`/`POST` | `/v1/tasks` | 列表 / 提交（`execution_mode` · `permission_stance` · `interactive` · `skill_ids` · `workspace`） |
-| `GET` | `/v1/tasks/{id}` | 读 |
+| `GET`/`POST` | `/v1/tasks` | 列表 / 提交（`execution_mode` · `permission_stance` · `interactive` · `skill_ids` · `workspace`）；列表跳过 hidden |
+| `GET` | `/v1/tasks/{id}` | 读（hidden → not found） |
 | `POST` | `/v1/tasks/{id}/actions` | pause\|resume\|cancel + `expected_version` |
 | `GET` | `/v1/tasks/{id}/usage` · `/context` · `/messages` | 用量 / 窗压 / transcript |
 | `GET` | `/v1/permissions` | `session_id` · `limit` |
@@ -44,7 +46,7 @@ Linux/macOS 在 RuntimeDir 使用受文件权限保护的 Unix Domain Socket；W
 | `POST` | `/v1/jobs/{id}/actions` | pause\|resume\|cancel（cancel→archived；ADR-042） |
 | `GET` | `/v1/plans` · `/v1/plans/{id}` | 只读 |
 | `GET` | `/v1/approvals` | 只读历史系统审批 |
-| `GET` | `/v1/runs` · `/v1/runs/{id}` · `/v1/runs/{id}/usage` | 列表无 `task_id` 过滤 |
+| `GET` | `/v1/runs` · `/v1/runs/{id}` · `/v1/runs/{id}/usage` | 列表无 `task_id` 过滤；跳过 hidden task 的 run |
 | `GET` | `/v1/events` · `/v1/events/stream` | 查询 + SSE（含 `permission.*` · `question.*`） |
 | `GET` | `/v1/model-stream` | SSE `event: model` + Envelope（ADR-031） |
 
@@ -72,4 +74,4 @@ internal/gateway         服务端 only：路由 / handlers / LocalRunner
 extensions/vscode        VS Code 扩展（ADR-054）；本相只开集成终端跑 `ymz` TUI，不调 Gateway
 ```
 
-TUI 与 CLI 不得 import `tools`、`providers`、`store/sqlite`、`agent`、`chatsession` 实现。主交互斜杠：`/new`（离焦 ready，运行中则 cancel）、`/undo`、`/cron`、`/compact`、`/perm`、`/memory`、`/expand`、`/journey`（memory + skill 事件）、`/skills`（含 apply/reject/archived；显式预载快照）、`/<skill-id>`、`/<command>`（`chat.commands`）、`/model`（全局）/ `/model prefer`（会话偏好并在 run 时生效）、`/status`（含 daemon 版本）。运行中普通回车 = steer（不 cancel）；空闲/已结束会话回车提交新一轮；steer 409 回退 submit。`ask_user` 弹出问题卡（perm 优先）。折叠快捷键：`e` / `E` / `c`（输入为空时）。用户规则：`<ConfigDir>/AGENTS.md` + 可选项目 `.yunmengze/AGENTS.md`。Prefix 含技能目录；正文仍 `skill_view`。CLI：`ymz config import-opencode`（离线写 ConfigDir，不经 Gateway）。可选尾巴见 `docs/backlog/current.md`。
+TUI 与 CLI 不得 import `tools`、`providers`、`store/sqlite`、`agent`、`chatsession` 实现。主交互斜杠：`/new`（离焦 ready，运行中则 cancel）、`/edit`（隐藏上一轮并填编辑器）、`/editundo`（同上并撤回该轮文件）、`/undo`、`/cron`、`/compact`、`/perm`、`/memory`、`/expand`、`/journey`（memory + skill 事件）、`/skills`（含 apply/reject/archived；显式预载快照）、`/<skill-id>`、`/<command>`（`chat.commands`）、`/model`（全局）/ `/model prefer`（会话偏好并在 run 时生效）、`/status`（含 daemon 版本）。运行中普通回车 = steer（不 cancel）；空闲/已结束会话回车提交新一轮；steer 409 回退 submit。`ask_user` 弹出问题卡（perm 优先）。折叠快捷键：`e` / `E` / `c`（输入为空时）。用户规则：`<ConfigDir>/AGENTS.md` + 可选项目 `.yunmengze/AGENTS.md`。Prefix 含技能目录；正文仍 `skill_view`。CLI：`ymz config import-opencode`（离线写 ConfigDir，不经 Gateway）。可选尾巴见 `docs/backlog/current.md`。

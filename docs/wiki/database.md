@@ -24,7 +24,7 @@ Daemon is the only lifecycle owner. Components must not close the shared `*sql.D
 
 | Table | Role | ADR | Since |
 | --- | --- | --- | --- |
-| `sessions` | Session + `metadata` (O4 prefer) | [038](adr/038-session-chat-boundary.md) / [045](adr/045-model-roles.md) | 001 |
+| `sessions` | Session + `metadata`（O4 prefer；`hidden_task_ids` retract 软藏，`agent_run_records` 仍保留） | [038](adr/038-session-chat-boundary.md) / [045](adr/045-model-roles.md) / [051](adr/051-coding-loop-contextview.md) | 001 |
 | `tasks` | Dual-track `execution_mode` | [038](adr/038-session-chat-boundary.md) | 001 + 014 |
 | `plans` / `plan_steps` | Plan hash + steps (grant chain) | [011](adr/011-approval-capability-binding.md) | 001 + 006 |
 | `approvals` / `capability_grants` | Approval → scoped grant | [011](adr/011-approval-capability-binding.md) | 001 |
@@ -36,7 +36,7 @@ Daemon is the only lifecycle owner. Components must not close the shared `*sql.D
 | `user_questions` | `ask_user` pending / answered / unavailable / cancelled | [052](adr/052-coding-loop-harness.md) | 027 |
 | `context_snapshots` / `session_compactions` | Window pressure; no transcript delete；`through_message_id` + model 由 ADR-051 写满 | [041](adr/041-context-packing-and-pressure.md) / [051](adr/051-coding-loop-contextview.md) | 016 |
 | `session_todos` | 会话 Todo（非 `tasks`） | [051](adr/051-coding-loop-contextview.md) | 026 |
-| `edit_revisions` | 本 agent 写文件检查点 | [051](adr/051-coding-loop-contextview.md) | 026 |
+| `edit_revisions` | 本 agent 写/删文件检查点；`kind` create\|modify\|mkdir\|delete | [051](adr/051-coding-loop-contextview.md) | 026 + 028 |
 | `memory_entries` + `memory_entries_fts` | L0–L3 facts; `archived_at` soft-archive | [044](adr/044-in-process-memory-boundary.md) | 019–022 |
 | `transcript_search` + `transcript_fts` | L3 projection; source is run records | [044](adr/044-in-process-memory-boundary.md) | 020 |
 | `skill_usage` / `skill_events` | last-used / draft·apply·archive | [050](adr/050-in-process-self-improvement.md) | 023 |

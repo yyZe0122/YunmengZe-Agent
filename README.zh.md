@@ -93,6 +93,8 @@ flowchart LR
 | `/new` | 离焦到 ready；运行中则取消本轮 |
 | `/perm` | once · similar · permanent · deny |
 | `/undo` · **Esc Esc** | 撤回上次 agent 写文件 |
+| `/edit` · `/editundo` | 隐藏上一轮并填入编辑器；`/editundo` 先撤回该轮文件 |
+| **Shift+PgUp** / **Shift+PgDn** | 更旧 / 更新会话 |
 | `/compact` · `/model` · `/skills` | 压缩上下文、全局/会话模型、预载技能 |
 | `/cron` · `/memory` · `/journey` | 定时任务、记忆、记忆+技能时间线 |
 | **e** / **E** / **c** | 展开上一折 · 全开 · 收起 |

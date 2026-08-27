@@ -2,6 +2,7 @@
 
 - 状态：Accepted
 - 日期：2026-08-14
+- 更新：2026-08-27（QG：`edit_revisions.kind`；`fs_remove`；retract hide）
 
 ## 背景
 
@@ -65,10 +66,10 @@ overflow / mid-turn 调同一 `Build`。loop 内只对**新 tool body** 增量 L
 | --- | --- |
 | **QE todo** | `session_todos`；`todo_list` / `todo_write` 经 Broker（R0，plan 可用）。清单进 **Ephemeral**，禁止进 Prefix。**不是** Planner / `tasks` 表。 |
 | **QF L3** | `AppendToolResult` 后投影 `transcript_search`（≤4000 runes，带 tool 名+path）。失败/取消 run 也索引已落盘行。不回填历史。 |
-| **QG checkpoint** | `edit_revisions`；写前旧字节进已有 artifact store，失败则 fail-closed 不写文件。人径 `POST /v1/sessions/{id}/rewind`。不给模型 rewind 工具。不撤 git/远程。 |
+| **QG checkpoint** | `edit_revisions.kind`：`modify` 写回、`create` 删除、`mkdir` 空目录 rmdir、`delete`（`fs_remove`）写回。失败 fail-closed。人径 `/undo` · `/edit`（hide）· `/editundo`（rewind 成功后再 hide）。retract 清该轮 L3 `transcript_search`、会话 todos、through 落在该轮上的 compaction。空文件 create/modify 不可分，undo 可能删文件。不给模型 rewind 工具。不撤 git / `process_shell` / 递归删目录。curated `memory_entries` 不动。 |
 | **QC / QD / QH** | 文件工具原地加强；`process_shell` 与 `process_exec` 同一闸；TUI 只经 `gatewayclient`。 |
 
-schema：`migrations/core/026_coding_loop.sql` 已建 `session_todos` + `edit_revisions`。实现：`internal/contextpack`、`internal/chatsession`、`internal/agent`、`internal/corequery`、`internal/sessiontodo`、`internal/editrev`、`internal/tools`。
+schema：`migrations/core/026_coding_loop.sql` 建 `session_todos` + `edit_revisions`；`028_edit_revision_kind.sql` 加 `kind`。实现：`internal/contextpack`、`internal/chatsession`、`internal/agent`、`internal/corequery`、`internal/sessiontodo`、`internal/editrev`、`internal/tools`。
 
 ## 不做
 
@@ -82,7 +83,7 @@ QB 内部禁止拆开发布：只合 QB2 或只改消息序、保留 `History`�
 - Prefix（AGENTS / skills / frozen memory）在 L3 下稳定，利于 prefix cache。
 - pin 的窗与 `maxTokens` 参与预算；CJK 估计更接近真窗。
 - 修订 ADR-041 / ADR-044 后果段（不另起平行文档）。
-- QA–QH + Q-harden 已发 **v0.2.8**。人径 `/undo` · Esc Esc → `POST /v1/sessions/{id}/rewind`。
+- QA–QH + Q-harden 已发 **v0.2.8**。人径 `/undo` · Esc Esc → `POST /v1/sessions/{id}/rewind`。`/edit` · `/editundo` → `POST /v1/sessions/{id}/retract`。
 - **Q-harden：** 热路径 `packForProvider` 只做 L1，不再对整份 ContextView 跑 L2/L3。`through_message_id` 滑出 Tail 窗时保留整段 tail（禁止 keep-2 砍中间轮）。新 compaction 行写真 model id。mid-turn rebuild 把 todo 块留在 Ephemeral。`HistoryBudget` 不超过 usable。
 
 ## 相关
