@@ -58,6 +58,7 @@ id_github_*
 /.codex/
 /.claude/
 /.cursor/
+/.opencode/
 
 # Local tools and editors
 .idea/
