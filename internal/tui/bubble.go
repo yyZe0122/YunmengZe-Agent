@@ -12,10 +12,20 @@ type renderOpts struct {
 	Width  int
 	Theme  ThemeName
 	Stream *streamingMD
+	Anim   int
 }
 
 func defaultRenderOpts() renderOpts {
 	return renderOpts{Width: 72, Theme: ThemeNight}
+}
+
+var runningFrames = [...]string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧"}
+
+func runningSpinner(frame int) string {
+	if frame < 0 {
+		frame = -frame
+	}
+	return runningFrames[frame%len(runningFrames)]
 }
 
 func bubbleWidth(termW int) int {
@@ -97,11 +107,11 @@ func renderAssistantBlock(body string, width int) string {
 			if i > 0 {
 				b.WriteByte('\n')
 			}
-			b.WriteString(styleTLReply.Background(colorPaper).Render(ln))
+			b.WriteString(styleTLReply.Background(colorInk).Render(ln))
 		}
 		content = b.String()
 	}
-	return lipgloss.NewStyle().Background(colorPaper).Foreground(colorBone).Width(width).Render(content)
+	return lipgloss.NewStyle().Background(colorInk).Foreground(colorBone).Width(width).Render(content)
 }
 
 func renderThinkingLine(title string, width int) string {
@@ -135,7 +145,13 @@ func renderDoneBanner(title string, state string, width int) string {
 		Render(truncate("— "+label, width))
 }
 
-func renderSystemLine(prefix, title, state string, titleStyle lipgloss.Style) string {
+func renderSystemLine(prefix, title, state string, titleStyle lipgloss.Style, anim int) string {
+	if strings.HasPrefix(title, "waiting permission") {
+		return styleWarn.Render("● " + title)
+	}
+	if state == "running" || strings.HasPrefix(title, "running") {
+		return styleOK.Render(runningSpinner(anim) + " " + title)
+	}
 	line := titleStyle.Render(prefix + " " + title)
 	if state != "" {
 		line += "  " + stateBadge(state)

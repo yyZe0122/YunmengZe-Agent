@@ -35,6 +35,33 @@ func (m model) compactCmd(arg string) tea.Cmd {
 	}
 }
 
+func (m model) editCmd(rewindFiles bool) tea.Cmd {
+	return func() tea.Msg {
+		sessionID := strings.TrimSpace(string(m.sessionID))
+		if sessionID == "" || sessionID == "…" {
+			return commandDoneMsg{err: fmt.Errorf("focus a session first, then /edit")}
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), commandTimeout)
+		defer cancel()
+		result, err := m.gateway.RetractSession(ctx, gatewayclient.SessionID(sessionID), rewindFiles)
+		if err != nil {
+			return commandDoneMsg{err: err, sessionID: gatewayclient.SessionID(sessionID)}
+		}
+		status := "edit last turn"
+		if rewindFiles {
+			if n := len(result.RewoundPaths); n > 0 {
+				status = fmt.Sprintf("edit last turn · %d file(s) restored", n)
+			} else {
+				status = "edit last turn · no file checkpoints"
+			}
+		}
+		return commandDoneMsg{
+			status: status, draftInput: result.UserText,
+			sessionID: gatewayclient.SessionID(sessionID), dropTaskFocus: true,
+		}
+	}
+}
+
 func (m model) undoCmd() tea.Cmd {
 	return func() tea.Msg {
 		sessionID := strings.TrimSpace(string(m.sessionID))

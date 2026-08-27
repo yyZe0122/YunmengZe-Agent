@@ -11,7 +11,7 @@ func renderSessionView(m *model) string {
 	if m.sessionID == "" && m.task == nil && len(m.messages) == 0 {
 		return renderEmptySession(m)
 	}
-	opts := renderOpts{Width: bubbleWidth(m.viewport.Width()), Theme: m.theme, Stream: &m.streamMD}
+	opts := renderOpts{Width: bubbleWidth(m.viewport.Width()), Theme: m.theme, Stream: &m.streamMD, Anim: m.animFrame}
 	return m.tlCache.render(m.timeline, m.expand, opts)
 }
 

@@ -199,6 +199,12 @@ func (m model) applyCommand(msg commandDoneMsg) (tea.Model, tea.Cmd) {
 	if msg.skillIDs != nil {
 		m.selectedSkillIDs = append([]string(nil), msg.skillIDs...)
 	}
+	if msg.draftInput != "" {
+		m.input.SetValue(msg.draftInput)
+		m.input.MoveToEnd()
+		m.historyIdx = -1
+		m.completer.update(m.input.Value())
+	}
 	if msg.expandMode != "" {
 		switch msg.expandMode {
 		case "all":
@@ -225,6 +231,13 @@ func (m model) applyCommand(msg commandDoneMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 	submitAfter := strings.TrimSpace(msg.submitAfter)
+	if msg.dropTaskFocus {
+		m.task = nil
+		m.plan = nil
+		m.planID = ""
+		m.runs = nil
+		m.resetLiveStream()
+	}
 	if msg.clearTask {
 		m.sessionID = ""
 		m.task = nil
@@ -280,6 +293,9 @@ func (m model) applyCommand(msg commandDoneMsg) (tea.Model, tea.Cmd) {
 		if m.task != nil && m.task.ID == "…" {
 			m.task = nil
 			m.timeline = buildChatTimeline(m.messages, nil, m.plan, m.runs)
+		}
+		if msg.sessionID != "" {
+			needRefresh = true
 		}
 	} else {
 		m.errMsg = ""

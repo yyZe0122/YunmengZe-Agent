@@ -8,6 +8,7 @@ import (
 
 var (
 	colorPaper    color.Color
+	colorInk      color.Color
 	colorHair     color.Color
 	colorBone     color.Color
 	colorFly      color.Color

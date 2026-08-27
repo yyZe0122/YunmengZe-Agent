@@ -125,9 +125,9 @@ func (m model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.statusMsg = "mode " + string(m.draftMode)
 		return m, m.patchStanceCmd()
 
-	case "ctrl+pgup":
+	case "shift+pgup":
 		return m, m.cycleSession(1)
-	case "ctrl+pgdown":
+	case "shift+pgdown":
 		return m, m.cycleSession(-1)
 
 	case "pgup":

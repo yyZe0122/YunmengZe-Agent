@@ -26,7 +26,9 @@ var slashCommands = []slashCommand{
 	{Name: "/theme", Desc: "toggle day/night theme", Help: "/theme  toggle day ↔ night theme"},
 	{Name: "/cron", Desc: "list or create scheduled jobs", Help: "/cron [every objective]  list jobs, or create on current session (Tab mode)"},
 	{Name: "/compact", Desc: "compact session context", Help: "/compact [focus]  force session head summary (optional focus text)"},
-	{Name: "/undo", Desc: "rewind last file edit", Help: "/undo  restore last agent file write (Esc Esc)"},
+	{Name: "/edit", Desc: "retract last turn into editor", Help: "/edit  hide last turn and fill its user text (does not restore files)"},
+	{Name: "/editundo", Desc: "retract last turn and restore its files", Help: "/editundo  hide last turn, restore that turn's file writes, fill editor"},
+	{Name: "/undo", Desc: "rewind last file edit", Help: "/undo  restore last agent file write in this session (Esc Esc)"},
 	{Name: "/perm", Desc: "tool permission queue", Help: "/perm open; keys 1–4 once|similar|permanent|deny; /perm <decision> <id>"},
 	{Name: "/expand", Desc: "expand/collapse folded blocks", Help: "/expand [all|none|last]  or keys e (last) · E (all) · c (collapse)"},
 	{Name: "/journey", Desc: "memory/skill timeline", Help: "/journey [memory|skills]  prepend read-only memory and/or skill events"},
@@ -91,7 +93,7 @@ func helpText() string {
 	b.WriteString("  " + styleKeyword.Render("Shift+Tab") + "      cycle auto→plan→agent\n")
 	b.WriteString("  ↑↓             picker / completer / history (not chat)\n")
 	b.WriteString("  " + styleKeyword.Render("PgUp") + "/" + styleKeyword.Render("PgDn") + "      scroll this conversation\n")
-	b.WriteString("  " + styleKeyword.Render("Ctrl+PgUp") + "/" + styleKeyword.Render("Ctrl+PgDn") + "  older/newer session\n")
+	b.WriteString("  " + styleKeyword.Render("Shift+PgUp") + "/" + styleKeyword.Render("Shift+PgDn") + "  older/newer session\n")
 	b.WriteString("  " + styleKeyword.Render("e") + " / " + styleKeyword.Render("E") + " / " + styleKeyword.Render("c") + "      expand last foldable · expand all · collapse (empty input)\n")
 	b.WriteString("  " + styleKeyword.Render("Enter") + "          complete slash once, then execute; open picker item\n")
 	b.WriteString("  " + styleKeyword.Render("Shift+Enter") + "    newline in editor\n")
@@ -114,6 +116,7 @@ func helpText() string {
 	b.WriteString("  Priority: built-in > chat.commands > skill ids.\n")
 	b.WriteString("  " + paintKeywords("/perm opens pending tool permissions in Agent (ungranted high-risk).") + "\n")
 	b.WriteString("  " + paintKeywords("/retry resubmits the last user message on the focused session.") + "\n")
+	b.WriteString("  " + paintKeywords("/edit hides the last turn and fills the editor; /editundo also restores that turn's files.") + "\n")
 	return b.String()
 }
 

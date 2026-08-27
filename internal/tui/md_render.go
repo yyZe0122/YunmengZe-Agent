@@ -217,25 +217,58 @@ func mdStyle(theme ThemeName) ansi.StyleConfig {
 	if theme == ThemeDay {
 		s := styles.LightStyleConfig
 		s.Document.Color = mdStr(hexDayBone)
-		s.Heading.Color = mdStr(hexDayWater)
+		s.Heading.Color = mdStr(hexDayHead)
+		s.Heading.Bold = mdBool(true)
 		s.H1.Color = mdStr(hexDayBone)
-		s.H1.BackgroundColor = mdStr(hexDayInk)
-		s.Link.Color = mdStr(hexDayWater)
-		s.LinkText.Color = mdStr(hexDayWater)
-		s.Code.Color = mdStr(hexDayPine)
+		s.H1.BackgroundColor = mdStr(hexDayH1Bg)
+		s.H1.Bold = mdBool(true)
+		s.H2.Color = mdStr(hexDayHead)
+		s.H2.Bold = mdBool(true)
+		s.Strong.Color = mdStr(hexDayEmph)
+		s.Strong.Bold = mdBool(true)
+		s.Link.Color = mdStr(hexDayHead)
+		s.LinkText.Color = mdStr(hexDayHead)
+		s.Code.Color = mdStr(hexDayCode)
 		s.Code.BackgroundColor = mdStr(hexDayWash)
+		s.CodeBlock.Color = mdStr(hexDayBone)
+		s.CodeBlock.BackgroundColor = mdStr(hexDayWash)
+		s.CodeBlock.Chroma = mdChroma(hexDayBone, hexDayHead, hexDayEmph, hexDayCode, hexDayHair, hexDayWash)
 		return s
 	}
 	s := styles.DarkStyleConfig
 	s.Document.Color = mdStr(hexNightBone)
-	s.Heading.Color = mdStr(hexNightWater)
+	s.Heading.Color = mdStr(hexNightHead)
+	s.Heading.Bold = mdBool(true)
 	s.H1.Color = mdStr(hexNightMix)
-	s.H1.BackgroundColor = mdStr(hexNightInk)
-	s.Link.Color = mdStr(hexNightWater)
-	s.LinkText.Color = mdStr(hexNightWater)
-	s.Code.Color = mdStr(hexNightPine)
+	s.H1.BackgroundColor = mdStr(hexNightH1Bg)
+	s.H1.Bold = mdBool(true)
+	s.H2.Color = mdStr(hexNightHead)
+	s.H2.Bold = mdBool(true)
+	s.Strong.Color = mdStr(hexNightEmph)
+	s.Strong.Bold = mdBool(true)
+	s.Link.Color = mdStr(hexNightHead)
+	s.LinkText.Color = mdStr(hexNightHead)
+	s.Code.Color = mdStr(hexNightCode)
 	s.Code.BackgroundColor = mdStr(hexNightWash)
+	s.CodeBlock.Color = mdStr(hexNightBone)
+	s.CodeBlock.BackgroundColor = mdStr(hexNightWash)
+	s.CodeBlock.Chroma = mdChroma(hexNightBone, hexNightHead, hexNightEmph, hexNightCode, hexNightFly, hexNightWash)
 	return s
 }
 
+func mdChroma(text, keyword, str, fn, comment, bg string) *ansi.Chroma {
+	return &ansi.Chroma{
+		Text:          ansi.StylePrimitive{Color: mdStr(text)},
+		Keyword:       ansi.StylePrimitive{Color: mdStr(keyword), Bold: mdBool(true)},
+		KeywordType:   ansi.StylePrimitive{Color: mdStr(keyword)},
+		LiteralString: ansi.StylePrimitive{Color: mdStr(str)},
+		NameFunction:  ansi.StylePrimitive{Color: mdStr(fn)},
+		NameClass:     ansi.StylePrimitive{Color: mdStr(fn), Bold: mdBool(true)},
+		Comment:       ansi.StylePrimitive{Color: mdStr(comment)},
+		Background:    ansi.StylePrimitive{BackgroundColor: mdStr(bg)},
+	}
+}
+
 func mdStr(s string) *string { return &s }
+
+func mdBool(v bool) *bool { return &v }

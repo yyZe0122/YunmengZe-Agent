@@ -76,7 +76,7 @@ func (m *model) listHint() string {
 	case listJobs:
 		return "↑↓ · Enter details · Esc · /cron <every> <obj> create"
 	case listSessions:
-		return "↑↓ select · Enter open · Esc · Ctrl+PgUp/Dn cycle"
+		return "↑↓ select · Enter open · Esc · Shift+PgUp/Dn cycle"
 	case listTasks:
 		return "↑↓ select · Enter focus task · Esc close"
 	case listSkills:
@@ -486,7 +486,7 @@ func (m *model) focusSessionAt(i int) tea.Cmd {
 }
 
 // cycleSession moves among m.sessions (updated_at DESC: 0 = newest).
-// delta +1 = older (Ctrl+PgUp), -1 = newer (Ctrl+PgDn). Wraps.
+// delta +1 = older (Shift+PgUp), -1 = newer (Shift+PgDn). Wraps.
 func (m *model) cycleSession(delta int) tea.Cmd {
 	if len(m.sessions) == 0 {
 		m.statusMsg = "no sessions"

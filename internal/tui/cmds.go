@@ -37,6 +37,10 @@ func (m model) handleLineCmd(line string) tea.Cmd {
 		return m.compactCmd(arg)
 	case "/undo":
 		return m.undoCmd()
+	case "/edit":
+		return m.editCmd(false)
+	case "/editundo":
+		return m.editCmd(true)
 	case "/perm":
 		return m.permCmd(arg)
 	case "/expand":

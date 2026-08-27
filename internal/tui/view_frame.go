@@ -217,22 +217,34 @@ func (m model) renderContextStrip() string {
 			label += " " + el
 		}
 	}
-	parts = append(parts, label)
 
+	rest := ""
 	if !m.showContextPanel() {
 		if used, maxTok, ok := m.metrics().TaskTokenUsage(); ok {
 			if maxTok > 0 {
-				parts = append(parts, fmt.Sprintf("tok %s/%s", formatTokens(used), formatTokens(maxTok)))
+				rest = fmt.Sprintf("tok %s/%s", formatTokens(used), formatTokens(maxTok))
 			} else {
-				parts = append(parts, fmt.Sprintf("tok %s", formatTokens(used)))
+				rest = fmt.Sprintf("tok %s", formatTokens(used))
 			}
 		}
+	}
+	head := strings.Join(parts, "  ·  ")
+	line := head + "  ·  "
+	if active {
+		line += styleOK.Background(colorPaper).Render(label)
+	} else if m.pendingPermCount > 0 {
+		line += styleWarn.Background(colorPaper).Render(label)
+	} else {
+		line += label
+	}
+	if rest != "" {
+		line += "  ·  " + rest
 	}
 	return lipgloss.NewStyle().
 		Foreground(colorFly).
 		Background(colorPaper).
 		Width(width).
-		Render(truncate(strings.Join(parts, "  ·  "), width))
+		Render(truncate(line, width))
 }
 
 func (m model) renderFooter() string {

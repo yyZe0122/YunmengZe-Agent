@@ -122,7 +122,7 @@ func transcriptToItem(msg gatewayclient.TranscriptMessage, toolNames map[string]
 		}
 		if msg.Content != "" {
 			blocks = append(blocks, contentBlock{
-				Kind: blockReply, Text: msg.Content, Key: baseKey + ":reply",
+				Kind: blockReply, Text: msg.Content,
 			})
 		}
 		for _, tc := range msg.ToolCalls {

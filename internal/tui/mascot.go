@@ -55,7 +55,7 @@ func mascotState(m *model) mascotMood {
 	if m.task != nil && m.task.State == gatewayclient.TaskStatePaused {
 		return moodPause
 	}
-	switch m.activityLabel() {
+	switch m.activityKind() {
 	case "thinking":
 		return moodThink
 	case "writing":

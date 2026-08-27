@@ -32,6 +32,10 @@ const (
 	hexNightPine  = "#7A9E6E"
 	hexNightWater = "#6A92B0"
 	hexNightGold  = "#C9A45A"
+	hexNightHead  = "#8EC4E8"
+	hexNightEmph  = "#E8C56A"
+	hexNightCode  = "#9BC48A"
+	hexNightH1Bg  = "#2A4238"
 
 	hexDayPaper = "#EDE6D6"
 	hexDayInk   = "#F7F1E4"
@@ -42,6 +46,10 @@ const (
 	hexDayPine  = "#3D6B3A"
 	hexDayWater = "#3A6A8A"
 	hexDayGold  = "#A67C3A"
+	hexDayHead  = "#1E5A8A"
+	hexDayEmph  = "#8A5A18"
+	hexDayCode  = "#2A5A28"
+	hexDayH1Bg  = "#D4C4A0"
 )
 
 // Theme is the 青绿山水 palette (night ink-black / day xuan-paper).
@@ -49,6 +57,7 @@ type Theme struct {
 	Name ThemeName
 
 	Paper color.Color
+	Ink   color.Color
 	Hair  color.Color
 	Bone  color.Color
 	Fly   color.Color
@@ -67,6 +76,7 @@ type Theme struct {
 var dayTheme = Theme{
 	Name:      ThemeDay,
 	Paper:     lipgloss.Color(hexDayPaper),
+	Ink:       lipgloss.Color(hexDayInk),
 	Hair:      lipgloss.Color(hexDayHair),
 	Bone:      lipgloss.Color(hexDayBone),
 	Fly:       lipgloss.Color(hexDayHair),
@@ -84,6 +94,7 @@ var dayTheme = Theme{
 var nightTheme = Theme{
 	Name:      ThemeNight,
 	Paper:     lipgloss.Color(hexNightPaper),
+	Ink:       lipgloss.Color(hexNightInk),
 	Hair:      lipgloss.Color(hexNightHair),
 	Bone:      lipgloss.Color(hexNightBone),
 	Fly:       lipgloss.Color(hexNightFly),
@@ -121,6 +132,7 @@ func toggleTheme(name ThemeName) ThemeName {
 
 func applyTheme(t Theme) {
 	colorPaper = t.Paper
+	colorInk = t.Ink
 	colorHair = t.Hair
 	colorBone = t.Bone
 	colorFly = t.Fly

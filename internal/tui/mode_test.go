@@ -168,52 +168,52 @@ func TestPickerDoesNotClearTask(t *testing.T) {
 	}
 }
 
-func TestCtrlPgUpCyclesOlderSession(t *testing.T) {
+func TestShiftPgUpCyclesOlderSession(t *testing.T) {
 	newer := gatewayclient.Session{ID: "sess-new", Title: "new"}
 	older := gatewayclient.Session{ID: "sess-old", Title: "old"}
 	m := newModel(paths.ModeUser, &fakeGateway{})
 	m.sessions = []gatewayclient.Session{newer, older}
 	m.sessionID = newer.ID
-	updated, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyPgUp, Mod: tea.ModCtrl})
+	updated, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyPgUp, Mod: tea.ModShift})
 	got := updated.(model)
 	if got.sessionID != older.ID {
-		t.Fatalf("ctrl+pgup session = %q want %q", got.sessionID, older.ID)
+		t.Fatalf("shift+pgup session = %q want %q", got.sessionID, older.ID)
 	}
 	if cmd == nil {
-		t.Fatal("ctrl+pgup should refresh")
+		t.Fatal("shift+pgup should refresh")
 	}
 	if got.list != listNone {
 		t.Fatalf("overlay still open: %v", got.list)
 	}
-	updated, _ = got.Update(tea.KeyPressMsg{Code: tea.KeyPgDown, Mod: tea.ModCtrl})
+	updated, _ = got.Update(tea.KeyPressMsg{Code: tea.KeyPgDown, Mod: tea.ModShift})
 	got = updated.(model)
 	if got.sessionID != newer.ID {
-		t.Fatalf("ctrl+pgdown session = %q want %q", got.sessionID, newer.ID)
+		t.Fatalf("shift+pgdown session = %q want %q", got.sessionID, newer.ID)
 	}
 }
 
-func TestCtrlPgDownFromLandingFocusesNewest(t *testing.T) {
+func TestShiftPgDownFromLandingFocusesNewest(t *testing.T) {
 	newest := gatewayclient.Session{ID: "sess-new"}
 	oldest := gatewayclient.Session{ID: "sess-old"}
 	m := newModel(paths.ModeUser, &fakeGateway{})
 	m.sessions = []gatewayclient.Session{newest, oldest}
-	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyPgDown, Mod: tea.ModCtrl})
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyPgDown, Mod: tea.ModShift})
 	got := updated.(model)
 	if got.sessionID != newest.ID {
-		t.Fatalf("landing ctrl+pgdown = %q want newest", got.sessionID)
+		t.Fatalf("landing shift+pgdown = %q want newest", got.sessionID)
 	}
 	m = newModel(paths.ModeUser, &fakeGateway{})
 	m.sessions = []gatewayclient.Session{newest, oldest}
-	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyPgUp, Mod: tea.ModCtrl})
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyPgUp, Mod: tea.ModShift})
 	got = updated.(model)
 	if got.sessionID != oldest.ID {
-		t.Fatalf("landing ctrl+pgup = %q want oldest", got.sessionID)
+		t.Fatalf("landing shift+pgup = %q want oldest", got.sessionID)
 	}
 }
 
-func TestCtrlPgUpEmptySessions(t *testing.T) {
+func TestShiftPgUpEmptySessions(t *testing.T) {
 	m := newModel(paths.ModeUser, &fakeGateway{})
-	updated, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyPgUp, Mod: tea.ModCtrl})
+	updated, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyPgUp, Mod: tea.ModShift})
 	got := updated.(model)
 	if cmd != nil {
 		t.Fatal("empty list should not refresh")

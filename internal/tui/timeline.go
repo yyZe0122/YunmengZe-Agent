@@ -168,7 +168,7 @@ func buildTimeline(task *gatewayclient.Task, plan *gatewayclient.Plan, runs []ga
 		}
 		if body != "" {
 			item.Blocks = []contentBlock{{
-				Kind: blockReply, Text: body, Key: key,
+				Kind: blockReply, Text: body,
 			}}
 		}
 		items = append(items, item)
@@ -288,7 +288,7 @@ func renderTimelineItem(item timelineItem, exp expandState, opts renderOpts) str
 	switch item.Kind {
 	case tlSystem, tlPlan, tlError, tlJourney:
 		prefix, titleStyle := itemChrome(item)
-		line := renderSystemLine(prefix, item.Title, item.State, titleStyle)
+		line := renderSystemLine(prefix, item.Title, item.State, titleStyle, opts.Anim)
 		if item.Body == "" && len(item.Blocks) == 0 {
 			return line
 		}
@@ -406,10 +406,6 @@ func renderBlock(bl contentBlock, exp expandState, opts renderOpts, parent timel
 			}
 			return renderAssistantBlock(opts.Stream.render(text, w, opts.Theme), w)
 		}
-		if !open && needsFold(text, timelineBodyMaxLines, timelineBodyMaxChars) {
-			text = foldHead(text, timelineBodyMaxLines, timelineBodyMaxChars)
-			return renderAssistantBlock(text, w)
-		}
 		if text != "" {
 			return renderAssistantBlock(renderMarkdown(text, w, opts.Theme), w)
 		}
@@ -478,8 +474,14 @@ func collectExpandKeys(items []timelineItem) []string {
 		keys = append(keys, k)
 	}
 	for _, it := range items {
-		add(it.Key)
+		if len(it.Blocks) == 0 {
+			add(it.Key)
+			continue
+		}
 		for _, bl := range it.Blocks {
+			if bl.Kind == blockReply {
+				continue
+			}
 			add(bl.Key)
 		}
 	}

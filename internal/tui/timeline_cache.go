@@ -21,10 +21,11 @@ func (c *timelineRenderCache) render(items []timelineItem, exp expandState, opts
 	}
 
 	// C2: reuse stable finished prefix when only the live tail changed.
+	// Prefix fingerprint ignores Anim so a running spinner does not restyle finished bubbles.
 	if c != nil && c.prefixN > 0 && c.prefixN <= len(items) {
 		n := countFinishedPrefix(items)
 		if n == c.prefixN && n < len(items) {
-			pk := timelineCacheKey(items[:n], exp, opts)
+			pk := timelineCacheKeyAnim(items[:n], exp, opts, false)
 			if pk == c.prefixKey && c.prefixOut != "" {
 				tail := renderTimelineUncached(items[n:], exp, opts)
 				out := c.prefixOut
@@ -48,7 +49,7 @@ func (c *timelineRenderCache) render(items []timelineItem, exp expandState, opts
 		n := countFinishedPrefix(items)
 		c.prefixN = n
 		if n > 0 {
-			c.prefixKey = timelineCacheKey(items[:n], exp, opts)
+			c.prefixKey = timelineCacheKeyAnim(items[:n], exp, opts, false)
 			c.prefixOut = renderTimelineUncached(items[:n], exp, opts)
 		} else {
 			c.prefixKey = ""
@@ -70,11 +71,21 @@ func countFinishedPrefix(items []timelineItem) int {
 }
 
 func timelineCacheKey(items []timelineItem, exp expandState, opts renderOpts) string {
+	return timelineCacheKeyAnim(items, exp, opts, true)
+}
+
+func timelineCacheKeyAnim(items []timelineItem, exp expandState, opts renderOpts, withAnim bool) string {
 	var b strings.Builder
 	b.Grow(len(items)*48 + 32)
 	b.WriteString(itoa(opts.Width))
 	b.WriteByte('|')
 	b.WriteString(string(opts.Theme))
+	b.WriteByte('|')
+	if withAnim {
+		b.WriteString(itoa(opts.Anim))
+	} else {
+		b.WriteString("-")
+	}
 	b.WriteByte('|')
 	if exp.all {
 		b.WriteString("A1|")

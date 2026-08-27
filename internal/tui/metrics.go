@@ -166,7 +166,7 @@ func (m model) runActivity() runActivity {
 	}
 }
 
-func (m model) activityLabel() string {
+func (m model) activityKind() string {
 	if m.pendingPermCount > 0 {
 		return "waiting permission"
 	}
@@ -190,6 +190,14 @@ func (m model) activityLabel() string {
 	default:
 		return "idle"
 	}
+}
+
+func (m model) activityLabel() string {
+	kind := m.activityKind()
+	if m.runActivity() == activityActive && m.pendingPermCount == 0 {
+		return runningSpinner(m.animFrame) + " " + kind
+	}
+	return kind
 }
 
 func (m model) activityElapsed() time.Duration {

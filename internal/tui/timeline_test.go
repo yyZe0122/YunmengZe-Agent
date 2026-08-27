@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"charm.land/lipgloss/v2"
+
 	"github.com/yyZe0122/yunmengze-agent/internal/gatewayclient"
 	"github.com/yyZe0122/yunmengze-agent/internal/platform/paths"
 )
@@ -113,6 +115,67 @@ func TestThinkingBlockCollapsed(t *testing.T) {
 	out2 := renderTimelineExpanded(items, expandState{keys: map[string]bool{"t1": true}})
 	if strings.Count(out2, "reason step") < 10 {
 		t.Fatalf("expected expanded thinking: %s", out2)
+	}
+}
+
+func TestRunningSpinnerCycles(t *testing.T) {
+	if runningSpinner(0) != runningFrames[0] {
+		t.Fatalf("frame0 = %q", runningSpinner(0))
+	}
+	if runningSpinner(8) != runningFrames[0] {
+		t.Fatal("should wrap")
+	}
+	if runningSpinner(1) == runningSpinner(0) {
+		t.Fatal("frames must differ")
+	}
+}
+
+func TestRunningLineUsesSpinner(t *testing.T) {
+	items := []timelineItem{{
+		Kind: tlSystem, Title: "running", State: gatewayclient.TaskStateRunning,
+	}}
+	out := renderTimelineUncached(items, expandState{}, renderOpts{Width: 72, Theme: ThemeNight, Anim: 1})
+	if !strings.Contains(out, runningSpinner(1)) {
+		t.Fatalf("missing spinner:\n%s", out)
+	}
+	if strings.Count(out, "running") != 1 {
+		t.Fatalf("duplicate running badge:\n%s", out)
+	}
+}
+
+func TestTimelineCachePrefixIgnoresAnim(t *testing.T) {
+	finished := timelineItem{
+		Kind: tlRun, Title: "assistant", State: gatewayclient.TaskStateCompleted,
+		Blocks: []contentBlock{{Kind: blockReply, Text: "hello reply"}},
+	}
+	running := timelineItem{
+		Kind: tlSystem, Title: "running", State: gatewayclient.TaskStateRunning,
+	}
+	items := []timelineItem{finished, running}
+	exp := expandState{}
+	opts0 := renderOpts{Width: 72, Theme: ThemeNight, Anim: 0}
+	opts1 := renderOpts{Width: 72, Theme: ThemeNight, Anim: 1}
+	if timelineCacheKeyAnim(items[:1], exp, opts0, false) != timelineCacheKeyAnim(items[:1], exp, opts1, false) {
+		t.Fatal("prefix key must ignore Anim")
+	}
+	if timelineCacheKey(items, exp, opts0) == timelineCacheKey(items, exp, opts1) {
+		t.Fatal("full key must include Anim")
+	}
+	var cache timelineRenderCache
+	out0 := cache.render(items, exp, opts0)
+	if cache.prefixN != 1 {
+		t.Fatalf("prefixN = %d", cache.prefixN)
+	}
+	prefixKey := cache.prefixKey
+	out1 := cache.render(items, exp, opts1)
+	if cache.prefixKey != prefixKey {
+		t.Fatal("prefix cache invalidated by Anim")
+	}
+	if !strings.Contains(out0, runningSpinner(0)) || !strings.Contains(out1, runningSpinner(1)) {
+		t.Fatalf("spinner not updated:\n%s\n%s", out0, out1)
+	}
+	if !strings.Contains(out0, "hello reply") || !strings.Contains(out1, "hello reply") {
+		t.Fatal("finished reply dropped")
 	}
 }
 
@@ -234,6 +297,89 @@ func TestExpandStateToggle(t *testing.T) {
 	e.setAll(false)
 	if e.open("any") {
 		t.Fatal("none should close")
+	}
+}
+
+func TestFinishedReplyDoesNotFold(t *testing.T) {
+	var lines []string
+	for i := 0; i < timelineBodyMaxLines+8; i++ {
+		lines = append(lines, "reply-line-"+itoa(i))
+	}
+	body := strings.Join(lines, "\n")
+	items := []timelineItem{{
+		Kind: tlRun, Title: "assistant",
+		Blocks: []contentBlock{{Kind: blockReply, Text: body}},
+	}}
+	out := renderTimeline(items)
+	if strings.Contains(out, "truncated") {
+		t.Fatalf("finished reply should not fold:\n%s", out)
+	}
+	if !strings.Contains(out, "reply-line-"+itoa(timelineBodyMaxLines+7)) {
+		t.Fatalf("reply tail missing:\n%s", out)
+	}
+}
+
+func TestFinishedReplyRendersMarkdown(t *testing.T) {
+	src := "# Heading\n\n```go\nfunc main() {}\n```"
+	items := []timelineItem{{
+		Kind: tlRun, Title: "assistant",
+		Blocks: []contentBlock{{Kind: blockReply, Text: src}},
+	}}
+	out := renderTimeline(items)
+	if strings.Contains(out, "truncated") {
+		t.Fatalf("markdown reply folded:\n%s", out)
+	}
+	if out == renderAssistantBlock(src, 72) {
+		t.Fatalf("expected glamour, got raw:\n%s", out)
+	}
+}
+
+func TestCollectExpandKeysSkipsReply(t *testing.T) {
+	items := []timelineItem{{
+		Kind: tlRun, Title: "assistant", Key: "msg:1",
+		Blocks: []contentBlock{
+			{Kind: blockThinking, Text: "think", Key: "msg:1:thinking"},
+			{Kind: blockReply, Text: strings.Repeat("x\n", 20), Key: "msg:1:reply"},
+			{Kind: blockToolCall, Text: "ls", ToolName: "process_shell", Key: "msg:1:tc:1"},
+		},
+	}}
+	keys := collectExpandKeys(items)
+	for _, k := range keys {
+		if strings.Contains(k, "reply") || k == "msg:1" {
+			t.Fatalf("reply/item key leaked: %v", keys)
+		}
+	}
+	if len(keys) != 2 {
+		t.Fatalf("keys = %v", keys)
+	}
+}
+
+func TestTranscriptReplyHasNoExpandKey(t *testing.T) {
+	item := transcriptToItem(gatewayclient.TranscriptMessage{
+		Role: "assistant", Content: "hi", Thinking: "hmm",
+	}, nil, 3)
+	if item.Key != "msg:3" {
+		t.Fatalf("item key = %q", item.Key)
+	}
+	for _, bl := range item.Blocks {
+		if bl.Kind == blockReply && bl.Key != "" {
+			t.Fatalf("reply key = %q", bl.Key)
+		}
+	}
+}
+
+func TestAssistantBlockUsesInk(t *testing.T) {
+	applyTheme(nightTheme)
+	if colorInk == colorPaper {
+		t.Fatal("ink must contrast paper")
+	}
+	got := renderAssistantBlock("hello reply", 40)
+	paper := lipgloss.NewStyle().Background(colorPaper).Foreground(colorBone).Width(40).Render("hello reply")
+	if got == paper {
+		t.Fatal("assistant block used paper background")
+	}
+	if !strings.Contains(got, "hello reply") {
+		t.Fatalf("missing body: %q", got)
 	}
 }
 

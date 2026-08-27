@@ -23,7 +23,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.applyStreamPaint()
 
 	case tickMsg:
-		if m.isLanding() {
+		if m.isLanding() || m.runActivity() == activityActive {
 			m.animFrame++
 			m.syncViewport(true)
 		}

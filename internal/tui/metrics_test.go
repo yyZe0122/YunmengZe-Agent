@@ -135,6 +135,27 @@ func TestMetricsPanelShowsCacheHitRate(t *testing.T) {
 	}
 }
 
+func TestActivityLabelSpinnerWhenRunning(t *testing.T) {
+	sid := gatewayclient.SessionID("s1")
+	m := model{
+		animFrame: 3,
+		task:      &gatewayclient.Task{ID: "t1", State: gatewayclient.TaskStateRunning, SessionID: &sid},
+	}
+	if kind := m.activityKind(); kind != "running" {
+		t.Fatalf("kind = %q", kind)
+	}
+	got := m.activityLabel()
+	want := runningSpinner(3) + " running"
+	if got != want {
+		t.Fatalf("label = %q want %q", got, want)
+	}
+	m.liveThinking = "hmm"
+	got = m.activityLabel()
+	if got != runningSpinner(3)+" thinking" {
+		t.Fatalf("thinking = %q", got)
+	}
+}
+
 func TestMetricsPanelShowsMCPWhenEnabled(t *testing.T) {
 	t.Parallel()
 	applyTheme(themeByName(ThemeNight))

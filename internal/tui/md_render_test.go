@@ -69,3 +69,32 @@ func TestStreamingMDTrailStaysPlain(t *testing.T) {
 		t.Fatalf("trail should stay raw: %q", got)
 	}
 }
+
+func TestMDStyleNightHeadingsAreBright(t *testing.T) {
+	s := mdStyle(ThemeNight)
+	if s.Heading.Color == nil || *s.Heading.Color != hexNightHead {
+		t.Fatalf("heading = %v want %s", s.Heading.Color, hexNightHead)
+	}
+	if s.H1.BackgroundColor == nil || *s.H1.BackgroundColor != hexNightH1Bg {
+		t.Fatalf("h1 bg = %v want %s", s.H1.BackgroundColor, hexNightH1Bg)
+	}
+	if *s.H1.BackgroundColor == hexNightInk {
+		t.Fatal("h1 must not share ink block")
+	}
+	if s.Strong.Color == nil || *s.Strong.Color != hexNightEmph {
+		t.Fatalf("strong = %v want %s", s.Strong.Color, hexNightEmph)
+	}
+	if s.Code.Color == nil || *s.Code.Color != hexNightCode {
+		t.Fatalf("code = %v want %s", s.Code.Color, hexNightCode)
+	}
+}
+
+func TestMDStyleDayHeadingsAreBright(t *testing.T) {
+	s := mdStyle(ThemeDay)
+	if s.Heading.Color == nil || *s.Heading.Color != hexDayHead {
+		t.Fatalf("heading = %v want %s", s.Heading.Color, hexDayHead)
+	}
+	if s.H1.BackgroundColor == nil || *s.H1.BackgroundColor != hexDayH1Bg {
+		t.Fatalf("h1 bg = %v want %s", s.H1.BackgroundColor, hexDayH1Bg)
+	}
+}

@@ -32,6 +32,8 @@ type fakeGateway struct {
 	submitOK         bool
 	questions        []gatewayclient.UserQuestion
 	todos            []gatewayclient.SessionTodo
+	retract          gatewayclient.RetractResult
+	retractErr       error
 }
 
 func (f *fakeGateway) StreamEvents(context.Context, uint64, func(eventapi.Envelope) error) error {
@@ -85,6 +87,21 @@ func (f *fakeGateway) SteerSession(_ context.Context, _ gatewayclient.SessionID,
 
 func (f *fakeGateway) RewindSession(context.Context, gatewayclient.SessionID, string) (gatewayclient.RewindResult, error) {
 	return gatewayclient.RewindResult{Path: "/tmp/ws/a.go"}, nil
+}
+
+func (f *fakeGateway) RetractSession(_ context.Context, _ gatewayclient.SessionID, rewindFiles bool) (gatewayclient.RetractResult, error) {
+	if f.retractErr != nil {
+		return f.retract, f.retractErr
+	}
+	out := f.retract
+	if out.UserText == "" {
+		out.UserText = "hello again"
+	}
+	if out.TaskID == "" {
+		out.TaskID = "task-last"
+	}
+	out.RewindFiles = rewindFiles
+	return out, nil
 }
 
 func (f *fakeGateway) TaskMessages(context.Context, gatewayclient.TaskID, int) ([]gatewayclient.TranscriptMessage, error) {

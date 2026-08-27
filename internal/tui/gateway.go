@@ -36,6 +36,7 @@ type Gateway interface {
 	CompactSession(ctx context.Context, id gatewayclient.SessionID, focus string) (gatewayclient.CompactResult, error)
 	SteerSession(ctx context.Context, id gatewayclient.SessionID, text string) (gatewayclient.SteerResult, error)
 	RewindSession(ctx context.Context, id gatewayclient.SessionID, revisionID string) (gatewayclient.RewindResult, error)
+	RetractSession(ctx context.Context, id gatewayclient.SessionID, rewindFiles bool) (gatewayclient.RetractResult, error)
 
 	ListTasks(ctx context.Context, limit int) ([]gatewayclient.Task, error)
 	GetTask(ctx context.Context, id gatewayclient.TaskID) (gatewayclient.Task, error)

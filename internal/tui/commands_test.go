@@ -50,10 +50,13 @@ func TestCanonicalAliases(t *testing.T) {
 
 func TestHelpTextListsCommands(t *testing.T) {
 	text := ansi.Strip(helpText())
-	for _, want := range []string{"/new", "/tasks", "/cron", "/compact", "/perm", "/expand", "/journey", "/memory", "/refresh-memory", "/model", "/skills", "/theme", "Tab", "every", "skill-id", "e / E / c", "Ctrl+PgUp"} {
+	for _, want := range []string{"/new", "/tasks", "/cron", "/compact", "/perm", "/expand", "/journey", "/memory", "/refresh-memory", "/model", "/skills", "/theme", "/edit", "/editundo", "Tab", "every", "skill-id", "e / E / c", "Shift+PgUp"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("help missing %q", want)
 		}
+	}
+	if strings.Contains(text, "Ctrl+PgUp") {
+		t.Fatal("help should not advertise Ctrl+PgUp session cycle")
 	}
 	if strings.Contains(text, "/approve") {
 		t.Fatal("help should not list removed /approve")
@@ -81,8 +84,67 @@ func TestIsBuiltinSlash(t *testing.T) {
 	if !isBuiltinSlash("/model") || !isBuiltinSlash("/MODEL") {
 		t.Fatal("expected /model builtin")
 	}
+	if !isBuiltinSlash("/edit") || !isBuiltinSlash("/editundo") {
+		t.Fatal("expected /edit builtins")
+	}
 	if isBuiltinSlash("/git") {
 		t.Fatal("/git should not be builtin")
+	}
+}
+
+func TestEditCmdFillsDraftWithoutHistory(t *testing.T) {
+	gw := &fakeGateway{retract: gatewayclient.RetractResult{UserText: "rewrite me", TaskID: "task-1"}}
+	m := newModel(paths.ModeUser, gw)
+	m.sessionID = "sess-1"
+	m.task = &gatewayclient.Task{ID: "task-1"}
+	m.history = []string{"older"}
+	msg := m.handleLineCmd("/edit")()
+	done := msg.(commandDoneMsg)
+	if done.err != nil {
+		t.Fatalf("edit err = %v", done.err)
+	}
+	if done.draftInput != "rewrite me" {
+		t.Fatalf("draft = %q", done.draftInput)
+	}
+	if !done.dropTaskFocus {
+		t.Fatal("expected dropTaskFocus")
+	}
+	updated, _ := m.Update(done)
+	got := updated.(model)
+	if got.input.Value() != "rewrite me" {
+		t.Fatalf("input = %q", got.input.Value())
+	}
+	if got.task != nil {
+		t.Fatalf("task still focused: %#v", got.task)
+	}
+	if len(got.history) != 1 || got.history[0] != "older" {
+		t.Fatalf("history mutated: %#v", got.history)
+	}
+}
+
+func TestEditCmdFailureDoesNotFillDraft(t *testing.T) {
+	gw := &fakeGateway{retractErr: errors.New("file changed since revision"), retract: gatewayclient.RetractResult{UserText: "secret"}}
+	m := newModel(paths.ModeUser, gw)
+	m.sessionID = "sess-1"
+	m.task = &gatewayclient.Task{ID: "task-1"}
+	msg := m.handleLineCmd("/edit")()
+	done := msg.(commandDoneMsg)
+	if done.err == nil {
+		t.Fatal("expected err")
+	}
+	if done.draftInput != "" {
+		t.Fatalf("draft leaked: %q", done.draftInput)
+	}
+	if done.dropTaskFocus {
+		t.Fatal("should not drop focus on failure")
+	}
+	updated, _ := m.Update(done)
+	got := updated.(model)
+	if got.input.Value() != "" {
+		t.Fatalf("input = %q", got.input.Value())
+	}
+	if got.task == nil || got.task.ID != "task-1" {
+		t.Fatalf("task = %#v", got.task)
 	}
 }
 

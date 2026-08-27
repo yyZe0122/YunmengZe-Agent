@@ -192,7 +192,7 @@ func toolCallPreview(name, arguments string) string {
 func fsToolPreview(name string, args map[string]any) string {
 	path := stringField(args, "path", "file", "filepath", "target", "dest", "destination")
 	switch name {
-	case "fs_write", "fs_patch", "fs_mkdir", "fs_remove", "fs_delete", "fs_rename", "fs_move", "fs_copy":
+	case "fs_write", "fs_patch", "fs_mkdir", "fs_remove":
 		if path != "" {
 			return pathPreview(path)
 		}

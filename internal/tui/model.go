@@ -217,6 +217,7 @@ type commandDoneMsg struct {
 	planID        gatewayclient.PlanID
 	sessionID     gatewayclient.SessionID
 	clearTask     bool
+	dropTaskFocus bool
 	openList      listKind
 	closeList     bool
 	quit          bool
@@ -234,6 +235,8 @@ type commandDoneMsg struct {
 	questions     []gatewayclient.UserQuestion
 	// expandMode: "", "all", "none", "last" — applied in applyCommand for /expand
 	expandMode string
+	// draftInput fills the editor after /edit without pushing send history.
+	draftInput string
 	// journeyRows replaces optional memory journey overlay on the timeline (C4).
 	journeyRows []timelineItem
 	setJourney  bool
