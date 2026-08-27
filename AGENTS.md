@@ -35,7 +35,7 @@ Dependency edits: `go mod tidy && go mod verify` and keep `go.mod`/`go.sum` clea
 
 Local release matrix: `goreleaser release --snapshot --clean --parallelism 1`.
 
-**Publish (root only on this host):** batch-commit the dirty tree by feature (never one-shot a multi-feature dump), push, write `docs/history/changelog/vX.Y.Z.md`, then  
+**Publish (root only on this host):** batch-commit the dirty tree by feature (never one-shot a multi-feature dump), write **`docs/history/changelog/vX.Y.Z.md`** (this file **is** the GitHub Release body; empty stub fails), reset `unreleased.md`, then  
 `sudo -i && cd /home/yyze/projects/AutoZeAgent && ./scripts/publish-release.sh vX.Y.Z --yes`  
 (`--commit-paths changelog` only for a leftover notes commit.) Full runbook: [`docs/release.md`](docs/release.md). Only `scripts/publish-release.sh` publishes — do not invent parallel scripts or steps.
 

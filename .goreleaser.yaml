@@ -128,6 +128,6 @@ scoops:
     commit_msg_template: "Scoop update for {{ .ProjectName }} {{ .Tag }}"
     skip_upload: auto
 
-# Body comes from CI: goreleaser ... --release-notes=docs/history/changelog/<tag>.md
+# Body MUST come from --release-notes=docs/history/changelog/<tag>.md (never git log).
 changelog:
   disable: true

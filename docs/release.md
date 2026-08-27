@@ -14,7 +14,7 @@ This page is the **only** release runbook.
 | **One script** | Publish is **only** [`scripts/publish-release.sh`](../scripts/publish-release.sh). Delete leftover one-off publish helpers; do not add `scripts/release-*.sh`. |
 | **Clean tree** | The publish script **refuses a dirty working tree**. Batch-commit first. It will not squash a multi-feature dump. |
 | **No mega-commit** | **Never** `--commit-paths all` for a mixed dirty tree. That flag is **removed**. |
-| **Changelog first** | `docs/history/changelog/vX.Y.Z.md` must exist **before** the publish command. Tag name = file name (`v0.3.0` → `v0.3.0.md`). |
+| **Changelog first** | `docs/history/changelog/vX.Y.Z.md` must exist **before** the publish command. Tag name = file name (`v0.4.0` → `v0.4.0.md`). That file **is** the GitHub Release body (`goreleaser --release-notes`). Empty stub / git log **fails**. |
 | **No secrets** | Never commit `agent.local.json`, `*.db`, `env` with real keys, `bin/`, `dist/`, tokens. |
 
 ### Do not / 禁止
@@ -77,15 +77,15 @@ cd /home/yyze/projects/AutoZeAgent
 #   --message "docs(changelog): vX.Y.Z"
 ```
 
-Replace `vX.Y.Z` (e.g. `v0.3.0`). The script runs `make check`, creates an annotated tag, pushes `main` + tag, then **local** `goreleaser release` (not GitHub Actions minutes). After Go assets upload, it packages `ymz-vscode_{version}.vsix` and `gh release upload`s it. Missing Node **warns and skips** the VSIX; binaries still publish. Details: [`wiki/vscode.md`](wiki/vscode.md).
+Replace `vX.Y.Z` (e.g. `v0.4.0`). The script **refuses** a missing or stub changelog. It runs `make check`, creates an annotated tag, pushes `main` + tag, then **local** `goreleaser release --release-notes=docs/history/changelog/vX.Y.Z.md` (that markdown **is** the GitHub Release body). After Go assets upload, it packages `ymz-vscode_{version}.vsix` and `gh release upload`s it, then checks the Release body is non-empty. Missing Node **warns and skips** the VSIX; binaries still publish. Details: [`wiki/vscode.md`](wiki/vscode.md).
 
 ### Pre-flight checklist
 
 | Step | Action |
 | --- | --- |
 | 1 | **Batch-commit** by feature. Push those commits. |
-| 2 | Write **`docs/history/changelog/vX.Y.Z.md`** (bilingual highlights, asset table, install). Missing file **fails** publish. |
-| 3 | Reset `docs/history/changelog/unreleased.md` to an empty post-tag stub if you promoted notes into `vX.Y.Z.md`. |
+| 2 | Write **`docs/history/changelog/vX.Y.Z.md`** (title `# YunmengZe Agent vX.Y.Z`, bilingual Highlights, Assets, Install). This file **is** the GitHub Release body. Missing / stub / no Highlights **fails** publish. |
+| 3 | Reset `docs/history/changelog/unreleased.md` to an empty post-tag stub when promoting notes into `vX.Y.Z.md`. |
 | 4 | No secrets in tree. |
 | 5 | `make check` green (script runs it unless `--skip-check`). |
 | 6 | `gh auth login` or valid `GITHUB_TOKEN` + `PACKAGE_GITHUB_TOKEN`. |
@@ -96,6 +96,7 @@ Replace `vX.Y.Z` (e.g. `v0.3.0`). The script runs `make check`, creates an annot
 ```bash
 gh release view vX.Y.Z --repo yyZe0122/YunmengZe-Agent
 # Must list platform archives + checksums.txt + ymz-vscode_*.vsix (not only Source code zip)
+# Body must be the changelog (title YunmengZe Agent vX.Y.Z), not empty / git log
 
 gh api repos/yyZe0122/homebrew-tap/commits --jq '.[0].commit.message'
 gh api repos/yyZe0122/scoop-bucket/commits --jq '.[0].commit.message'
@@ -156,11 +157,13 @@ GoReleaser builds **one archive per OS/arch**. Each archive contains **two binar
 
 ## Release notes / 更新日志
 
-1. Add `docs/history/changelog/vX.Y.Z.md` (bilingual: highlights, asset table, verify, install).
-2. Tag must match the file name: tag `v0.3.0` → `docs/history/changelog/v0.3.0.md`.
-3. Publish uses: `goreleaser release … --release-notes=docs/history/changelog/${tag}.md`.
-4. Missing notes file **fails** the publish script / CI on purpose.
-5. Working notes live in [`unreleased.md`](history/changelog/unreleased.md); promote at tag time. Do not rewrite published `v*.md`.
+GitHub Release **必须**有更新日志正文。来源只有一份：`docs/history/changelog/vX.Y.Z.md`。
+
+1. 发版前写好该文件（中英 Highlights、Assets、Install、Verify）。标题：`# YunmengZe Agent vX.Y.Z`。
+2. Tag 名 = 文件名：`v0.4.0` → `docs/history/changelog/v0.4.0.md`。
+3. `publish-release.sh` / Actions 用 `goreleaser … --release-notes=该文件`。脚本校验：文件存在、≥400 字节、标题、`## Highlights`、`## Assets`；上传后再 `gh release view` 核对 body 非空且含标题。
+4. 缺文件 / 空 stub / 无 Highlights → **拒绝发版**（不要用 git log 当 Release body；`.goreleaser.yaml` `changelog.disable: true`）。
+5. 工作笔记在 [`unreleased.md`](history/changelog/unreleased.md)；打 tag 时 promote，并把 unreleased 重置为空 stub。已发布的 `v*.md` 不改写。
 
 ## Auth / 鉴权
 

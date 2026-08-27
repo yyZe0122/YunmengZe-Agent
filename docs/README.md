@@ -27,7 +27,7 @@ User install/run: [`README.md`](../README.md) · [`README.zh.md`](../README.zh.m
 
 ## History
 
-Write `history/changelog/vX.Y.Z.md` before publish. Tag name must match the file. Working notes go in [`unreleased.md`](history/changelog/unreleased.md); promote at tag time. Do not rewrite published notes.
+Write `history/changelog/vX.Y.Z.md` before publish. Tag name must match the file. **That file is the GitHub Release body** (empty stub fails). Working notes go in [`unreleased.md`](history/changelog/unreleased.md); promote at tag time. Do not rewrite published notes.
 
 ## Backlog
 

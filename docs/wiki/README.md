@@ -2,7 +2,7 @@
 
 Numbered ADRs plus the `core.db` map. Catalog: [`docs/README.md`](../README.md).
 
-Living status / backlog (only): [`docs/backlog/current.md`](../backlog/current.md). **当前线 v0.3.1**。TUI-ink（ADR-053）+ IDE-launcher V0–V3（ADR-054）已树内 → **v0.4.0**。O5–O6 / H2 / M* / Marketplace 等用户再提。  
+Living status / backlog (only): [`docs/backlog/current.md`](../backlog/current.md). **当前线 v0.4.0**（ADR-053/054 + retract）。O5–O6 / H2 / M* / Marketplace 等用户再提。  
 Agent/contributor entry: [`AGENTS.md`](../../AGENTS.md).  
 Database map: [`database.md`](database.md).
 

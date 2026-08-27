@@ -61,6 +61,15 @@ jobs:
             echo "Add docs/history/changelog/${tag}.md before tagging." >&2
             exit 1
           fi
+          bytes=$(wc -c < "$notes" | tr -d ' ')
+          if [ "$bytes" -lt 400 ]; then
+            echo "Release notes too short ($bytes bytes): $notes" >&2
+            exit 1
+          fi
+          grep -q "^# YunmengZe Agent ${tag}$" "$notes" \
+            || { echo "Title must be '# YunmengZe Agent ${tag}'" >&2; exit 1; }
+          grep -q "## Highlights" "$notes" \
+            || { echo "Must include ## Highlights (GitHub Release body)" >&2; exit 1; }
           echo "path=$notes" >> "$GITHUB_OUTPUT"
           echo "Using release notes: $notes"
 

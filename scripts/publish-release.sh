@@ -6,9 +6,9 @@
 #
 # Usage (as root) — full runbook: docs/release.md
 #   cd /home/yyze/projects/AutoZeAgent
-#   # require docs/history/changelog/vX.Y.Z.md first
+#   # require docs/history/changelog/vX.Y.Z.md first (GitHub Release body; stub fails)
 #   # working tree MUST be clean (batch-commit features yourself)
-#   ./scripts/publish-release.sh v0.3.0 --yes                       # clean main → tag+upload
+#   ./scripts/publish-release.sh v0.4.0 --yes                       # clean main → tag+upload
 #   ./scripts/publish-release.sh v0.3.0 --commit-paths changelog --yes  # leftover notes only
 #   ./scripts/publish-release.sh v0.3.0 --upload-only               # tag already on HEAD
 #   ./scripts/publish-release.sh v0.3.0 --snapshot-only             # no tag
@@ -45,11 +45,11 @@ usage() {
   cat <<'EOF'
 One-shot release (root only). Default: local GoReleaser upload via GITHUB_TOKEN.
 
-  ./scripts/publish-release.sh v0.3.0 --yes
-  ./scripts/publish-release.sh v0.3.0 --commit-paths changelog --yes
-  ./scripts/publish-release.sh v0.3.0 --upload-only
-  ./scripts/publish-release.sh v0.3.0 --via-actions
-  ./scripts/publish-release.sh v0.3.0 --dry-run
+  ./scripts/publish-release.sh v0.4.0 --yes
+  ./scripts/publish-release.sh v0.4.0 --commit-paths changelog --yes
+  ./scripts/publish-release.sh v0.4.0 --upload-only
+  ./scripts/publish-release.sh v0.4.0 --via-actions
+  ./scripts/publish-release.sh v0.4.0 --dry-run
 
 Options:
   --repo DIR            Repository root (default: /home/yyze/projects/AutoZeAgent)
@@ -153,7 +153,20 @@ cd "$REPO_DIR" || die "cannot cd $REPO_DIR"
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || die "not a git repository: $REPO_DIR"
 
 NOTES="docs/history/changelog/${TAG}.md"
-[[ -f "$NOTES" ]] || die "missing release notes: $NOTES (create before publishing)"
+assert_release_notes() {
+  local notes=$1
+  [[ -f "$notes" ]] || die "missing release notes: $notes — write docs/history/changelog/${TAG}.md before publishing (GitHub Release body; see docs/release.md)"
+  local bytes
+  bytes=$(wc -c < "$notes" | tr -d ' ')
+  [[ "$bytes" -ge 400 ]] || die "release notes too short ($bytes bytes): $notes — bilingual changelog required, not an empty stub or git log"
+  grep -q "^# YunmengZe Agent ${TAG}$" "$notes" \
+    || die "release notes title must be '# YunmengZe Agent ${TAG}'"
+  grep -q "## Highlights" "$notes" \
+    || die "release notes must include ## Highlights (this file is the GitHub Release body)"
+  grep -q "## Assets" "$notes" \
+    || die "release notes must include ## Assets"
+}
+assert_release_notes "$NOTES"
 
 current_branch=$(git rev-parse --abbrev-ref HEAD)
 [[ "$current_branch" == "$BRANCH" ]] || die "on branch '$current_branch', expected '$BRANCH'"
@@ -430,6 +443,27 @@ else
   "$GR" release --clean --parallelism "$PARALLELISM" --release-notes="$NOTES"
   gr_ec=$?
   set -e
+  if [[ "$gr_ec" -eq 0 ]]; then
+    GH_BIN=""
+    if command -v gh >/dev/null 2>&1; then
+      GH_BIN=$(command -v gh)
+    elif [[ -x /usr/local/bin/gh ]]; then
+      GH_BIN=/usr/local/bin/gh
+    elif [[ -x /home/yyze/.local/bin/gh ]]; then
+      GH_BIN=/home/yyze/.local/bin/gh
+    fi
+    if [[ -n "$GH_BIN" ]]; then
+      body=$("$GH_BIN" release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body --jq .body 2>/dev/null || true)
+      if [[ -z "$body" ]]; then
+        die "GitHub Release ${TAG} body is empty — goreleaser must use --release-notes=${NOTES}"
+      fi
+      echo "$body" | grep -q "YunmengZe Agent ${TAG}" \
+        || die "GitHub Release ${TAG} body does not match ${NOTES}"
+      log "GitHub Release body matches ${NOTES}"
+    else
+      log "WARN: gh not found; skip Release body check. Manual: gh release view ${TAG}"
+    fi
+  fi
   if [[ "$gr_ec" -ne 0 ]]; then
     cat <<'EOF' >&2
 
