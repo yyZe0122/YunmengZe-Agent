@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"charm.land/bubbles/v2/key"
-	"charm.land/bubbles/v2/spinner"
 	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
@@ -47,7 +46,7 @@ const (
 const (
 	runPollInterval     = 2 * time.Second
 	permPollInterval    = 2 * time.Second
-	animInterval        = 400 * time.Millisecond
+	animInterval        = 200 * time.Millisecond
 	streamPaintInterval = 32 * time.Millisecond
 	commandTimeout      = 30 * time.Second
 	historyLimit        = 50
@@ -57,7 +56,7 @@ const (
 	helpOverlayMax      = 14
 	framePadY           = 1
 	framePadX           = 2
-	moduleGap           = 1
+	headerHeight        = 2
 	// timeline body defaults (fold large run results).
 	timelineBodyMaxLines = 12
 	timelineBodyMaxChars = 2400
@@ -85,7 +84,6 @@ type model struct {
 
 	input     textarea.Model
 	viewport  viewport.Model
-	spinner   spinner.Model
 	completer completer
 
 	statusMsg string
@@ -156,7 +154,6 @@ type model struct {
 	permCycleIdx int
 
 	animFrame int
-	animOn    bool
 
 	history    []string
 	historyIdx int // -1 = live input
@@ -279,19 +276,18 @@ func newModel(mode paths.Mode, gateway Gateway) model {
 	ti.DynamicHeight = true
 	ti.MinHeight = 1
 	ti.MaxHeight = 6
+	ti.SetVirtualCursor(false)
 	km := textarea.DefaultKeyMap()
 	km.InsertNewline = key.NewBinding(key.WithKeys("shift+enter", "ctrl+j"))
 	ti.KeyMap = km
 	ti.Focus()
 	vp := viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
-	sp := spinner.New()
-	sp.Spinner = spinner.MiniDot
 	cwd, _ := os.Getwd()
 	theme := loadTheme(mode)
 	applyTheme(themeByName(theme))
 	m := model{
 		mode: mode, gateway: gateway, theme: theme, draftMode: modeAgent,
-		input: ti, viewport: vp, spinner: sp, sseState: "connecting", dirty: true,
+		input: ti, viewport: vp, sseState: "connecting", dirty: true,
 		stickBottom: true, historyIdx: -1, cwd: cwd,
 	}
 	m.applyPlaceholder()
@@ -299,7 +295,7 @@ func newModel(mode paths.Mode, gateway Gateway) model {
 }
 
 func (m model) Init() tea.Cmd {
-	return tea.Batch(textarea.Blink, m.spinner.Tick, m.loadStatusCmd(), m.scheduleRefresh(refreshFull))
+	return tea.Batch(textarea.Blink, tickCmd(), m.loadStatusCmd(), m.scheduleRefresh(refreshFull))
 }
 
 func tickCmd() tea.Cmd {
@@ -321,17 +317,13 @@ func (m *model) scheduleRefresh(kind refreshKind) tea.Cmd {
 	return m.refreshCmd(gen, kind)
 }
 
-func (m *model) wantsAnim() bool {
-	return m.runActivity() == activityActive
-}
-
 func (m *model) pickerOpen() bool {
 	return m.list != listNone || m.completer.visible
 }
 
 func (m *model) cycleDraftMode(delta int) {
-	order := []execMode{modePlan, modeAgent, modeAuto}
-	idx := 1
+	order := []execMode{modeAgent, modePlan, modeAuto}
+	idx := 0
 	for i, mode := range order {
 		if m.draftMode == mode {
 			idx = i
@@ -393,16 +385,16 @@ func (m *model) applyPlaceholder() {
 
 func (m *model) applyInputStyles() {
 	s := m.input.Styles()
-	core := lipgloss.NewStyle().Foreground(colorBone).Background(colorInk)
+	core := lipgloss.NewStyle().Foreground(colorBone).Background(colorPaper)
 	s.Focused.Base = core
 	s.Blurred.Base = core
-	s.Focused.Placeholder = styleMuted.Background(colorInk)
-	s.Blurred.Placeholder = styleMuted.Background(colorInk)
+	s.Focused.Placeholder = styleMuted.Background(colorPaper)
+	s.Blurred.Placeholder = styleMuted.Background(colorPaper)
 	if strings.HasPrefix(strings.TrimSpace(m.input.Value()), "/") {
-		s.Focused.Text = styleKeyword.Background(colorInk)
-		s.Blurred.Text = styleKeyword.Background(colorInk)
-		s.Focused.Prompt = styleKeyword.Background(colorInk)
-		s.Blurred.Prompt = styleKeyword.Background(colorInk)
+		s.Focused.Text = styleKeyword.Background(colorPaper)
+		s.Blurred.Text = styleKeyword.Background(colorPaper)
+		s.Focused.Prompt = styleKeyword.Background(colorPaper)
+		s.Blurred.Prompt = styleKeyword.Background(colorPaper)
 	} else {
 		s.Focused.Text = styleInput
 		s.Blurred.Text = styleInput

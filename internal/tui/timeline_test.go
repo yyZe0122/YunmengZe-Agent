@@ -100,7 +100,7 @@ func TestThinkingBlockCollapsed(t *testing.T) {
 		}},
 	}}
 	out := renderTimelineExpanded(items, expandState{})
-	if !strings.Contains(out, "THINK") || !strings.Contains(out, "collapsed") {
+	if !strings.Contains(out, "think") || !strings.Contains(out, "collapsed") {
 		t.Fatalf("expected collapsed thinking: %s", out)
 	}
 	if strings.Count(out, "reason step") > 2 {
@@ -121,7 +121,7 @@ func TestDoneBanner(t *testing.T) {
 		Kind: tlDone, Title: "done · idle", State: gatewayclient.TaskStateCompleted,
 	}}
 	out := renderTimeline(items)
-	if !strings.Contains(out, "done") || !strings.Contains(out, "█") {
+	if !strings.Contains(out, "done") {
 		t.Fatalf("render = %s", out)
 	}
 }
@@ -145,7 +145,7 @@ func TestMessageRenderFlattened(t *testing.T) {
 func TestLiveThinkingTail(t *testing.T) {
 	items := upsertLiveDraft(nil, strings.Repeat("think line\n", 30), "", nil)
 	out := renderTimeline(items)
-	if !strings.Contains(out, "THINK") {
+	if !strings.Contains(out, "think") {
 		t.Fatalf("missing thinking: %s", out)
 	}
 	// Live fold shows tail marker with line count.

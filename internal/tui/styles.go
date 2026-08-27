@@ -7,33 +7,26 @@ import (
 )
 
 var (
-	colorPaper color.Color
-	colorInk   color.Color
-	colorWash  color.Color
-	colorHair  color.Color
-	colorBone  color.Color
-	colorFly   color.Color
-	colorSeal  color.Color
-	colorMix   color.Color
+	colorPaper    color.Color
+	colorHair     color.Color
+	colorBone     color.Color
+	colorFly      color.Color
+	colorSeal     color.Color
+	colorMix      color.Color
+	colorBrush    color.Color
+	colorStampInk color.Color
 
-	colorDim             color.Color
-	colorOK              color.Color
-	colorWarn            color.Color
-	colorErr             color.Color
-	colorMuted           color.Color
-	colorBorder          color.Color
-	colorHeart           color.Color
-	colorTitle           color.Color
-	colorInput           color.Color
-	colorSurface         color.Color
-	colorModeAgent       color.Color
-	colorModePlan        color.Color
-	colorModeAuto        color.Color
-	colorBubbleUser      color.Color
-	colorBubbleAssistant color.Color
-	colorBubbleThinking  color.Color
-	colorBubbleTool      color.Color
-	colorKeyword         color.Color
+	colorDim       color.Color
+	colorOK        color.Color
+	colorWarn      color.Color
+	colorErr       color.Color
+	colorMuted     color.Color
+	colorTitle     color.Color
+	colorInput     color.Color
+	colorModeAgent color.Color
+	colorModePlan  color.Color
+	colorModeAuto  color.Color
+	colorKeyword   color.Color
 
 	styleTitle        lipgloss.Style
 	styleDim          lipgloss.Style
@@ -42,7 +35,6 @@ var (
 	styleOK           lipgloss.Style
 	styleWarn         lipgloss.Style
 	styleBadge        lipgloss.Style
-	styleStatus       lipgloss.Style
 	styleInput        lipgloss.Style
 	styleKeyword      lipgloss.Style
 	styleCompSel      lipgloss.Style
@@ -57,12 +49,9 @@ var (
 	styleTLRun        lipgloss.Style
 	styleTLErr        lipgloss.Style
 	styleTLTool       lipgloss.Style
-	styleTLThinking   lipgloss.Style
 	styleTLReply      lipgloss.Style
 	styleTLBody       lipgloss.Style
 	styleTLJourney    lipgloss.Style
-	styleDone         lipgloss.Style
-	styleHeart        lipgloss.Style
 	styleMetricsTitle lipgloss.Style
 	stylePanelLabel   lipgloss.Style
 	styleModeAgent    lipgloss.Style

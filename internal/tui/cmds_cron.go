@@ -29,7 +29,7 @@ func (m model) cronCmd(arg string) tea.Cmd {
 }
 
 // cronCreateCmd: /cron <every> <objective> on the current session (TUI primary path).
-// Execution mode and skills follow the Tab draft (plan|agent|auto → agent|plan) and /skills.
+// Execution mode and skills follow the Tab draft (agent|plan|auto → agent|plan) and /skills.
 func (m model) cronCreateCmd(arg string) tea.Cmd {
 	return func() tea.Msg {
 		everyRaw, objective, ok := splitCronCreateArg(arg)

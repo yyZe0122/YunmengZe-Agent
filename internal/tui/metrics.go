@@ -238,17 +238,6 @@ func formatDuration(d time.Duration) string {
 	return fmt.Sprintf("%dh%02dm", hours, mins)
 }
 
-// heartbeatWave is a single saturated glyph while a run is active.
-func heartbeatWave(active bool, frame int) string {
-	if !active {
-		return "·"
-	}
-	if frame%2 == 0 {
-		return "●"
-	}
-	return "◉"
-}
-
 func formatTokens(n int64) string {
 	if n < 1000 {
 		return fmt.Sprintf("%d", n)

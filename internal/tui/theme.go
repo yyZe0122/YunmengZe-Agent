@@ -21,16 +21,17 @@ const (
 	tuiPrefsFilename = "tui.json"
 	defaultTheme     = ThemeNight
 
-	hexNightPaper = "#0C0C0B"
-	hexNightInk   = "#1A1916"
-	hexNightWash  = "#2A2824"
-	hexNightHair  = "#4A4740"
-	hexNightBone  = "#C8C2B4"
-	hexNightFly   = "#7A756C"
-	hexNightSeal  = "#C73E3A"
-	hexNightStamp = "#8A1F1A"
-	hexNightMix   = "#E8DCC8"
-	hexPlanOchre  = "#A67C52"
+	hexNightPaper = "#10140F"
+	hexNightInk   = "#181C17"
+	hexNightWash  = "#242A23"
+	hexNightHair  = "#4A5248"
+	hexNightBone  = "#EDE8DC"
+	hexNightFly   = "#8A9084"
+	hexNightSeal  = "#C45C4A"
+	hexNightMix   = "#F4F0E6"
+	hexNightPine  = "#7A9E6E"
+	hexNightWater = "#6A92B0"
+	hexNightGold  = "#C9A45A"
 
 	hexDayPaper = "#EDE6D6"
 	hexDayInk   = "#F7F1E4"
@@ -38,59 +39,61 @@ const (
 	hexDayHair  = "#8A8374"
 	hexDayBone  = "#1A1916"
 	hexDaySeal  = "#9B2D28"
-	hexDayStamp = "#6E1A16"
+	hexDayPine  = "#3D6B3A"
+	hexDayWater = "#3A6A8A"
+	hexDayGold  = "#A67C3A"
 )
 
-// Theme is the 焦墨 pixel palette (night xuan / day xuan-paper).
+// Theme is the 青绿山水 palette (night ink-black / day xuan-paper).
 type Theme struct {
 	Name ThemeName
 
 	Paper color.Color
-	Ink   color.Color
-	Wash  color.Color
 	Hair  color.Color
 	Bone  color.Color
 	Fly   color.Color
 	Seal  color.Color
-	Stamp color.Color
 	Mix   color.Color
+	Pine  color.Color
+	Water color.Color
+	Gold  color.Color
 
 	ModeAgent color.Color
 	ModePlan  color.Color
 	ModeAuto  color.Color
 }
 
-// Day: 宣纸昼 — warm paper, cinnabar seal.
+// Day: 宣纸昼 — warm paper, mineral accents.
 var dayTheme = Theme{
 	Name:      ThemeDay,
 	Paper:     lipgloss.Color(hexDayPaper),
-	Ink:       lipgloss.Color(hexDayInk),
-	Wash:      lipgloss.Color(hexDayWash),
 	Hair:      lipgloss.Color(hexDayHair),
 	Bone:      lipgloss.Color(hexDayBone),
 	Fly:       lipgloss.Color(hexDayHair),
 	Seal:      lipgloss.Color(hexDaySeal),
-	Stamp:     lipgloss.Color(hexDayStamp),
 	Mix:       lipgloss.Color(hexDayBone),
-	ModeAgent: lipgloss.Color(hexDayBone),
-	ModePlan:  lipgloss.Color(hexPlanOchre),
+	Pine:      lipgloss.Color(hexDayPine),
+	Water:     lipgloss.Color(hexDayWater),
+	Gold:      lipgloss.Color(hexDayGold),
+	ModeAgent: lipgloss.Color(hexDayWater),
+	ModePlan:  lipgloss.Color(hexDayGold),
 	ModeAuto:  lipgloss.Color(hexDaySeal),
 }
 
-// Night: 焦墨夜 — xuan paper, cinnabar seal.
+// Night: 墨黑夜 — ink ground, 宣白 text, mineral accents.
 var nightTheme = Theme{
 	Name:      ThemeNight,
 	Paper:     lipgloss.Color(hexNightPaper),
-	Ink:       lipgloss.Color(hexNightInk),
-	Wash:      lipgloss.Color(hexNightWash),
 	Hair:      lipgloss.Color(hexNightHair),
 	Bone:      lipgloss.Color(hexNightBone),
 	Fly:       lipgloss.Color(hexNightFly),
 	Seal:      lipgloss.Color(hexNightSeal),
-	Stamp:     lipgloss.Color(hexNightStamp),
 	Mix:       lipgloss.Color(hexNightMix),
-	ModeAgent: lipgloss.Color(hexNightBone),
-	ModePlan:  lipgloss.Color(hexPlanOchre),
+	Pine:      lipgloss.Color(hexNightPine),
+	Water:     lipgloss.Color(hexNightWater),
+	Gold:      lipgloss.Color(hexNightGold),
+	ModeAgent: lipgloss.Color(hexNightWater),
+	ModePlan:  lipgloss.Color(hexNightGold),
 	ModeAuto:  lipgloss.Color(hexNightSeal),
 }
 
@@ -118,32 +121,29 @@ func toggleTheme(name ThemeName) ThemeName {
 
 func applyTheme(t Theme) {
 	colorPaper = t.Paper
-	colorInk = t.Ink
-	colorWash = t.Wash
 	colorHair = t.Hair
 	colorBone = t.Bone
 	colorFly = t.Fly
 	colorSeal = t.Seal
 	colorMix = t.Mix
+	if t.Name == ThemeDay {
+		colorBrush = t.Bone
+	} else {
+		colorBrush = t.Mix
+	}
 
 	colorDim = t.Fly
-	colorOK = t.Bone
-	colorWarn = t.ModePlan
+	colorOK = t.Pine
+	colorWarn = t.Gold
 	colorErr = t.Seal
 	colorMuted = t.Fly
-	colorBorder = t.Hair
-	colorHeart = t.Seal
 	colorTitle = t.Mix
 	colorInput = t.Bone
-	colorSurface = t.Wash
 	colorModeAgent = t.ModeAgent
 	colorModePlan = t.ModePlan
 	colorModeAuto = t.ModeAuto
-	colorBubbleUser = t.Seal
-	colorBubbleAssistant = t.Ink
-	colorBubbleThinking = t.Hair
-	colorBubbleTool = t.Wash
-	colorKeyword = t.Seal
+	colorKeyword = t.Pine
+	colorStampInk = t.Paper
 
 	styleTitle = lipgloss.NewStyle().Bold(true).Foreground(colorTitle)
 	styleDim = lipgloss.NewStyle().Foreground(colorDim)
@@ -152,12 +152,11 @@ func applyTheme(t Theme) {
 	styleOK = lipgloss.NewStyle().Foreground(colorOK)
 	styleWarn = lipgloss.NewStyle().Foreground(colorWarn)
 	styleBadge = lipgloss.NewStyle().Foreground(colorSeal).Bold(true)
-	styleStatus = lipgloss.NewStyle().Foreground(colorHair)
-	styleInput = lipgloss.NewStyle().Foreground(colorInput).Background(colorInk)
+	styleInput = lipgloss.NewStyle().Foreground(colorInput).Background(colorPaper)
 	styleKeyword = lipgloss.NewStyle().Foreground(colorKeyword).Bold(true)
-	styleCompSel = lipgloss.NewStyle().Foreground(colorSeal).Bold(true)
+	styleCompSel = lipgloss.NewStyle().Foreground(colorOK).Bold(true)
 	styleComp = lipgloss.NewStyle().Foreground(colorDim)
-	styleHelpBox = inkPanel(colorWash, colorHair, 0).Padding(0, 1)
+	styleHelpBox = lipgloss.NewStyle().Foreground(colorBone).Background(colorPaper).Padding(0, 1)
 	styleRiskHi = lipgloss.NewStyle().Foreground(colorErr).Bold(true)
 	styleRiskMed = lipgloss.NewStyle().Foreground(colorWarn)
 	styleRiskLo = lipgloss.NewStyle().Foreground(colorOK)
@@ -167,18 +166,15 @@ func applyTheme(t Theme) {
 	styleTLRun = lipgloss.NewStyle().Foreground(colorBone)
 	styleTLErr = lipgloss.NewStyle().Foreground(colorErr)
 	styleTLTool = lipgloss.NewStyle().Foreground(colorBone)
-	styleTLThinking = lipgloss.NewStyle().Foreground(colorBone)
 	styleTLReply = lipgloss.NewStyle().Foreground(colorBone)
 	styleTLBody = lipgloss.NewStyle().Foreground(colorDim)
 	styleTLJourney = lipgloss.NewStyle().Foreground(colorFly)
-	styleDone = lipgloss.NewStyle().Foreground(colorSeal).Bold(true)
-	styleHeart = lipgloss.NewStyle().Foreground(colorHeart)
 	styleMetricsTitle = lipgloss.NewStyle().Bold(true).Foreground(colorMix)
 	stylePanelLabel = lipgloss.NewStyle().Foreground(colorFly)
 	styleModeAgent = lipgloss.NewStyle().Foreground(colorModeAgent).Bold(true)
 	styleModePlan = lipgloss.NewStyle().Foreground(colorModePlan).Bold(true)
 	styleModeAuto = lipgloss.NewStyle().Foreground(colorModeAuto).Bold(true)
-	stylePickerBox = inkPanel(colorWash, colorHair, 0).Padding(0, 1)
+	stylePickerBox = lipgloss.NewStyle().Foreground(colorBone).Background(colorPaper).Padding(0, 1)
 	stylePaper = lipgloss.NewStyle().Foreground(colorBone).Background(colorPaper)
 }
 

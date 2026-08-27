@@ -6,7 +6,24 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+
+	"github.com/yyZe0122/yunmengze-agent/internal/version"
 )
+
+func displayVersion() string {
+	v := strings.TrimSpace(version.Version)
+	if v == "" || v == "0.0.0-dev" {
+		return "dev"
+	}
+	return v
+}
+
+func hairline(width int) string {
+	if width < 1 {
+		return ""
+	}
+	return lipgloss.NewStyle().Foreground(colorHair).Background(colorPaper).Width(width).Render(strings.Repeat("─", width))
+}
 
 func (m model) View() tea.View {
 	if m.quitting {
@@ -17,41 +34,22 @@ func (m model) View() tea.View {
 	width := m.innerWidth()
 
 	header := m.renderHeader()
-	chat := m.viewport.View()
-	if m.showContextPanel() {
-		ctx := m.renderMetricsPanel(m.viewport.Height())
-		chat = lipgloss.JoinHorizontal(lipgloss.Top,
-			chat,
-			stylePaper.Width(1).Render(" "),
-			inkPanel(colorWash, colorHair, contextPanelWidth).
-				MaxHeight(m.viewport.Height()).
-				Render(ctx),
-		)
-	}
-
-	var floatParts []string
-	if m.helpOpen {
-		floatParts = append(floatParts, m.renderHelpOverlay(width))
-	}
-	if ov := renderPickerOverlay(&m, width); ov != "" {
-		floatParts = append(floatParts, ov)
-	}
-	if m.completer.visible {
-		if c := m.completer.render(6); c != "" {
-			floatParts = append(floatParts, stylePickerBox.Width(max(8, width-2)).Render(c))
-		}
-	}
-
+	chat := m.renderChat()
+	floats := m.renderFloats(width)
 	pills := m.renderPills(width)
-	footer := m.renderFooter()
-	inputBox := m.renderInputBox(width)
+	editor := m.renderInputBox(width)
+	status := m.renderFooter()
 
-	parts := []string{header, "", chat}
-	parts = append(parts, floatParts...)
+	var above []string
+	above = append(above, header, "", chat)
+	above = append(above, floats...)
 	if pills != "" {
-		parts = append(parts, "", pills)
+		above = append(above, "", pills)
 	}
-	parts = append(parts, "", footer, inputBox)
+	above = append(above, "")
+	aboveH := lipgloss.Height(lipgloss.JoinVertical(lipgloss.Left, above...))
+
+	parts := append(append([]string{}, above...), editor, status)
 	frame := lipgloss.JoinVertical(lipgloss.Left, parts...)
 	box := lipgloss.NewStyle().
 		Foreground(colorBone).
@@ -62,6 +60,11 @@ func (m model) View() tea.View {
 	}
 	v := tea.NewView(box.Render(frame))
 	v.AltScreen = true
+	if cur := m.input.Cursor(); cur != nil {
+		cur.X += framePadX
+		cur.Y += framePadY + aboveH + 1
+		v.Cursor = cur
+	}
 	return v
 }
 
@@ -70,21 +73,43 @@ func (m model) renderHeader() string {
 	if width < 1 {
 		width = 1
 	}
-	parts := []string{styleTitle.Background(colorWash).Render("ymz")}
-	if m.modelName != "" {
-		parts = append(parts, sealChip(truncate(m.modelName, 28), colorBone, colorInk))
+	meta := []string{styleTitle.Background(colorPaper).Render("ymz")}
+	if v := displayVersion(); v != "" {
+		meta = append(meta, styleMuted.Background(colorPaper).Render(v))
 	}
-	parts = append(parts, sseDot(m.sseState))
-	if m.task != nil {
-		parts = append(parts, styleDim.Background(colorWash).Render(shortID(string(m.task.ID))), stateBadge(m.task.State))
+	if title := m.sessionTitle(); title != "" {
+		nameCap := min(40, max(8, width-18))
+		meta = append(meta, styleDim.Background(colorPaper).Render(truncate(title, nameCap)))
 	}
-	line := truncate(strings.Join(parts, "  ·  "), max(1, width-2))
-	return lipgloss.NewStyle().
+	meta = append(meta, sseDot(m.sseState))
+	line := truncate(strings.Join(meta, "  ·  "), max(1, width))
+	body := lipgloss.NewStyle().
 		Foreground(colorBone).
-		Background(colorWash).
+		Background(colorPaper).
 		Width(width).
-		Padding(1, 1).
 		Render(line)
+	return lipgloss.JoinVertical(lipgloss.Left, body, hairline(width))
+}
+
+func (m model) sessionTitle() string {
+	if m.sessionID == "" {
+		return ""
+	}
+	for _, s := range m.sessions {
+		if s.ID != m.sessionID {
+			continue
+		}
+		if t := strings.TrimSpace(s.Title); t != "" {
+			return t
+		}
+		break
+	}
+	if m.task != nil {
+		if t := strings.TrimSpace(m.task.Title); t != "" {
+			return t
+		}
+	}
+	return shortID(string(m.sessionID))
 }
 
 func (m model) renderInputBox(width int) string {
@@ -98,30 +123,16 @@ func (m model) renderInputBox(width int) string {
 		modeColor = colorModeAuto
 		modeLabel = "AUTO"
 	}
-	busy := ""
-	if m.busy || m.runActivity() == activityActive {
-		busy = " " + styleWarn.Render(m.spinner.View())
-	}
-	innerW := max(1, width-2)
 	m.applyInputStyles()
-	if busy != "" {
-		m.input.Placeholder = strings.TrimSpace(m.input.Placeholder)
+	return editorFrame(m.input.View(), width, modeLabel, modeColor, m.displayModel())
+}
+
+func (m model) displayModel() string {
+	name := strings.TrimSpace(m.modelName)
+	if name == "" {
+		return "—"
 	}
-	body := m.input.View()
-	hint := ""
-	if m.sessionID == "" && m.task == nil && len(m.messages) == 0 {
-		hint = styleMuted.Background(colorInk).Render("Tab plan/agent/auto · Ctrl+PgUp/Dn sessions")
-	} else {
-		hint = styleMuted.Background(colorInk).Render("Enter send · Esc Esc undo · Ctrl+PgUp/Dn sessions")
-	}
-	if busy != "" {
-		hint += busy
-	}
-	inner := body
-	if hint != "" {
-		inner += "\n" + truncate(hint, max(1, innerW-2))
-	}
-	return textureFrame(inner, width, modeLabel, modeColor)
+	return name
 }
 
 func (m model) renderPills(width int) string {
@@ -147,30 +158,30 @@ func (m model) renderPills(width int) string {
 	if total == 0 {
 		return ""
 	}
-	label := styleOK.Background(colorWash).Render(fmt.Sprintf("To-Do %d/%d", done, total))
+	label := styleOK.Background(colorPaper).Render(fmt.Sprintf("to-do %d/%d", done, total))
 	if current != "" && !m.pillsExpanded {
-		label += "  " + styleMuted.Background(colorWash).Render(truncate(current, max(12, width-24)))
+		label += "  " + styleMuted.Background(colorPaper).Render(truncate(current, max(12, width-24)))
 	}
-	hint := styleMuted.Background(colorWash).Render("ctrl+t")
+	hint := styleMuted.Background(colorPaper).Render("ctrl+t")
 	line := truncate(label+"  "+hint, width)
-	bar := lipgloss.NewStyle().Background(colorWash).Width(width)
+	bar := lipgloss.NewStyle().Background(colorPaper).Width(width)
 	if !m.pillsExpanded {
 		return bar.Render(line)
 	}
 	var b strings.Builder
 	b.WriteString(bar.Render(line))
 	for _, item := range m.todos {
-		mark := "○"
-		st := styleMuted.Background(colorWash)
+		mark := "·"
+		st := styleMuted.Background(colorPaper)
 		switch strings.ToLower(strings.TrimSpace(item.Status)) {
 		case "completed":
-			mark = "●"
-			st = styleOK.Background(colorWash)
-		case "in_progress", "in-progress":
-			mark = "◌"
-			st = styleWarn.Background(colorWash)
-		case "cancelled", "canceled":
 			mark = "–"
+			st = styleOK.Background(colorPaper)
+		case "in_progress", "in-progress":
+			mark = "›"
+			st = styleWarn.Background(colorPaper)
+		case "cancelled", "canceled":
+			mark = "×"
 		}
 		b.WriteByte('\n')
 		b.WriteString(bar.Render(truncate("  "+st.Render(mark)+" "+item.Content, width)))
@@ -183,12 +194,7 @@ func (m model) renderContextStrip() string {
 	if width < 1 {
 		width = 1
 	}
-	parts := []string{}
-	modelName := m.modelName
-	if modelName == "" {
-		modelName = "—"
-	}
-	parts = append(parts, modelName)
+	parts := []string{m.displayModel()}
 	cwd := m.cwd
 	if cwd == "" {
 		cwd = "—"
@@ -205,19 +211,13 @@ func (m model) renderContextStrip() string {
 	parts = append(parts, ctxPart)
 
 	active := m.runActivity() == activityActive
-	pulse := heartbeatWave(active, m.animFrame)
-	if active {
-		pulse = styleHeart.Render(pulse)
-	} else {
-		pulse = styleMuted.Render(pulse)
-	}
 	label := m.activityLabel()
 	if active {
 		if el := formatDuration(m.activityElapsed()); el != "" {
 			label += " " + el
 		}
 	}
-	parts = append(parts, pulse+" "+label)
+	parts = append(parts, label)
 
 	if !m.showContextPanel() {
 		if used, maxTok, ok := m.metrics().TaskTokenUsage(); ok {
@@ -229,8 +229,8 @@ func (m model) renderContextStrip() string {
 		}
 	}
 	return lipgloss.NewStyle().
-		Foreground(colorBone).
-		Background(colorHair).
+		Foreground(colorFly).
+		Background(colorPaper).
 		Width(width).
 		Render(truncate(strings.Join(parts, "  ·  "), width))
 }
@@ -240,35 +240,36 @@ func (m model) renderFooter() string {
 	if width < 1 {
 		width = 1
 	}
-	bar := lipgloss.NewStyle().Foreground(colorBone).Background(colorHair).Width(width)
+	model := m.displayModel()
 	if m.errMsg != "" {
-		return lipgloss.NewStyle().Foreground(colorMix).Background(colorSeal).Width(width).Render(truncate(m.errMsg, width))
-	}
-	if m.pendingPermCount > 0 {
-		line := fmt.Sprintf("%d tool permission(s) pending · 1–4 decide · /perm", m.pendingPermCount)
-		if m.statusMsg != "" {
-			line = m.statusMsg
-			if idx := strings.IndexByte(line, '\n'); idx >= 0 {
-				line = line[:idx] + "…"
-			}
-		}
+		line := model + "  ·  " + m.errMsg
 		return lipgloss.NewStyle().Foreground(colorMix).Background(colorSeal).Width(width).Render(truncate(line, width))
 	}
-	if m.statusMsg != "" && m.statusMsg != "daemon ok" {
-		line := m.statusMsg
-		if idx := strings.IndexByte(line, '\n'); idx >= 0 {
-			line = line[:idx] + "…"
+	if m.pendingPermCount > 0 {
+		rest := fmt.Sprintf("%d tool permission(s) pending · 1–4 decide · /perm", m.pendingPermCount)
+		if m.statusMsg != "" {
+			rest = m.statusMsg
+			if idx := strings.IndexByte(rest, '\n'); idx >= 0 {
+				rest = rest[:idx] + "…"
+			}
 		}
-		return bar.Render(truncate(line, width))
+		return lipgloss.NewStyle().Foreground(colorMix).Background(colorSeal).Width(width).Render(truncate(model+"  ·  "+rest, width))
+	}
+	if m.statusMsg != "" && m.statusMsg != "daemon ok" {
+		rest := m.statusMsg
+		if idx := strings.IndexByte(rest, '\n'); idx >= 0 {
+			rest = rest[:idx] + "…"
+		}
+		return lipgloss.NewStyle().Foreground(colorFly).Background(colorPaper).Width(width).Render(truncate(model+"  ·  "+rest, width))
 	}
 	return m.renderContextStrip()
 }
 
 func (m model) renderMetricsPanel(height int) string {
 	var b strings.Builder
-	b.WriteString(styleMetricsTitle.Background(colorWash).Render("context") + "\n\n")
+	b.WriteString(styleMetricsTitle.Background(colorPaper).Render("context") + "\n\n")
 
-	b.WriteString(stylePanelLabel.Background(colorWash).Render("tokens") + "\n")
+	b.WriteString(stylePanelLabel.Background(colorPaper).Render("tokens") + "\n")
 	if used, maxTok, ok := m.metrics().TaskTokenUsage(); ok {
 		if maxTok > 0 {
 			b.WriteString(fmt.Sprintf("  %s / %s\n", formatTokens(used), formatTokens(maxTok)))
@@ -276,55 +277,55 @@ func (m model) renderMetricsPanel(height int) string {
 			b.WriteString(fmt.Sprintf("  %s\n", formatTokens(used)))
 		}
 		if m.usage.InputTokens > 0 || m.usage.OutputTokens > 0 {
-			b.WriteString(styleDim.Background(colorWash).Render(fmt.Sprintf("  in %s · out %s\n",
+			b.WriteString(styleDim.Background(colorPaper).Render(fmt.Sprintf("  in %s · out %s\n",
 				formatTokens(m.usage.InputTokens), formatTokens(m.usage.OutputTokens))))
 		}
 		if m.usage.CostMicros > 0 {
-			b.WriteString(styleDim.Background(colorWash).Render(fmt.Sprintf("  cost %dµ\n", m.usage.CostMicros)))
+			b.WriteString(styleDim.Background(colorPaper).Render(fmt.Sprintf("  cost %dµ\n", m.usage.CostMicros)))
 		}
 		if m.runUsageOK && m.runUsage.ChildRunCount > 0 {
-			b.WriteString(styleDim.Background(colorWash).Render(fmt.Sprintf("  parent %s · children %s (%d)\n",
+			b.WriteString(styleDim.Background(colorPaper).Render(fmt.Sprintf("  parent %s · children %s (%d)\n",
 				formatTokens(m.runUsage.Self.TotalTokens),
 				formatTokens(m.runUsage.Children.TotalTokens),
 				m.runUsage.ChildRunCount)))
 		}
 	} else {
-		b.WriteString(styleDim.Background(colorWash).Render("  —") + "\n")
+		b.WriteString(styleDim.Background(colorPaper).Render("  —") + "\n")
 	}
 	if p, ok := m.metrics().ContextPressure(); ok {
-		b.WriteString(styleDim.Background(colorWash).Render(fmt.Sprintf("  window %d%%", int(p*100+0.5))))
+		b.WriteString(styleDim.Background(colorPaper).Render(fmt.Sprintf("  window %d%%", int(p*100+0.5))))
 		if m.contextOK && m.taskContext.LastPromptTokens > 0 {
-			b.WriteString(styleDim.Background(colorWash).Render(fmt.Sprintf(" · prompt %s", formatTokens(m.taskContext.LastPromptTokens))))
+			b.WriteString(styleDim.Background(colorPaper).Render(fmt.Sprintf(" · prompt %s", formatTokens(m.taskContext.LastPromptTokens))))
 		}
 		if m.contextOK && m.taskContext.Compacted {
-			b.WriteString(styleDim.Background(colorWash).Render(" · compacted"))
+			b.WriteString(styleDim.Background(colorPaper).Render(" · compacted"))
 		}
 		b.WriteString("\n")
 	}
 
 	if summary := m.budgetSummary(); summary != "" {
 		b.WriteString("\n")
-		b.WriteString(stylePanelLabel.Background(colorWash).Render("budget") + "\n")
+		b.WriteString(stylePanelLabel.Background(colorPaper).Render("budget") + "\n")
 		b.WriteString("  " + summary + "\n")
 	}
 	if m.dataDir != "" {
 		b.WriteString("\n")
-		b.WriteString(stylePanelLabel.Background(colorWash).Render("data") + "\n")
+		b.WriteString(stylePanelLabel.Background(colorPaper).Render("data") + "\n")
 		b.WriteString("  " + truncate(m.dataDir, 36) + "\n")
 	}
 
 	if rate, ok := m.metrics().CacheHitRate(); ok {
 		b.WriteString("\n")
-		b.WriteString(stylePanelLabel.Background(colorWash).Render("cache") + "\n")
+		b.WriteString(stylePanelLabel.Background(colorPaper).Render("cache") + "\n")
 		b.WriteString(fmt.Sprintf("  hit %.0f%%\n", rate*100))
 		if m.usage.CacheReadTokens > 0 || m.usage.CacheWriteTokens > 0 {
-			b.WriteString(styleDim.Background(colorWash).Render(fmt.Sprintf("  read %s · write %s\n",
+			b.WriteString(styleDim.Background(colorPaper).Render(fmt.Sprintf("  read %s · write %s\n",
 				formatTokens(m.usage.CacheReadTokens), formatTokens(m.usage.CacheWriteTokens))))
 		}
 	}
 	if mcp := m.metrics().MCPStatus(); mcp.Enabled {
 		b.WriteString("\n")
-		b.WriteString(stylePanelLabel.Background(colorWash).Render("MCP") + "\n")
+		b.WriteString(stylePanelLabel.Background(colorPaper).Render("MCP") + "\n")
 		line := fmt.Sprintf("  %d ok · %d err · %d total", mcp.OK, mcp.Error, mcp.Total)
 		if mcp.Detail != "" {
 			line += " · " + mcp.Detail
@@ -362,13 +363,19 @@ func (m model) renderHelpOverlay(width int) string {
 func (m *model) syncViewport(force bool) {
 	content := renderSessionView(m)
 	if !force && content == m.viewportContent {
-		if m.stickBottom {
+		if m.isLanding() {
+			m.viewport.SetYOffset(0)
+		} else if m.stickBottom {
 			m.pinViewportBottom()
 		}
 		return
 	}
 	m.viewportContent = content
 	m.viewport.SetContent(content)
+	if m.isLanding() {
+		m.viewport.SetYOffset(0)
+		return
+	}
 	if m.stickBottom {
 		m.pinViewportBottom()
 	}
@@ -390,31 +397,98 @@ func (m *model) pinViewportBottom() {
 	m.viewport.SetYOffset(y)
 }
 
-func (m *model) layout() {
-	header := 3
-	footer := 1
-	if m.completer.visible {
-		footer += min(6, len(m.completer.items)) + 2
+func (m model) renderChat() string {
+	chat := m.viewport.View()
+	chatW := m.viewport.Width()
+	if chatW < 1 {
+		chatW = m.innerWidth()
 	}
-	if m.list != listNone {
-		n := min(overlayMaxLines, max(1, m.listLen()))
-		footer += n + 3
+	if ov := m.renderCompleterOverlay(chatW); ov != "" {
+		chat = overlayBottom(chat, ov, chatW)
 	}
+	if !m.showContextPanel() {
+		return chat
+	}
+	ctx := m.renderMetricsPanel(m.viewport.Height())
+	return lipgloss.JoinHorizontal(lipgloss.Top,
+		chat,
+		stylePaper.Width(1).Render(" "),
+		lipgloss.NewStyle().
+			Foreground(colorFly).
+			Background(colorPaper).
+			Width(contextPanelWidth).
+			MaxHeight(m.viewport.Height()).
+			Render(ctx),
+	)
+}
+
+func (m model) renderFloats(width int) []string {
+	var parts []string
 	if m.helpOpen {
-		footer += helpOverlayMax + 2
+		parts = append(parts, m.renderHelpOverlay(width))
 	}
-	footer += 4 + m.input.Height()
-	if len(m.todos) > 0 {
-		footer += 1
-		if m.pillsExpanded {
-			footer += len(m.todos)
-		}
+	if ov := renderPickerOverlay(&m, width); ov != "" {
+		parts = append(parts, ov)
 	}
-	h := m.height - framePadY*2 - header - footer - moduleGap*2
+	return parts
+}
+
+func (m model) renderCompleterOverlay(width int) string {
+	if !m.completer.visible {
+		return ""
+	}
+	c := m.completer.render(6)
+	if c == "" {
+		return ""
+	}
+	return stylePickerBox.Width(max(8, width)).Render(c)
+}
+
+func overlayBottom(base, overlay string, width int) string {
+	if overlay == "" {
+		return base
+	}
+	if width < 1 {
+		width = 1
+	}
+	baseLines := strings.Split(base, "\n")
+	overLines := strings.Split(overlay, "\n")
+	row := lipgloss.NewStyle().Background(colorPaper).Width(width).MaxWidth(width)
+	padded := make([]string, len(overLines))
+	for i, line := range overLines {
+		padded[i] = row.Render(line)
+	}
+	if len(baseLines) == 0 {
+		return strings.Join(padded, "\n")
+	}
+	n := min(len(padded), len(baseLines))
+	copy(baseLines[len(baseLines)-n:], padded[len(padded)-n:])
+	return strings.Join(baseLines, "\n")
+}
+
+func (m *model) layout() {
+	width := m.innerWidth()
+	m.input.SetWidth(max(1, width))
+
+	header := m.renderHeader()
+	floats := m.renderFloats(width)
+	pills := m.renderPills(width)
+	editor := m.renderInputBox(width)
+	status := m.renderFooter()
+
+	var below []string
+	below = append(below, floats...)
+	if pills != "" {
+		below = append(below, "", pills)
+	}
+	below = append(below, "", editor, status)
+	belowH := lipgloss.Height(lipgloss.JoinVertical(lipgloss.Left, below...))
+	chrome := lipgloss.Height(header) + 1 + belowH
+	h := m.height - framePadY*2 - chrome
 	if h < 5 {
 		h = 5
 	}
-	w := m.width - framePadX*2 - 1
+	w := width
 	if m.showContextPanel() {
 		w -= contextPanelWidth + 1
 	}
@@ -423,7 +497,6 @@ func (m *model) layout() {
 	}
 	m.viewport.SetWidth(w)
 	m.viewport.SetHeight(h)
-	m.input.SetWidth(max(1, m.innerWidth()-4))
 }
 
 func (m model) innerWidth() int {

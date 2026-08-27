@@ -379,7 +379,7 @@ func renderBlock(bl contentBlock, exp expandState, opts renderOpts, parent timel
 				text = ""
 			}
 		}
-		title := blockTitleThinking(lines, folded, bl.Live)
+		title := blockTitleThinking(lines)
 		if folded {
 			title += fmt.Sprintf("  %d lines collapsed · press e", lines)
 		}

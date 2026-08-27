@@ -78,9 +78,9 @@ func renderUserBlock(body string, width int) string {
 	} else {
 		content = wrapBody(body, innerW)
 	}
-	bar := lipgloss.NewStyle().Background(colorSeal).Foreground(colorSeal).Width(2)
-	text := lipgloss.NewStyle().Background(colorWash).Foreground(colorBone).Width(max(1, width-2)).Padding(0, 1).Render(content)
-	return lipgloss.JoinHorizontal(lipgloss.Top, bar.Render("  "), text)
+	bar := lipgloss.NewStyle().Background(colorSeal).Foreground(colorSeal).Width(1)
+	text := lipgloss.NewStyle().Background(colorPaper).Foreground(colorBone).Width(max(1, width-1)).Padding(0, 1).Render(content)
+	return lipgloss.JoinHorizontal(lipgloss.Top, bar.Render(" "), text)
 }
 
 func renderAssistantBlock(body string, width int) string {
@@ -97,23 +97,27 @@ func renderAssistantBlock(body string, width int) string {
 			if i > 0 {
 				b.WriteByte('\n')
 			}
-			b.WriteString(styleTLReply.Background(colorInk).Render(ln))
+			b.WriteString(styleTLReply.Background(colorPaper).Render(ln))
 		}
 		content = b.String()
 	}
-	return lipgloss.NewStyle().Background(colorInk).Foreground(colorBone).Width(width).Render(content)
+	return lipgloss.NewStyle().Background(colorPaper).Foreground(colorBone).Width(width).Render(content)
 }
 
 func renderThinkingLine(title string, width int) string {
 	return lipgloss.NewStyle().
-		Background(colorHair).
-		Foreground(colorBone).
+		Background(colorPaper).
+		Foreground(colorFly).
 		Width(max(1, width)).
 		Render(truncate(title, width))
 }
 
 func renderToolCard(body string, width int) string {
-	return inkPanel(colorWash, colorHair, width).Padding(0, 1).Render(body)
+	return lipgloss.NewStyle().
+		Background(colorPaper).
+		Foreground(colorBone).
+		Width(width).
+		Render(body)
 }
 
 func renderDoneBanner(title string, state string, width int) string {
@@ -126,9 +130,9 @@ func renderDoneBanner(title string, state string, width int) string {
 	}
 	return lipgloss.NewStyle().
 		Foreground(colorSeal).
-		Bold(true).
+		Background(colorPaper).
 		Width(max(1, width)).
-		Render(truncate("█ "+label, width))
+		Render(truncate("— "+label, width))
 }
 
 func renderSystemLine(prefix, title, state string, titleStyle lipgloss.Style) string {
@@ -139,13 +143,12 @@ func renderSystemLine(prefix, title, state string, titleStyle lipgloss.Style) st
 	return line
 }
 
-func blockTitleThinking(lines int, folded, live bool) string {
+func blockTitleThinking(lines int) string {
 	n := lines
 	if n < 1 {
 		n = 1
 	}
-	_, _ = folded, live
-	return fmt.Sprintf("THINK %d", n)
+	return fmt.Sprintf("think %d", n)
 }
 
 func blockTitleTool(name, preview string) string {

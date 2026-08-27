@@ -4,7 +4,6 @@ import (
 	"strings"
 	"time"
 
-	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 )
 
@@ -24,16 +23,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.applyStreamPaint()
 
 	case tickMsg:
-		m.animFrame++
-		var cmds []tea.Cmd
-		if m.wantsAnim() || m.pendingPermCount > 0 || m.needsRunPoll() || m.busy {
-			m.animOn = true
-			cmds = append(cmds, tickCmd())
-			// Keep spinner in sync while active.
-			cmds = append(cmds, m.spinner.Tick)
-		} else {
-			m.animOn = false
+		if m.isLanding() {
+			m.animFrame++
+			m.syncViewport(true)
 		}
+		var cmds []tea.Cmd
+		cmds = append(cmds, tickCmd())
 		if m.dirty && !m.refreshing {
 			cmds = append(cmds, m.scheduleRefresh(refreshFull))
 		} else if !m.refreshing && m.needsRunPoll() && time.Since(m.lastRunPoll) >= runPollInterval {
@@ -107,15 +102,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, cmd
 
-	case spinner.TickMsg:
-		var cmd tea.Cmd
-		m.spinner, cmd = m.spinner.Update(msg)
-		return m, cmd
 	}
 
 	var cmd tea.Cmd
+	prevH := m.input.Height()
+	prevVisible := m.completer.visible
 	m.input, cmd = m.input.Update(msg)
 	m.refreshCompleter()
+	if m.input.Height() != prevH || m.completer.visible != prevVisible {
+		m.layout()
+		m.syncViewport(false)
+	}
 	return m, cmd
 }
 

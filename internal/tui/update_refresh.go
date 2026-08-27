@@ -101,10 +101,6 @@ func (m model) applyRefresh(msg refreshDoneMsg) (tea.Model, tea.Cmd) {
 		m.dirty = false
 		cmds = append(cmds, m.scheduleRefresh(refreshFull))
 	}
-	if (m.wantsAnim() || m.pendingPermCount > 0) && !m.animOn {
-		m.animOn = true
-		cmds = append(cmds, tickCmd())
-	}
 	if m.shouldPollPermissions() && time.Since(m.lastPermPoll) >= permPollInterval {
 		m.lastPermPoll = time.Now()
 		autoOpen := !m.autoOpenedPermList && m.list == listNone

@@ -28,36 +28,52 @@ func renderEmptySession(m *model) string {
 		h = 20
 	}
 
-	logo := renderLogo(w)
-	subtitle := styleDim.Render("local coding agent")
+	size := landingMascotSize(w)
+	_, mh := mascotDims(size)
+	if h < mh+10 {
+		size = mascotMedium
+		_, mh = mascotDims(size)
+	}
+	if h < mh+8 {
+		size = mascotCompact
+	}
+	brush := renderMascot(mascotState(m), m.animFrame, size, colorPaper)
 	chips := renderLandingChips()
 	recent := renderLandingRecent(m, w)
 
 	var b strings.Builder
-	b.WriteString(logo)
+	b.WriteString(brush)
 	b.WriteByte('\n')
-	b.WriteString(subtitle)
+	if h >= 16 {
+		b.WriteByte('\n')
+	}
+	b.WriteString(styleDim.Render("local coding agent"))
 	b.WriteByte('\n')
-	b.WriteByte('\n')
+	if h >= 14 {
+		b.WriteByte('\n')
+	}
 	b.WriteString(chips)
-	if recent != "" {
+	if recent != "" && h >= 18 {
 		b.WriteByte('\n')
 		b.WriteByte('\n')
 		b.WriteString(recent)
 	}
 	body := b.String()
+	if strings.Count(body, "\n")+1 >= h {
+		return body
+	}
 	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, body,
 		lipgloss.WithWhitespaceStyle(lipgloss.NewStyle().Background(colorPaper).Foreground(colorPaper)))
 }
 
 func renderLandingChips() string {
-	fg, bg := colorBone, colorWash
+	fg := colorFly
 	return lipgloss.JoinHorizontal(lipgloss.Top,
-		sealChip("Tab mode", fg, bg),
-		" ",
-		sealChip("Ctrl+P", fg, bg),
-		" ",
-		sealChip("Ctrl+S", fg, bg),
+		sealChip("Tab mode", fg),
+		styleMuted.Render("   "),
+		sealChip("Ctrl+P", fg),
+		styleMuted.Render("   "),
+		sealChip("Ctrl+S", fg),
 	)
 }
 
@@ -93,7 +109,7 @@ func renderLandingRecent(m *model, width int) string {
 			b.WriteByte('\n')
 		}
 		line := fmt.Sprintf("%s  %s  %s", c.id, c.state, truncate(c.title, max(8, cardW-16)))
-		b.WriteString(inkPanel(colorWash, colorHair, cardW).Padding(0, 1).Render(line))
+		b.WriteString(styleMuted.Background(colorPaper).Render(line))
 	}
 	return b.String()
 }

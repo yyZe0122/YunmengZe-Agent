@@ -217,23 +217,23 @@ func mdStyle(theme ThemeName) ansi.StyleConfig {
 	if theme == ThemeDay {
 		s := styles.LightStyleConfig
 		s.Document.Color = mdStr(hexDayBone)
-		s.Heading.Color = mdStr(hexDaySeal)
+		s.Heading.Color = mdStr(hexDayWater)
 		s.H1.Color = mdStr(hexDayBone)
 		s.H1.BackgroundColor = mdStr(hexDayInk)
-		s.Link.Color = mdStr(hexDaySeal)
-		s.LinkText.Color = mdStr(hexDaySeal)
-		s.Code.Color = mdStr(hexPlanOchre)
+		s.Link.Color = mdStr(hexDayWater)
+		s.LinkText.Color = mdStr(hexDayWater)
+		s.Code.Color = mdStr(hexDayPine)
 		s.Code.BackgroundColor = mdStr(hexDayWash)
 		return s
 	}
 	s := styles.DarkStyleConfig
 	s.Document.Color = mdStr(hexNightBone)
-	s.Heading.Color = mdStr(hexNightSeal)
+	s.Heading.Color = mdStr(hexNightWater)
 	s.H1.Color = mdStr(hexNightMix)
 	s.H1.BackgroundColor = mdStr(hexNightInk)
-	s.Link.Color = mdStr(hexNightSeal)
-	s.LinkText.Color = mdStr(hexNightSeal)
-	s.Code.Color = mdStr(hexNightMix)
+	s.Link.Color = mdStr(hexNightWater)
+	s.LinkText.Color = mdStr(hexNightWater)
+	s.Code.Color = mdStr(hexNightPine)
 	s.Code.BackgroundColor = mdStr(hexNightWash)
 	return s
 }

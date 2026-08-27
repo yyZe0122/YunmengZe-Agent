@@ -21,7 +21,7 @@ func TestLandingShowsStartHints(t *testing.T) {
 	m.layout()
 	view := renderEmptySession(&m)
 	plain := ansi.Strip(view)
-	if !strings.Contains(plain, "ymz") || !strings.Contains(plain, "local coding agent") {
+	if !strings.Contains(plain, "local coding agent") {
 		t.Fatalf("landing:\n%s", view)
 	}
 	if !strings.Contains(plain, "Ctrl+P") || !strings.Contains(plain, "Ctrl+S") || !strings.Contains(plain, "Tab") {
@@ -40,7 +40,7 @@ func TestPillsRenderTodoProgress(t *testing.T) {
 		{ID: "3", Content: "done item", Status: "completed"},
 	}
 	got := ansi.Strip(m.renderPills(80))
-	if !strings.Contains(got, "To-Do 1/3") || !strings.Contains(got, "patch fs.go") {
+	if !strings.Contains(got, "to-do 1/3") || !strings.Contains(got, "patch fs.go") {
 		t.Fatalf("pills = %q", got)
 	}
 	m.pillsExpanded = true
@@ -83,11 +83,25 @@ func TestHeaderShowsAgentVersion(t *testing.T) {
 	if !strings.Contains(got, "ymz") {
 		t.Fatalf("header missing ymz: %s", got)
 	}
+	if !strings.Contains(got, "dev") {
+		t.Fatalf("header missing version: %s", got)
+	}
 	if !strings.Contains(got, "●") && !strings.Contains(got, "○") {
 		t.Fatalf("header missing sse dot: %s", got)
 	}
 	if strings.Contains(got, "0.0.0-dev") {
 		t.Fatalf("header leaked dev version: %s", got)
+	}
+}
+
+func TestHeaderShowsSessionTitle(t *testing.T) {
+	m := newModel(paths.ModeUser, &fakeGateway{})
+	m.width, m.height = 80, 24
+	m.sessionID = "sess-1"
+	m.sessions = []gatewayclient.Session{{ID: "sess-1", Title: "fix layout chrome"}}
+	got := ansi.Strip(m.renderHeader())
+	if !strings.Contains(got, "fix layout chrome") {
+		t.Fatalf("header missing session title: %s", got)
 	}
 }
 
@@ -98,16 +112,20 @@ func TestTabTogglesDraftMode(t *testing.T) {
 	}
 	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	mm := updated.(model)
-	if mm.draftMode != modeAuto {
+	if mm.draftMode != modePlan {
 		t.Fatalf("after tab = %q", mm.draftMode)
 	}
+	mm.modelName = "local/qwen"
 	box := ansi.Strip(mm.renderInputBox(80))
-	if !strings.Contains(box, "AUTO") {
-		t.Fatalf("input box missing AUTO:\n%s", box)
+	if !strings.Contains(box, "PLAN") {
+		t.Fatalf("input box missing PLAN:\n%s", box)
+	}
+	if !strings.Contains(box, "local/qwen") {
+		t.Fatalf("input box missing model:\n%s", box)
 	}
 	updated, _ = mm.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	mm = updated.(model)
-	if mm.draftMode != modePlan {
+	if mm.draftMode != modeAuto {
 		t.Fatalf("second tab = %q", mm.draftMode)
 	}
 	updated, _ = mm.Update(tea.KeyPressMsg{Code: tea.KeyTab})
@@ -117,7 +135,7 @@ func TestTabTogglesDraftMode(t *testing.T) {
 	}
 	updated, _ = mm.Update(tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
 	mm = updated.(model)
-	if mm.draftMode != modePlan {
+	if mm.draftMode != modeAuto {
 		t.Fatalf("shift-tab = %q", mm.draftMode)
 	}
 }
@@ -249,20 +267,24 @@ func TestLayoutReservesFramePadding(t *testing.T) {
 	if m.viewport.Height() >= m.height {
 		t.Fatalf("viewport height %d not inset from %d", m.viewport.Height(), m.height)
 	}
-	wantW := m.width - framePadX*2 - 1
+	wantW := m.innerWidth()
 	if m.viewport.Width() != wantW {
 		t.Fatalf("empty session viewport width = %d want %d", m.viewport.Width(), wantW)
 	}
-	wantH := m.height - framePadY*2 - 3 - 1 - 4 - m.input.Height() - moduleGap*2
+	chrome := layoutChromeHeight(&m)
+	wantH := m.height - framePadY*2 - chrome
+	if wantH < 5 {
+		wantH = 5
+	}
 	if m.viewport.Height() != wantH {
-		t.Fatalf("viewport height = %d want %d", m.viewport.Height(), wantH)
+		t.Fatalf("viewport height = %d want %d (chrome=%d)", m.viewport.Height(), wantH, chrome)
 	}
 
 	m.syncViewport(true)
-	view := m.View().Content
-	lines := strings.Split(view, "\n")
+	view := m.View()
+	lines := strings.Split(view.Content, "\n")
 	if len(lines) < 3 {
-		t.Fatalf("view too short:\n%s", view)
+		t.Fatalf("view too short:\n%s", view.Content)
 	}
 	if strings.TrimSpace(ansi.Strip(lines[0])) != "" {
 		t.Fatalf("expected top pad, first line = %q", lines[0])
@@ -270,6 +292,28 @@ func TestLayoutReservesFramePadding(t *testing.T) {
 	if w := lipgloss.Width(lines[1]); w > m.width {
 		t.Fatalf("header line width %d > %d: %q", w, m.width, lines[1])
 	}
+	if view.Cursor == nil {
+		t.Fatal("expected hardware cursor for IME")
+	}
+	if view.Cursor.Y < framePadY+headerHeight {
+		t.Fatalf("cursor Y %d is not below header", view.Cursor.Y)
+	}
+}
+
+func layoutChromeHeight(m *model) int {
+	width := m.innerWidth()
+	header := m.renderHeader()
+	floats := m.renderFloats(width)
+	pills := m.renderPills(width)
+	editor := m.renderInputBox(width)
+	status := m.renderFooter()
+	var below []string
+	below = append(below, floats...)
+	if pills != "" {
+		below = append(below, "", pills)
+	}
+	below = append(below, "", editor, status)
+	return lipgloss.Height(header) + 1 + lipgloss.Height(lipgloss.JoinVertical(lipgloss.Left, below...))
 }
 
 func TestLayoutNarrowWindowDoesNotOverflow(t *testing.T) {
@@ -288,10 +332,7 @@ func TestLayoutNarrowWindowDoesNotOverflow(t *testing.T) {
 
 	m.width, m.height = 18, 16
 	m.layout()
-	avail := m.innerWidth() - 1
-	if avail < 1 {
-		avail = 1
-	}
+	avail := m.innerWidth()
 	if m.viewport.Width() > avail {
 		t.Fatalf("viewport width %d inflated past available %d", m.viewport.Width(), avail)
 	}
@@ -383,9 +424,76 @@ func TestEmptyEscArmsUndo(t *testing.T) {
 	}
 }
 
-func TestDisplayVersionHidesDev(t *testing.T) {
-	if displayVersion() != "" {
-		t.Fatalf("dev version should hide, got %q", displayVersion())
+func TestDisplayVersionShowsDev(t *testing.T) {
+	if displayVersion() != "dev" {
+		t.Fatalf("dev version = %q want dev", displayVersion())
+	}
+}
+
+func TestCompleterDoesNotLiftEditor(t *testing.T) {
+	m := newModel(paths.ModeUser, &fakeGateway{})
+	m.width, m.height = 80, 24
+	m.layout()
+	m.syncViewport(true)
+	beforeH := m.viewport.Height()
+	before := m.View()
+	if before.Cursor == nil {
+		t.Fatal("expected cursor")
+	}
+	y := before.Cursor.Y
+
+	m.input.SetValue("/")
+	m.refreshCompleter()
+	if !m.completer.visible || len(m.completer.items) == 0 {
+		t.Fatalf("completer not visible items=%d", len(m.completer.items))
+	}
+	m.layout()
+	m.syncViewport(true)
+	after := m.View()
+	if m.viewport.Height() != beforeH {
+		t.Fatalf("completer shrank viewport %d → %d", beforeH, m.viewport.Height())
+	}
+	if after.Cursor == nil {
+		t.Fatal("expected cursor after completer")
+	}
+	if after.Cursor.Y != y {
+		t.Fatalf("cursor Y %d → %d", y, after.Cursor.Y)
+	}
+	ov := ansi.Strip(m.renderCompleterOverlay(m.innerWidth()))
+	if !strings.Contains(ov, "/new") && !strings.Contains(ov, "/sessions") {
+		t.Fatalf("completer overlay:\n%s", ov)
+	}
+}
+
+func TestStatusRendersBelowEditor(t *testing.T) {
+	m := newModel(paths.ModeUser, &fakeGateway{})
+	m.width, m.height = 80, 24
+	m.modelName = "local/qwen"
+	m.layout()
+	m.syncViewport(true)
+	plain := ansi.Strip(m.View().Content)
+	agent := strings.Index(plain, "AGENT")
+	model := strings.Index(plain, "local/qwen")
+	if agent < 0 || model < 0 {
+		t.Fatalf("missing editor/status:\n%s", plain)
+	}
+}
+
+func TestFooterKeepsModelWithStatus(t *testing.T) {
+	m := newModel(paths.ModeUser, &fakeGateway{})
+	m.width, m.height = 80, 24
+	m.modelName = "local/qwen"
+	m.statusMsg = "Build · session session-f405… · task task-00e0bab…"
+	got := ansi.Strip(m.renderFooter())
+	if !strings.Contains(got, "local/qwen") {
+		t.Fatalf("footer dropped model:\n%s", got)
+	}
+	if !strings.Contains(got, "Build") {
+		t.Fatalf("footer dropped status:\n%s", got)
+	}
+	box := ansi.Strip(m.renderInputBox(80))
+	if !strings.Contains(box, "AGENT") || !strings.Contains(box, "local/qwen") {
+		t.Fatalf("editor stamp missing model:\n%s", box)
 	}
 }
 
@@ -405,18 +513,35 @@ func TestNoRoundedBorderInSource(t *testing.T) {
 		if bytes.Contains(raw, []byte("RoundedBorder")) {
 			t.Fatalf("%s still uses RoundedBorder", name)
 		}
+		if name != "raster.go" && (bytes.Contains(raw, []byte("░")) || bytes.Contains(raw, []byte("▒"))) {
+			t.Fatalf("%s still uses noise texture", name)
+		}
 	}
 }
 
 func TestInkPaletteHasNoTeal(t *testing.T) {
 	for _, hex := range []string{
 		hexNightPaper, hexNightInk, hexNightWash, hexNightHair, hexNightBone,
-		hexNightFly, hexNightSeal, hexNightStamp, hexNightMix,
-		hexDayPaper, hexDayInk, hexDayWash, hexDayHair, hexDayBone, hexDaySeal, hexDayStamp,
-		hexPlanOchre,
+		hexNightFly, hexNightSeal, hexNightMix,
+		hexNightPine, hexNightWater, hexNightGold,
+		hexDayPaper, hexDayInk, hexDayWash, hexDayHair, hexDayBone, hexDaySeal,
+		hexDayPine, hexDayWater, hexDayGold,
 	} {
 		if hex == "#9EC9B8" || hex == "#2F6B62" {
 			t.Fatalf("teal leftover: %s", hex)
 		}
+	}
+}
+
+func TestNightModesAreDistinct(t *testing.T) {
+	applyTheme(nightTheme)
+	if colorModeAgent == colorModePlan || colorModeAgent == colorModeAuto || colorModePlan == colorModeAuto {
+		t.Fatal("Tab mode colors must contrast")
+	}
+	if colorKeyword == colorModeAuto || colorKeyword == colorErr {
+		t.Fatal("slash keyword must not share AUTO/error red")
+	}
+	if colorKeyword != colorOK {
+		t.Fatal("slash keyword should use pine")
 	}
 }
