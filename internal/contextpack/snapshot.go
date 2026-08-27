@@ -228,6 +228,22 @@ func (s *Store) InsertCompaction(ctx context.Context, c Compaction) error {
 	return nil
 }
 
+// DeleteCompaction removes one durable session head summary.
+func (s *Store) DeleteCompaction(ctx context.Context, compactionID string) error {
+	if s == nil {
+		return errors.New("contextpack store is nil")
+	}
+	compactionID = strings.TrimSpace(compactionID)
+	if compactionID == "" {
+		return errors.New("compaction id is required")
+	}
+	_, err := s.db.ExecContext(ctx, `DELETE FROM session_compactions WHERE compaction_id = ?`, compactionID)
+	if err != nil {
+		return fmt.Errorf("delete session compaction: %w", err)
+	}
+	return nil
+}
+
 // LatestCompaction returns the newest summary for sessionID, or sql.ErrNoRows.
 func (s *Store) LatestCompaction(ctx context.Context, sessionID string) (Compaction, error) {
 	if s == nil {

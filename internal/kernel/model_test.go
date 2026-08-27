@@ -26,7 +26,7 @@ func TestNormalizePermissionStance(t *testing.T) {
 
 func TestSessionMetadataEncodeKeepsAllFields(t *testing.T) {
 	t.Parallel()
-	raw := sessionMetadataEncode("/tmp/ws", "deepseek1/deepseek-chat", PermissionStanceAuto)
+	raw := sessionMetadataEncode("/tmp/ws", "deepseek1/deepseek-chat", PermissionStanceAuto, []string{"task-hidden"})
 	if workspaceFromMetadata(raw) != "/tmp/ws" {
 		t.Fatalf("workspace = %q", workspaceFromMetadata(raw))
 	}
@@ -36,9 +36,15 @@ func TestSessionMetadataEncodeKeepsAllFields(t *testing.T) {
 	if permissionStanceFromMetadata(raw) != PermissionStanceAuto {
 		t.Fatalf("stance = %q", permissionStanceFromMetadata(raw))
 	}
-	agentOnly := sessionMetadataEncode("/tmp/ws", "deepseek1/deepseek-chat", PermissionStanceAgent)
+	if got := hiddenTaskIDsFromMetadata(raw); len(got) != 1 || got[0] != "task-hidden" {
+		t.Fatalf("hidden = %#v", got)
+	}
+	agentOnly := sessionMetadataEncode("/tmp/ws", "deepseek1/deepseek-chat", PermissionStanceAgent, []string{"task-hidden"})
 	if strings.Contains(agentOnly, "permission_stance") {
 		t.Fatalf("agent stance should omit key: %s", agentOnly)
+	}
+	if !strings.Contains(agentOnly, "hidden_task_ids") {
+		t.Fatalf("hidden ids dropped: %s", agentOnly)
 	}
 }
 

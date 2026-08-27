@@ -162,6 +162,28 @@ func (f SessionRewindFunc) RewindEdit(ctx context.Context, sessionID kernel.Sess
 	return f(ctx, sessionID, revisionID)
 }
 
+// SessionRetractor hides the last visible chat turn (optional file rewind).
+type SessionRetractor interface {
+	RetractLastTurn(ctx context.Context, sessionID kernel.SessionID, rewindFiles bool) (SessionRetractResult, error)
+}
+
+type SessionRetractResult struct {
+	SessionID     string   `json:"session_id"`
+	TaskID        string   `json:"task_id"`
+	UserText      string   `json:"user_text"`
+	RewindFiles   bool     `json:"rewind_files"`
+	RewoundPaths  []string `json:"rewound_paths,omitempty"`
+	FailedPath    string   `json:"failed_path,omitempty"`
+	FailedReason  string   `json:"failed_reason,omitempty"`
+	CancelledTurn bool     `json:"cancelled_turn,omitempty"`
+}
+
+type SessionRetractFunc func(ctx context.Context, sessionID kernel.SessionID, rewindFiles bool) (SessionRetractResult, error)
+
+func (f SessionRetractFunc) RetractLastTurn(ctx context.Context, sessionID kernel.SessionID, rewindFiles bool) (SessionRetractResult, error) {
+	return f(ctx, sessionID, rewindFiles)
+}
+
 type APIConfig struct {
 	Queries         QueryService
 	TaskSubmissions TaskSubmitter
@@ -185,6 +207,8 @@ type APIConfig struct {
 	SessionCompact SessionCompactor
 	// SessionRewind is optional; when set, exposes POST /v1/sessions/{id}/rewind (QG).
 	SessionRewind SessionRewinder
+	// SessionRetract is optional; when set, exposes POST /v1/sessions/{id}/retract.
+	SessionRetract SessionRetractor
 	// SessionSteer is optional; when set, exposes POST /v1/sessions/{id}/steer (ADR-052 R3).
 	SessionSteer SessionSteerer
 	// UserQuestions is optional; when set, exposes GET /v1/questions and POST /v1/questions/{id}/answer (ADR-052 R4).
@@ -302,6 +326,7 @@ type API struct {
 	chatCommands     ChatCommandsProvider
 	sessionCompact   SessionCompactor
 	sessionRewind    SessionRewinder
+	sessionRetract   SessionRetractor
 	sessionSteer     SessionSteerer
 	userQuestions    UserQuestionService
 	toolPermissions  ToolPermissionService
@@ -330,7 +355,7 @@ func NewAPI(config APIConfig) (*API, error) {
 		modelConfig: config.ModelConfig, modelSwitcher: config.ModelSwitcher, modelConfigError: strings.TrimSpace(config.ModelConfigError),
 		modelStream: config.ModelStream,
 		mcp:         config.MCP, chatCommands: config.ChatCommands,
-		sessionCompact: config.SessionCompact, sessionRewind: config.SessionRewind, sessionSteer: config.SessionSteer, userQuestions: config.UserQuestions,
+		sessionCompact: config.SessionCompact, sessionRewind: config.SessionRewind, sessionRetract: config.SessionRetract, sessionSteer: config.SessionSteer, userQuestions: config.UserQuestions,
 		toolPermissions: config.ToolPermissions,
 		memoryControl:   config.MemoryControl, skillControl: config.SkillControl, sessionPrefs: config.SessionPrefs,
 	}, nil
@@ -404,6 +429,8 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		a.handleSessionCompact(w, r)
 	case strings.HasSuffix(r.URL.Path, "/rewind") && strings.HasPrefix(r.URL.Path, "/v1/sessions/"):
 		a.handleSessionRewind(w, r)
+	case strings.HasSuffix(r.URL.Path, "/retract") && strings.HasPrefix(r.URL.Path, "/v1/sessions/"):
+		a.handleSessionRetract(w, r)
 	case strings.HasSuffix(r.URL.Path, "/steer") && strings.HasPrefix(r.URL.Path, "/v1/sessions/"):
 		a.handleSessionSteer(w, r)
 	case strings.HasPrefix(r.URL.Path, "/v1/sessions/"):

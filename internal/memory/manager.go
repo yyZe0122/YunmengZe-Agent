@@ -312,6 +312,14 @@ func (m *Manager) IndexTranscriptRecord(ctx context.Context, sessionID, runID st
 	return m.store.IndexTranscript(ctx, sessionID, runID, position, recordType, content, createdAt)
 }
 
+// DeleteTranscriptByRunIDs drops L3 projection rows for retracted runs.
+func (m *Manager) DeleteTranscriptByRunIDs(ctx context.Context, runIDs []string) error {
+	if m == nil || m.store == nil {
+		return nil
+	}
+	return m.store.DeleteTranscriptByRunIDs(ctx, runIDs)
+}
+
 // List returns recent entries for UI (includes detail).
 func (m *Manager) List(ctx context.Context, sessionID string, includeGlobal bool, limit int) ([]Entry, error) {
 	if m == nil || m.store == nil {

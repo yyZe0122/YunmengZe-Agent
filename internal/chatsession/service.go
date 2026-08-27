@@ -52,6 +52,8 @@ const (
 		"Prefer configured mcp_* tools over process_exec/process_shell or writing a script that reimplements them."
 	chatToolProtocolAgent = "You may read and write files under the workspace. " +
 		"Edit with fs_patch and expected_sha256. Use fs_write only to create a new file. " +
+		"Delete a regular file with fs_remove (not shell rm) so /undo can restore it. " +
+		"Do not delete directories or trees; if a directory was removed by mistake, use git restore when the path is tracked, otherwise tell the user. " +
 		"process_exec/process_shell are only for running tests or approved commands. "
 	chatToolProtocolPlan = "Read-only analysis: inspect the workspace, ask questions, discuss approaches. " +
 		"Do not modify files, create directories, or apply patches. " +

@@ -385,6 +385,67 @@ func (s *Store) IndexTranscript(ctx context.Context, sessionID, runID string, po
 	return tx.Commit()
 }
 
+// DeleteTranscriptByRunIDs removes L3 transcript_search + FTS rows for the given runs.
+func (s *Store) DeleteTranscriptByRunIDs(ctx context.Context, runIDs []string) error {
+	if s == nil || s.db == nil {
+		return errors.New("memory store is nil")
+	}
+	ids := make([]string, 0, len(runIDs))
+	for _, id := range runIDs {
+		id = strings.TrimSpace(id)
+		if id != "" {
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	placeholders := strings.Repeat("?,", len(ids))
+	placeholders = placeholders[:len(placeholders)-1]
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		args[i] = id
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	rows, err := tx.QueryContext(ctx, `SELECT row_id FROM transcript_search WHERE run_id IN (`+placeholders+`)`, args...)
+	if err != nil {
+		if isMissingTable(err) {
+			return nil
+		}
+		return fmt.Errorf("list transcript rows: %w", err)
+	}
+	var rowIDs []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return err
+		}
+		rowIDs = append(rowIDs, id)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+	for _, rowID := range rowIDs {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM transcript_fts WHERE row_id = ?`, rowID); err != nil && !isMissingTable(err) {
+			return fmt.Errorf("delete transcript fts: %w", err)
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM transcript_search WHERE run_id IN (`+placeholders+`)`, args...); err != nil {
+		if isMissingTable(err) {
+			return nil
+		}
+		return fmt.Errorf("delete transcript search: %w", err)
+	}
+	return tx.Commit()
+}
+
 // SearchTranscript runs FTS (or LIKE) over transcript_search.
 func (s *Store) SearchTranscript(ctx context.Context, sessionID, query string, limit int) ([]TranscriptHit, error) {
 	query = strings.TrimSpace(query)

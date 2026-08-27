@@ -162,6 +162,21 @@ func wireGatewayAPI(
 			return gateway.SessionRewindResult{SessionID: r.SessionID, RevisionID: r.RevisionID, Path: r.Path}, nil
 		})
 	}
+	var sessionRetract gateway.SessionRetractor
+	if chat.chatService != nil {
+		sessionRetract = gateway.SessionRetractFunc(func(ctx context.Context, sessionID kernel.SessionID, rewindFiles bool) (gateway.SessionRetractResult, error) {
+			r, err := chat.chatService.RetractLastTurn(ctx, sessionID, rewindFiles)
+			out := gateway.SessionRetractResult{
+				SessionID: r.SessionID, TaskID: r.TaskID, UserText: r.UserText,
+				RewindFiles: r.RewindFiles, RewoundPaths: r.RewoundPaths,
+				FailedPath: r.FailedPath, FailedReason: r.FailedReason, CancelledTurn: r.CancelledTurn,
+			}
+			if err != nil {
+				return out, err
+			}
+			return out, nil
+		})
+	}
 	var sessionSteer gateway.SessionSteerer
 	if chat.chatService != nil {
 		sessionSteer = gateway.SessionSteerFunc(func(ctx context.Context, sessionID kernel.SessionID, text string) (gateway.SessionSteerResult, error) {
@@ -184,9 +199,10 @@ func wireGatewayAPI(
 		Core: core, Events: stores.eventStore, Skills: skillCatalog, ModelConfig: modelConfig, ModelSwitcher: modelSwitcher,
 		ModelConfigError: modelConfigError,
 		ModelStream:      chat.modelHub, MCP: mcpStatus, ChatCommands: chatCommandsProvider, SessionCompact: sessionCompact,
-		SessionRewind: sessionRewind,
-		SessionSteer:  sessionSteer,
-		UserQuestions: gateway.UserQuestionAdapter{Service: chat.questionService},
+		SessionRewind:  sessionRewind,
+		SessionRetract: sessionRetract,
+		SessionSteer:   sessionSteer,
+		UserQuestions:  gateway.UserQuestionAdapter{Service: chat.questionService},
 		ToolPermissions: gateway.ToolPermissionAdapter{
 			Service:   chat.permService,
 			TrustPath: toolpermission.DefaultTrustPath(layout.ConfigDir),

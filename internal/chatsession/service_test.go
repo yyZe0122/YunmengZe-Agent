@@ -2,20 +2,27 @@ package chatsession
 
 import (
 	"context"
+	"database/sql"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/yyZe0122/yunmengze-agent/internal/agent"
+	"github.com/yyZe0122/yunmengze-agent/internal/applicationerror"
 	"github.com/yyZe0122/yunmengze-agent/internal/approval"
+	"github.com/yyZe0122/yunmengze-agent/internal/artifacts"
+	"github.com/yyZe0122/yunmengze-agent/internal/contextpack"
 	"github.com/yyZe0122/yunmengze-agent/internal/corequery"
-	"os"
-	"path/filepath"
-
+	"github.com/yyZe0122/yunmengze-agent/internal/editrev"
 	"github.com/yyZe0122/yunmengze-agent/internal/kernel"
+	"github.com/yyZe0122/yunmengze-agent/internal/memory"
 	"github.com/yyZe0122/yunmengze-agent/internal/providerconfig"
+	"github.com/yyZe0122/yunmengze-agent/internal/runmeta"
+	"github.com/yyZe0122/yunmengze-agent/internal/sessiontodo"
 	"github.com/yyZe0122/yunmengze-agent/internal/skillcatalog"
 	storesqlite "github.com/yyZe0122/yunmengze-agent/internal/store/sqlite"
 	"github.com/yyZe0122/yunmengze-agent/pkg/providerapi"
@@ -1086,7 +1093,7 @@ func TestStartChatAgentModeWriteGrants(t *testing.T) {
 	fake.mu.Unlock()
 	want := map[string]bool{
 		"fs_read": true, "fs_list": true, "fs_stat": true, "fs_glob": true, "fs_grep": true,
-		"fs_write": true, "fs_patch": true, "fs_mkdir": true,
+		"fs_write": true, "fs_patch": true, "fs_mkdir": true, "fs_remove": true,
 		"task": true, "memory_search": true, "memory_write": true,
 		"memory_promote": true, "session_search": true, "skill_draft": true,
 		"skills_list": true, "skill_view": true, "ask_user": true, "http_get": true,
@@ -1222,7 +1229,7 @@ func TestStartChatAgentWriteCeilingFalse(t *testing.T) {
 	req := fake.request
 	fake.mu.Unlock()
 	for _, name := range req.AllowedTools {
-		if name == "fs_write" || name == "fs_patch" || name == "fs_mkdir" {
+		if name == "fs_write" || name == "fs_patch" || name == "fs_mkdir" || name == "fs_remove" {
 			t.Fatalf("write ceiling false still allowed %q: %v", name, req.AllowedTools)
 		}
 	}
@@ -1398,6 +1405,272 @@ func TestSteerIdleSessionFails(t *testing.T) {
 	_, err = svc.Steer(ctx, session.ID, "hello")
 	if err == nil || (!errors.Is(err, ErrTurnNotRunning) && !strings.Contains(err.Error(), "no running")) {
 		t.Fatalf("idle steer err = %v", err)
+	}
+}
+
+func TestRetractLastTurnHidesFromTranscript(t *testing.T) {
+	ctx := context.Background()
+	database, err := storesqlite.Open(ctx, t.TempDir()+"/core.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	db := database.SQL()
+	repo, err := kernel.NewRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	approvals, err := approval.NewRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	queries, err := corequery.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 8, 27, 12, 0, 0, 0, time.UTC)
+	session, err := repo.CreateSession(ctx, "session-retract", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keep, err := repo.CreateTask(ctx, "task-keep", session.ID, "Keep", "keep this", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keep, err = repo.TransitionTask(ctx, keep.ID, keep.Version, kernel.TaskRunning, "", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.TransitionTask(ctx, keep.ID, keep.Version, kernel.TaskCompleted, "", now); err != nil {
+		t.Fatal(err)
+	}
+	hide, err := repo.CreateTask(ctx, "task-hide", session.ID, "Hide", "hide this", now.Add(time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	hide, err = repo.TransitionTask(ctx, hide.ID, hide.Version, kernel.TaskRunning, "", now.Add(time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.TransitionTask(ctx, hide.ID, hide.Version, kernel.TaskCompleted, "", now.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	svc, err := New(Config{
+		DB: db, Repository: repo, Approvals: approvals, Agent: &fakeAgent{done: make(chan struct{})}, Transcript: queries,
+		WorkspaceRoots: []string{t.TempDir()}, Now: func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := svc.RetractLastTurn(ctx, session.ID, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.TaskID != string(hide.ID) || got.UserText != "hide this" {
+		t.Fatalf("retract = %#v", got)
+	}
+	msgs, err := queries.SessionTranscript(ctx, session.ID, corequery.TranscriptOptions{Page: corequery.Page{Limit: 50}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range msgs {
+		if m.TaskID == hide.ID || strings.Contains(m.Content, "hide this") {
+			t.Fatalf("hidden turn leaked: %#v", m)
+		}
+	}
+}
+
+func TestRetractLastTurnClearsSearchTodosAndCompaction(t *testing.T) {
+	ctx := context.Background()
+	database, err := storesqlite.Open(ctx, t.TempDir()+"/core.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	db := database.SQL()
+	repo, err := kernel.NewRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	approvals, err := approval.NewRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	queries, err := corequery.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	memStore, err := memory.NewStore(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mem, err := memory.New(memory.Config{Store: memStore})
+	if err != nil {
+		t.Fatal(err)
+	}
+	todos, err := sessiontodo.NewStore(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	packStore, err := contextpack.NewStore(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 8, 27, 12, 0, 0, 0, time.UTC)
+	stamp := now.Format(time.RFC3339Nano)
+	session, err := repo.CreateSession(ctx, "session-clear", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hide, err := repo.CreateTask(ctx, "task-hide", session.ID, "Hide", "secret turn", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hide, err = repo.TransitionTask(ctx, hide.ID, hide.Version, kernel.TaskRunning, "", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.TransitionTask(ctx, hide.ID, hide.Version, kernel.TaskCompleted, "", now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO plans(plan_id,task_id,revision,state,scope_hash,document,version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)`,
+		"plan-hide", hide.ID, 1, "approved", "h", "{}", 1, stamp, stamp); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO runs(run_id,task_id,plan_id,state,started_at,updated_at,version) VALUES(?,?,?,?,?,?,?)`,
+		"run-hide", hide.ID, "plan-hide", "completed", stamp, stamp, 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := mem.IndexTranscriptRecord(ctx, string(session.ID), "run-hide", 0, "assistant_message", "secret turn", stamp); err != nil {
+		t.Fatal(err)
+	}
+	if err := todos.Replace(ctx, string(session.ID), []sessiontodo.Item{{ID: "t1", Content: "do secret", Status: sessiontodo.StatusPending}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := packStore.InsertCompaction(ctx, contextpack.Compaction{
+		ID: "compact-1", SessionID: string(session.ID), Summary: "secret turn happened",
+		ThroughMessageID: "run-hide:0", Model: "m", CreatedAt: stamp,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	svc, err := New(Config{
+		DB: db, Repository: repo, Approvals: approvals, Agent: &fakeAgent{done: make(chan struct{})}, Transcript: queries,
+		WorkspaceRoots: []string{t.TempDir()}, Memory: mem, Todos: todos, Context: packStore,
+		Now: func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.RetractLastTurn(ctx, session.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	hits, err := mem.SearchTranscript(ctx, string(session.ID), "secret", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hits) != 0 {
+		t.Fatalf("transcript search leaked: %+v", hits)
+	}
+	left, err := todos.List(ctx, string(session.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(left) != 0 {
+		t.Fatalf("todos leftover: %+v", left)
+	}
+	if _, err := packStore.LatestCompaction(ctx, string(session.ID)); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("expected compaction dropped, err=%v", err)
+	}
+}
+
+func TestRetractRewindFailureDoesNotHide(t *testing.T) {
+	ctx := context.Background()
+	database, err := storesqlite.Open(ctx, t.TempDir()+"/core.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	db := database.SQL()
+	repo, err := kernel.NewRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	approvals, err := approval.NewRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	queries, err := corequery.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	arts, err := artifacts.NewStore(db, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	edits, err := editrev.NewStore(db, arts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 8, 27, 13, 0, 0, 0, time.UTC)
+	stamp := now.Format(time.RFC3339Nano)
+	session, err := repo.CreateSession(ctx, "session-rewind-fail", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hide, err := repo.CreateTask(ctx, "task-hide", session.ID, "Hide", "hide this", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hide, err = repo.TransitionTask(ctx, hide.ID, hide.Version, kernel.TaskRunning, "", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.TransitionTask(ctx, hide.ID, hide.Version, kernel.TaskCompleted, "", now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO plans(plan_id,task_id,revision,state,scope_hash,document,version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)`,
+		"plan-hide", hide.ID, 1, "approved", "h", "{}", 1, stamp, stamp); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO runs(run_id,task_id,plan_id,state,started_at,updated_at,version) VALUES(?,?,?,?,?,?,?)`,
+		"run-hide", hide.ID, "plan-hide", "completed", stamp, stamp, 1); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "drift.txt")
+	if err := os.WriteFile(path, []byte("old\n"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	snapCtx := runmeta.With(ctx, runmeta.Context{SessionID: string(session.ID), RunID: "run-hide"})
+	if err := edits.SnapshotBeforeWrite(snapCtx, path, []byte("old\n"), "deadbeef", editrev.KindModify); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("changed\n"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	svc, err := New(Config{
+		DB: db, Repository: repo, Approvals: approvals, Agent: &fakeAgent{done: make(chan struct{})}, Transcript: queries,
+		WorkspaceRoots: []string{t.TempDir()}, Edits: edits, Now: func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := svc.RetractLastTurn(ctx, session.ID, true)
+	if err == nil {
+		t.Fatal("expected rewind conflict")
+	}
+	if !applicationerror.IsCode(err, applicationerror.CodeConflict) && !strings.Contains(err.Error(), "changed since") {
+		code, _ := applicationerror.CodeOf(err)
+		t.Fatalf("err = %v code=%s", err, code)
+	}
+	if got.FailedPath != path {
+		t.Fatalf("failed path = %q", got.FailedPath)
+	}
+	sess, err := repo.GetSession(ctx, session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sess.HiddenTaskIDs) != 0 {
+		t.Fatalf("hid despite rewind fail: %#v", sess.HiddenTaskIDs)
 	}
 }
 

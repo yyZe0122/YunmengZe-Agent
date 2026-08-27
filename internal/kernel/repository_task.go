@@ -488,3 +488,55 @@ func scanTaskSkillSnapshot(row scanner) (TaskSkillSnapshot, error) {
 	snapshot.CreatedAt = created
 	return snapshot, nil
 }
+
+func (r *Repository) ListSessionTasks(ctx context.Context, sessionID SessionID) ([]Task, error) {
+	if ctx == nil {
+		return nil, errors.New("list session tasks context is required")
+	}
+	if strings.TrimSpace(string(sessionID)) == "" {
+		return nil, fmt.Errorf("%w: session ID is required", ErrInvalidAggregate)
+	}
+	rows, err := r.db.QueryContext(ctx, `
+        SELECT task_id, session_id, title, objective, state, execution_mode, version, created_at, updated_at
+        FROM tasks WHERE session_id = ?
+        ORDER BY created_at ASC, task_id ASC`, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("list session tasks: %w", err)
+	}
+	defer rows.Close()
+	out := make([]Task, 0)
+	for rows.Next() {
+		task, err := scanTask(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, task)
+	}
+	return out, rows.Err()
+}
+
+func (r *Repository) ListRunIDsForTask(ctx context.Context, taskID TaskID) ([]RunID, error) {
+	if ctx == nil {
+		return nil, errors.New("list run ids context is required")
+	}
+	if strings.TrimSpace(string(taskID)) == "" {
+		return nil, fmt.Errorf("%w: task ID is required", ErrInvalidAggregate)
+	}
+	rows, err := r.db.QueryContext(ctx, `
+        SELECT run_id FROM runs WHERE task_id = ? ORDER BY started_at ASC, run_id ASC`, taskID)
+	if err != nil {
+		return nil, fmt.Errorf("list run ids: %w", err)
+	}
+	defer rows.Close()
+	out := make([]RunID, 0)
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		if s := strings.TrimSpace(id); s != "" {
+			out = append(out, RunID(s))
+		}
+	}
+	return out, rows.Err()
+}

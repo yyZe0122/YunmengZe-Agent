@@ -3,10 +3,13 @@ package gateway
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
+	"github.com/yyZe0122/yunmengze-agent/internal/applicationerror"
 	"github.com/yyZe0122/yunmengze-agent/internal/corequery"
 	"github.com/yyZe0122/yunmengze-agent/internal/kernel"
 )
@@ -116,6 +119,53 @@ func TestSessionTodosEndpointRejectsNestedPath(t *testing.T) {
 	api.ServeHTTP(response, request)
 	if response.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d body = %s", response.Code, response.Body.String())
+	}
+}
+
+type sessionRetractStub struct {
+	result SessionRetractResult
+	err    error
+}
+
+func (s *sessionRetractStub) RetractLastTurn(context.Context, kernel.SessionID, bool) (SessionRetractResult, error) {
+	return s.result, s.err
+}
+
+func TestSessionRetractConflictUsesErrorEnvelope(t *testing.T) {
+	api := &API{sessionRetract: &sessionRetractStub{
+		result: SessionRetractResult{SessionID: "s1", TaskID: "t1", FailedPath: "/tmp/a.go", FailedReason: "file changed"},
+		err:    applicationerror.Wrap(applicationerror.CodeConflict, false, errors.New("file changed since revision")),
+	}}
+	request := httptest.NewRequest(http.MethodPost, "/v1/sessions/s1/retract", strings.NewReader(`{"rewind_files":true}`))
+	response := httptest.NewRecorder()
+	api.ServeHTTP(response, request)
+	if response.Code != http.StatusConflict {
+		t.Fatalf("status = %d body = %s", response.Code, response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), `"error"`) {
+		t.Fatalf("expected error envelope: %s", response.Body.String())
+	}
+	if strings.Contains(response.Body.String(), "user_text") {
+		t.Fatalf("should not return retract result on conflict: %s", response.Body.String())
+	}
+}
+
+func TestSessionRetractOK(t *testing.T) {
+	api := &API{sessionRetract: &sessionRetractStub{
+		result: SessionRetractResult{SessionID: "s1", TaskID: "t1", UserText: "rewrite me"},
+	}}
+	request := httptest.NewRequest(http.MethodPost, "/v1/sessions/s1/retract", strings.NewReader(`{}`))
+	response := httptest.NewRecorder()
+	api.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", response.Code, response.Body.String())
+	}
+	var body SessionRetractResult
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.UserText != "rewrite me" || body.TaskID != "t1" {
+		t.Fatalf("body = %+v", body)
 	}
 }
 

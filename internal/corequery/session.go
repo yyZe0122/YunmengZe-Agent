@@ -16,27 +16,30 @@ func (s *Store) ListSessions(ctx context.Context, options SessionListOptions) ([
 		return nil, err
 	}
 	direction := sqlSortDirection(options.Sort)
-	// One row per session with latest task summary.
+	visible := taskNotHiddenSQL("t")
 	query := `
         SELECT s.session_id, s.state, s.version, s.created_at, s.updated_at, s.metadata,
                COALESCE(stats.task_count, 0) AS task_count,
                latest.task_id, latest.title, latest.state AS task_state
         FROM sessions s
         LEFT JOIN (
-            SELECT session_id, COUNT(*) AS task_count
-            FROM tasks
-            WHERE session_id IS NOT NULL AND session_id != ''
-            GROUP BY session_id
+            SELECT t.session_id, COUNT(*) AS task_count
+            FROM tasks t
+            WHERE t.session_id IS NOT NULL AND t.session_id != ''
+              AND ` + visible + `
+            GROUP BY t.session_id
         ) stats ON stats.session_id = s.session_id
         LEFT JOIN (
             SELECT t.session_id, t.task_id, t.title, t.state
             FROM tasks t
             INNER JOIN (
-                SELECT session_id, MAX(created_at) AS max_created
-                FROM tasks
-                WHERE session_id IS NOT NULL AND session_id != ''
-                GROUP BY session_id
+                SELECT t2.session_id, MAX(t2.created_at) AS max_created
+                FROM tasks t2
+                WHERE t2.session_id IS NOT NULL AND t2.session_id != ''
+                  AND ` + taskNotHiddenSQL("t2") + `
+                GROUP BY t2.session_id
             ) m ON m.session_id = t.session_id AND m.max_created = t.created_at
+            WHERE ` + visible + `
         ) latest ON latest.session_id = s.session_id
         ORDER BY s.updated_at ` + direction + `, s.session_id ` + direction + `
         LIMIT ? OFFSET ?`
@@ -78,12 +81,13 @@ func (s *Store) GetSession(ctx context.Context, id coreidentity.SessionID) (Sess
 	var item Session
 	var metadata string
 	var taskID, title, taskState sql.NullString
+	visible := taskNotHiddenSQL("t")
 	err := s.db.QueryRowContext(ctx, `
         SELECT s.session_id, s.state, s.version, s.created_at, s.updated_at, s.metadata,
-               COALESCE((SELECT COUNT(*) FROM tasks t WHERE t.session_id = s.session_id), 0),
-               (SELECT t.task_id FROM tasks t WHERE t.session_id = s.session_id ORDER BY t.created_at DESC LIMIT 1),
-               (SELECT t.title FROM tasks t WHERE t.session_id = s.session_id ORDER BY t.created_at DESC LIMIT 1),
-               (SELECT t.state FROM tasks t WHERE t.session_id = s.session_id ORDER BY t.created_at DESC LIMIT 1)
+               COALESCE((SELECT COUNT(*) FROM tasks t WHERE t.session_id = s.session_id AND `+visible+`), 0),
+               (SELECT t.task_id FROM tasks t WHERE t.session_id = s.session_id AND `+visible+` ORDER BY t.created_at DESC LIMIT 1),
+               (SELECT t.title FROM tasks t WHERE t.session_id = s.session_id AND `+visible+` ORDER BY t.created_at DESC LIMIT 1),
+               (SELECT t.state FROM tasks t WHERE t.session_id = s.session_id AND `+visible+` ORDER BY t.created_at DESC LIMIT 1)
         FROM sessions s WHERE s.session_id = ?`, id).Scan(
 		&item.ID, &item.State, &item.Version, &item.CreatedAt, &item.UpdatedAt, &metadata,
 		&item.TaskCount, &taskID, &title, &taskState,
@@ -125,6 +129,81 @@ func applySessionMetadata(item *Session, raw string) {
 	if v, ok := meta["permission_stance"].(string); ok {
 		item.PermissionStance = strings.TrimSpace(v)
 	}
+	item.HiddenTaskIDs = hiddenTaskIDsFromMeta(meta)
+}
+
+func hiddenTaskIDsFromMeta(meta map[string]any) []string {
+	if meta == nil {
+		return nil
+	}
+	v, ok := meta["hidden_task_ids"]
+	if !ok || v == nil {
+		return nil
+	}
+	switch t := v.(type) {
+	case []any:
+		out := make([]string, 0, len(t))
+		seen := make(map[string]struct{}, len(t))
+		for _, item := range t {
+			s, ok := item.(string)
+			if !ok {
+				continue
+			}
+			s = strings.TrimSpace(s)
+			if s == "" {
+				continue
+			}
+			if _, dup := seen[s]; dup {
+				continue
+			}
+			seen[s] = struct{}{}
+			out = append(out, s)
+		}
+		return out
+	case []string:
+		return t
+	default:
+		return nil
+	}
+}
+
+func hiddenTaskSet(ids []string) map[string]struct{} {
+	if len(ids) == 0 {
+		return nil
+	}
+	out := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id != "" {
+			out[id] = struct{}{}
+		}
+	}
+	return out
+}
+
+func hiddenIDsJSON(ids []string) string {
+	if len(ids) == 0 {
+		return "[]"
+	}
+	raw, err := json.Marshal(ids)
+	if err != nil {
+		return "[]"
+	}
+	return string(raw)
+}
+
+// taskNotHiddenSQL excludes tasks listed in the parent session's hidden_task_ids.
+// alias is the tasks table alias (e.g. "t").
+func taskNotHiddenSQL(alias string) string {
+	if alias == "" {
+		alias = "t"
+	}
+	return alias + `.task_id NOT IN (
+		SELECT value FROM json_each(COALESCE((
+			SELECT json_extract(s.metadata, '$.hidden_task_ids')
+			FROM sessions s WHERE s.session_id = ` + alias + `.session_id
+		), '[]'))
+	)`
 }
 
 // SessionTranscript returns chat messages for a session: task objectives as
@@ -143,10 +222,11 @@ func (s *Store) SessionTranscript(ctx context.Context, sessionID coreidentity.Se
 		return nil, errors.New("core query offset must not be negative")
 	}
 
-	// Ensure session exists.
-	if _, err := s.GetSession(ctx, sessionID); err != nil {
+	session, err := s.GetSession(ctx, sessionID)
+	if err != nil {
 		return nil, err
 	}
+	hidden := hiddenTaskSet(session.HiddenTaskIDs)
 
 	tasks, err := s.listSessionTasks(ctx, sessionID)
 	if err != nil {
@@ -156,6 +236,11 @@ func (s *Store) SessionTranscript(ctx context.Context, sessionID coreidentity.Se
 	// Synthetic user messages from each task objective (chat turn anchors).
 	out := make([]TranscriptMessage, 0, 32)
 	for _, task := range tasks {
+		if hidden != nil {
+			if _, skip := hidden[string(task.ID)]; skip {
+				continue
+			}
+		}
 		body := strings.TrimSpace(task.Objective)
 		if body == "" {
 			body = task.Title
@@ -177,8 +262,9 @@ func (s *Store) SessionTranscript(ctx context.Context, sessionID coreidentity.Se
         INNER JOIN runs r ON r.run_id = a.run_id
         INNER JOIN tasks t ON t.task_id = r.task_id
         WHERE t.session_id = ?
+          AND t.task_id NOT IN (SELECT value FROM json_each(?))
         ORDER BY a.created_at ASC, a.run_id ASC, a.position ASC
-        LIMIT ? OFFSET ?`, sessionID, options.Page.Limit, options.Page.Offset)
+        LIMIT ? OFFSET ?`, sessionID, hiddenIDsJSON(session.HiddenTaskIDs), options.Page.Limit, options.Page.Offset)
 	if err != nil {
 		return nil, err
 	}
@@ -188,6 +274,11 @@ func (s *Store) SessionTranscript(ctx context.Context, sessionID coreidentity.Se
 		msg, err := scanTranscriptRow(rows, sessionID)
 		if err != nil {
 			return nil, err
+		}
+		if hidden != nil {
+			if _, skip := hidden[string(msg.TaskID)]; skip {
+				continue
+			}
 		}
 		if skipTranscriptRecord(msg, out) {
 			continue
@@ -216,15 +307,22 @@ func (s *Store) SessionTranscriptTail(ctx context.Context, sessionID coreidentit
 	if n > MaxPageSize {
 		n = MaxPageSize
 	}
-	if _, err := s.GetSession(ctx, sessionID); err != nil {
+	session, err := s.GetSession(ctx, sessionID)
+	if err != nil {
 		return nil, err
 	}
+	hidden := hiddenTaskSet(session.HiddenTaskIDs)
 	tasks, err := s.listSessionTasks(ctx, sessionID)
 	if err != nil {
 		return nil, err
 	}
 	out := make([]TranscriptMessage, 0, n+len(tasks))
 	for _, task := range tasks {
+		if hidden != nil {
+			if _, skip := hidden[string(task.ID)]; skip {
+				continue
+			}
+		}
 		body := strings.TrimSpace(task.Objective)
 		if body == "" {
 			body = task.Title
@@ -245,8 +343,9 @@ func (s *Store) SessionTranscriptTail(ctx context.Context, sessionID coreidentit
         INNER JOIN runs r ON r.run_id = a.run_id
         INNER JOIN tasks t ON t.task_id = r.task_id
         WHERE t.session_id = ?
+          AND t.task_id NOT IN (SELECT value FROM json_each(?))
         ORDER BY a.created_at DESC, a.run_id DESC, a.position DESC
-        LIMIT ?`, sessionID, n)
+        LIMIT ?`, sessionID, hiddenIDsJSON(session.HiddenTaskIDs), n)
 	if err != nil {
 		return nil, err
 	}
@@ -255,6 +354,11 @@ func (s *Store) SessionTranscriptTail(ctx context.Context, sessionID coreidentit
 		msg, err := scanTranscriptRow(rows, sessionID)
 		if err != nil {
 			return nil, err
+		}
+		if hidden != nil {
+			if _, skip := hidden[string(msg.TaskID)]; skip {
+				continue
+			}
 		}
 		if skipTranscriptRecord(msg, out) {
 			continue

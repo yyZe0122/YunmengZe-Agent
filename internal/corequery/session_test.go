@@ -385,3 +385,194 @@ func TestListSessionsEmpty(t *testing.T) {
 		t.Fatalf("got %#v", items)
 	}
 }
+
+func TestSessionTranscriptSkipsHiddenTasks(t *testing.T) {
+	ctx := context.Background()
+	db, err := coresqlite.Open(ctx, t.TempDir()+"/core.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	sqlDB := db.SQL()
+	stamp := time.Now().UTC().Format(time.RFC3339Nano)
+	meta := `{"hidden_task_ids":["task-hidden"]}`
+	for _, q := range []struct {
+		sql  string
+		args []any
+	}{
+		{"INSERT INTO sessions(session_id,state,version,created_at,updated_at,metadata) VALUES(?,?,?,?,?,?)",
+			[]any{"session-hide", "active", 1, stamp, stamp, meta}},
+		{"INSERT INTO tasks(task_id,session_id,title,objective,state,execution_mode,version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
+			[]any{"task-keep", "session-hide", "Keep", "keep me", "completed", "agent", 1, stamp, stamp}},
+		{"INSERT INTO tasks(task_id,session_id,title,objective,state,execution_mode,version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
+			[]any{"task-hidden", "session-hide", "Hide", "hide me", "completed", "agent", 1, stamp, stamp}},
+		{"INSERT INTO plans(plan_id,task_id,revision,state,scope_hash,document,version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
+			[]any{"plan-keep", "task-keep", 1, "approved", "h", "{}", 1, stamp, stamp}},
+		{"INSERT INTO plans(plan_id,task_id,revision,state,scope_hash,document,version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
+			[]any{"plan-hidden", "task-hidden", 1, "approved", "h", "{}", 1, stamp, stamp}},
+		{"INSERT INTO runs(run_id,task_id,plan_id,state,started_at,updated_at,version) VALUES(?,?,?,?,?,?,?)",
+			[]any{"run-keep", "task-keep", "plan-keep", "completed", stamp, stamp, 1}},
+		{"INSERT INTO runs(run_id,task_id,plan_id,state,started_at,updated_at,version) VALUES(?,?,?,?,?,?,?)",
+			[]any{"run-hidden", "task-hidden", "plan-hidden", "completed", stamp, stamp, 1}},
+		{"INSERT INTO agent_run_records(run_id,position,record_type,message,usage,finish_reason,tool_call_id,created_at) VALUES(?,?,?,?,?,?,?,?)",
+			[]any{"run-keep", 0, "assistant_message", `{"role":"assistant","content":"kept"}`, `{}`, "stop", "", stamp}},
+		{"INSERT INTO agent_run_records(run_id,position,record_type,message,usage,finish_reason,tool_call_id,created_at) VALUES(?,?,?,?,?,?,?,?)",
+			[]any{"run-hidden", 0, "assistant_message", `{"role":"assistant","content":"gone"}`, `{}`, "stop", "", stamp}},
+	} {
+		if _, err := sqlDB.ExecContext(ctx, q.sql, q.args...); err != nil {
+			t.Fatalf("%s: %v", q.sql, err)
+		}
+	}
+	store, err := New(sqlDB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	msgs, err := store.SessionTranscript(ctx, coreidentity.SessionID("session-hide"), TranscriptOptions{Page: Page{Limit: 50}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range msgs {
+		if m.TaskID == "task-hidden" || strings.Contains(m.Content, "hide me") || strings.Contains(m.Content, "gone") {
+			t.Fatalf("hidden turn leaked: %#v", m)
+		}
+	}
+	tail, err := store.SessionTranscriptTail(ctx, coreidentity.SessionID("session-hide"), 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range tail {
+		if m.TaskID == "task-hidden" {
+			t.Fatalf("hidden turn in tail: %#v", m)
+		}
+	}
+}
+
+func TestSessionTranscriptLimitIgnoresHiddenRows(t *testing.T) {
+	ctx := context.Background()
+	db, err := coresqlite.Open(ctx, t.TempDir()+"/core.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	sqlDB := db.SQL()
+	stamp := time.Now().UTC().Format(time.RFC3339Nano)
+	meta := `{"hidden_task_ids":["task-hidden"]}`
+	for _, q := range []struct {
+		sql  string
+		args []any
+	}{
+		{"INSERT INTO sessions(session_id,state,version,created_at,updated_at,metadata) VALUES(?,?,?,?,?,?)",
+			[]any{"session-limit", "active", 1, stamp, stamp, meta}},
+		{"INSERT INTO tasks(task_id,session_id,title,objective,state,execution_mode,version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
+			[]any{"task-keep", "session-limit", "Keep", "keep me", "completed", "agent", 1, stamp, stamp}},
+		{"INSERT INTO tasks(task_id,session_id,title,objective,state,execution_mode,version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
+			[]any{"task-hidden", "session-limit", "Hide", "hide me", "completed", "agent", 1, stamp, stamp}},
+		{"INSERT INTO plans(plan_id,task_id,revision,state,scope_hash,document,version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
+			[]any{"plan-keep", "task-keep", 1, "approved", "h", "{}", 1, stamp, stamp}},
+		{"INSERT INTO plans(plan_id,task_id,revision,state,scope_hash,document,version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
+			[]any{"plan-hidden", "task-hidden", 1, "approved", "h", "{}", 1, stamp, stamp}},
+		{"INSERT INTO runs(run_id,task_id,plan_id,state,started_at,updated_at,version) VALUES(?,?,?,?,?,?,?)",
+			[]any{"run-keep", "task-keep", "plan-keep", "completed", stamp, stamp, 1}},
+		{"INSERT INTO runs(run_id,task_id,plan_id,state,started_at,updated_at,version) VALUES(?,?,?,?,?,?,?)",
+			[]any{"run-hidden", "task-hidden", "plan-hidden", "completed", stamp, stamp, 1}},
+	} {
+		if _, err := sqlDB.ExecContext(ctx, q.sql, q.args...); err != nil {
+			t.Fatalf("%s: %v", q.sql, err)
+		}
+	}
+	for i := 0; i < 8; i++ {
+		if _, err := sqlDB.ExecContext(ctx, `INSERT INTO agent_run_records(run_id,position,record_type,message,usage,finish_reason,tool_call_id,created_at) VALUES(?,?,?,?,?,?,?,?)`,
+			"run-hidden", i, "assistant_message", fmt.Sprintf(`{"role":"assistant","content":"gone-%d"}`, i), `{}`, "stop", "", stamp); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i := 0; i < 3; i++ {
+		if _, err := sqlDB.ExecContext(ctx, `INSERT INTO agent_run_records(run_id,position,record_type,message,usage,finish_reason,tool_call_id,created_at) VALUES(?,?,?,?,?,?,?,?)`,
+			"run-keep", i, "assistant_message", fmt.Sprintf(`{"role":"assistant","content":"keep-%d"}`, i), `{}`, "stop", "", stamp); err != nil {
+			t.Fatal(err)
+		}
+	}
+	store, err := New(sqlDB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	msgs, err := store.SessionTranscript(ctx, coreidentity.SessionID("session-limit"), TranscriptOptions{Page: Page{Limit: 3}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var assistant int
+	for _, m := range msgs {
+		if m.TaskID == "task-hidden" {
+			t.Fatalf("hidden leaked under limit: %#v", m)
+		}
+		if m.Role == "assistant" {
+			assistant++
+		}
+	}
+	if assistant != 3 {
+		t.Fatalf("assistant n=%d want 3 (got %#v)", assistant, msgs)
+	}
+}
+
+func TestHiddenTaskIsNotFound(t *testing.T) {
+	ctx := context.Background()
+	db, err := coresqlite.Open(ctx, t.TempDir()+"/core.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	sqlDB := db.SQL()
+	stamp := time.Now().UTC().Format(time.RFC3339Nano)
+	meta := `{"hidden_task_ids":["task-hidden"]}`
+	for _, q := range []struct {
+		sql  string
+		args []any
+	}{
+		{"INSERT INTO sessions(session_id,state,version,created_at,updated_at,metadata) VALUES(?,?,?,?,?,?)",
+			[]any{"session-hide", "active", 1, stamp, stamp, meta}},
+		{"INSERT INTO tasks(task_id,session_id,title,objective,state,execution_mode,version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
+			[]any{"task-keep", "session-hide", "Keep", "keep me", "completed", "agent", 1, stamp, stamp}},
+		{"INSERT INTO tasks(task_id,session_id,title,objective,state,execution_mode,version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
+			[]any{"task-hidden", "session-hide", "Hide", "hide me", "completed", "agent", 1, stamp, stamp}},
+		{"INSERT INTO plans(plan_id,task_id,revision,state,scope_hash,document,version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
+			[]any{"plan-hidden", "task-hidden", 1, "approved", "h", "{}", 1, stamp, stamp}},
+		{"INSERT INTO runs(run_id,task_id,plan_id,state,started_at,updated_at,version) VALUES(?,?,?,?,?,?,?)",
+			[]any{"run-hidden", "task-hidden", "plan-hidden", "completed", stamp, stamp, 1}},
+	} {
+		if _, err := sqlDB.ExecContext(ctx, q.sql, q.args...); err != nil {
+			t.Fatalf("%s: %v", q.sql, err)
+		}
+	}
+	store, err := New(sqlDB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tasks, err := store.ListTasks(ctx, TaskListOptions{Page: Page{Limit: 20}, Sort: SortDescending})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tsk := range tasks {
+		if tsk.ID == "task-hidden" {
+			t.Fatalf("ListTasks leaked hidden: %#v", tsk)
+		}
+	}
+	if _, err := store.GetTask(ctx, coreidentity.TaskID("task-hidden")); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("GetTask err=%v", err)
+	}
+	if _, err := store.TaskTranscript(ctx, coreidentity.TaskID("task-hidden"), TranscriptOptions{Page: Page{Limit: 10}}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("TaskTranscript err=%v", err)
+	}
+	if _, err := store.GetRun(ctx, coreidentity.RunID("run-hidden")); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("GetRun err=%v", err)
+	}
+	sess, err := store.GetSession(ctx, coreidentity.SessionID("session-hide"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sess.TaskCount != 1 {
+		t.Fatalf("task_count=%d", sess.TaskCount)
+	}
+	if sess.LatestTaskID == nil || *sess.LatestTaskID != "task-keep" {
+		t.Fatalf("latest=%v", sess.LatestTaskID)
+	}
+}

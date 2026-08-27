@@ -587,6 +587,51 @@ func (a *API) handleSessionRewind(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, result)
 }
 
+func (a *API) handleSessionRetract(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodPost) {
+		return
+	}
+	if a.sessionRetract == nil {
+		writeError(w, http.StatusServiceUnavailable, "unavailable", "session retract is unavailable")
+		return
+	}
+	basePath := strings.TrimSuffix(r.URL.Path, "/retract")
+	id, ok := pathID(w, basePath, "/v1/sessions/")
+	if !ok {
+		return
+	}
+	var request struct {
+		RewindFiles bool `json:"rewind_files"`
+	}
+	if r.Body != nil {
+		raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 16<<10))
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_request", "invalid request body")
+			return
+		}
+		if len(strings.TrimSpace(string(raw))) > 0 {
+			if err := json.Unmarshal(raw, &request); err != nil {
+				writeError(w, http.StatusBadRequest, "invalid_request", "invalid JSON request")
+				return
+			}
+		}
+	}
+	result, err := a.sessionRetract.RetractLastTurn(r.Context(), kernel.SessionID(id), request.RewindFiles)
+	if err != nil {
+		if writeApplicationError(w, err) {
+			return
+		}
+		msg := err.Error()
+		if strings.Contains(msg, "no turn") || strings.Contains(msg, "session id") {
+			writeError(w, http.StatusBadRequest, "invalid_request", msg)
+			return
+		}
+		writeInternal(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
 func (a *API) handleSessionSteer(w http.ResponseWriter, r *http.Request) {
 	if !requireMethod(w, r, http.MethodPost) {
 		return

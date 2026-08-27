@@ -57,6 +57,8 @@ type Session struct {
 	// PermissionStance is the Tab posture for this session: agent | auto | plan.
 	// Empty means agent. Independent of task execution_mode (still only agent|plan).
 	PermissionStance string
+	// HiddenTaskIDs are retracted turns (soft-hide). Transcript and packing skip these tasks.
+	HiddenTaskIDs []string
 }
 
 const (

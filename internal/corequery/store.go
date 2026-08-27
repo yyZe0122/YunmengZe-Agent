@@ -180,6 +180,8 @@ type Session struct {
 	Workspace string `json:"workspace,omitempty"`
 	// PermissionStance is the Tab posture: agent | auto | plan (empty = agent).
 	PermissionStance string `json:"permission_stance,omitempty"`
+	// HiddenTaskIDs are retracted turns (not shown in transcript / packing).
+	HiddenTaskIDs []string `json:"hidden_task_ids,omitempty"`
 }
 
 // TranscriptMessage is a chat-facing projection of agent_run_records
@@ -252,15 +254,16 @@ func (s *Store) ListTasks(ctx context.Context, options TaskListOptions) ([]Task,
 		return nil, err
 	}
 	query := `
-        SELECT task_id, session_id, title, objective, state, execution_mode, version, created_at, updated_at
-        FROM tasks`
+        SELECT t.task_id, t.session_id, t.title, t.objective, t.state, t.execution_mode, t.version, t.created_at, t.updated_at
+        FROM tasks t
+        WHERE ` + taskNotHiddenSQL("t")
 	args := make([]any, 0, 3)
 	if state := strings.TrimSpace(options.State); state != "" {
-		query += " WHERE state = ?"
+		query += " AND t.state = ?"
 		args = append(args, state)
 	}
 	direction := sqlSortDirection(options.Sort)
-	query += " ORDER BY created_at " + direction + ", task_id " + direction + " LIMIT ? OFFSET ?"
+	query += " ORDER BY t.created_at " + direction + ", t.task_id " + direction + " LIMIT ? OFFSET ?"
 	args = append(args, options.Page.Limit, options.Page.Offset)
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -283,8 +286,8 @@ func (s *Store) GetTask(ctx context.Context, id coreidentity.TaskID) (Task, erro
 		return Task{}, err
 	}
 	item, err := scanTask(s.db.QueryRowContext(ctx, `
-        SELECT task_id, session_id, title, objective, state, execution_mode, version, created_at, updated_at
-        FROM tasks WHERE task_id = ?`, id))
+        SELECT t.task_id, t.session_id, t.title, t.objective, t.state, t.execution_mode, t.version, t.created_at, t.updated_at
+        FROM tasks t WHERE t.task_id = ? AND `+taskNotHiddenSQL("t"), id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Task{}, ErrNotFound
 	}
@@ -432,10 +435,12 @@ func (s *Store) ListRuns(ctx context.Context, options RunListOptions) ([]Run, er
                 FROM agent_run_records records
                 WHERE records.run_id = r.run_id AND records.record_type = 'assistant_message'
                 ORDER BY records.position DESC LIMIT 1)
-        FROM runs r`
+        FROM runs r
+        INNER JOIN tasks t ON t.task_id = r.task_id
+        WHERE ` + taskNotHiddenSQL("t")
 	args := make([]any, 0, 3)
 	if state := strings.TrimSpace(options.State); state != "" {
-		query += " WHERE r.state = ?"
+		query += " AND r.state = ?"
 		args = append(args, state)
 	}
 	direction := sqlSortDirection(options.Sort)
@@ -461,13 +466,19 @@ func (s *Store) GetRun(ctx context.Context, id coreidentity.RunID) (Run, error) 
 	if err := validateGet(ctx, string(id)); err != nil {
 		return Run{}, err
 	}
-	return scanRun(s.db.QueryRowContext(ctx, `
+	item, err := scanRun(s.db.QueryRowContext(ctx, `
         SELECT r.run_id, r.task_id, r.plan_id, r.step_id, r.parent_run_id, r.state, r.started_at, r.finished_at, r.error,
                (SELECT json_extract(records.message, '$.content')
                 FROM agent_run_records records
                 WHERE records.run_id = r.run_id AND records.record_type = 'assistant_message'
                 ORDER BY records.position DESC LIMIT 1)
-        FROM runs r WHERE r.run_id = ?`, id))
+        FROM runs r
+        INNER JOIN tasks t ON t.task_id = r.task_id
+        WHERE r.run_id = ? AND `+taskNotHiddenSQL("t"), id))
+	if errors.Is(err, sql.ErrNoRows) {
+		return Run{}, ErrNotFound
+	}
+	return item, err
 }
 
 // TaskUsage sums assistant_message usage for every run belonging to taskID.

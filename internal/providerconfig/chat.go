@@ -253,6 +253,7 @@ var reservedChatCommandNames = map[string]struct{}{
 	"pause": {}, "resume": {}, "cancel": {}, "stop": {}, "retry": {},
 	"model": {}, "skills": {}, "theme": {}, "cron": {}, "compact": {},
 	"perm": {}, "memory": {}, "refresh-memory": {}, "status": {}, "help": {},
+	"edit": {}, "editundo": {}, "undo": {},
 	"quit": {}, "q": {}, "exit": {}, "resume-list": {},
 }
 

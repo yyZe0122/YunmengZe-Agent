@@ -221,3 +221,42 @@ func TestDefaultTTLAndSoftArchive(t *testing.T) {
 		}
 	}
 }
+
+func TestDeleteTranscriptByRunIDs(t *testing.T) {
+	ctx := context.Background()
+	database, err := storesqlite.Open(ctx, t.TempDir()+"/core.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	store, err := NewStore(database.SQL())
+	if err != nil {
+		t.Fatal(err)
+	}
+	stamp := time.Now().UTC().Format(time.RFC3339Nano)
+	if err := store.IndexTranscript(ctx, "s1", "run-keep", 0, "assistant_message", "keep me", stamp); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.IndexTranscript(ctx, "s1", "run-hide", 0, "assistant_message", "hide me", stamp); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.DeleteTranscriptByRunIDs(ctx, []string{"run-hide"}); err != nil {
+		t.Fatal(err)
+	}
+	hits, err := store.SearchTranscript(ctx, "s1", "hide", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, h := range hits {
+		if h.RunID == "run-hide" || strings.Contains(h.Content, "hide me") {
+			t.Fatalf("hidden run leaked: %+v", h)
+		}
+	}
+	kept, err := store.SearchTranscript(ctx, "s1", "keep", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(kept) == 0 {
+		t.Fatal("kept run missing")
+	}
+}

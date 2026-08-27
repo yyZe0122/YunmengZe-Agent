@@ -160,3 +160,25 @@ func (c *Client) RewindSession(ctx context.Context, id SessionID, revisionID str
 	}
 	return result, nil
 }
+
+// RetractResult is the response from POST /v1/sessions/{id}/retract.
+type RetractResult struct {
+	SessionID     string   `json:"session_id"`
+	TaskID        string   `json:"task_id"`
+	UserText      string   `json:"user_text"`
+	RewindFiles   bool     `json:"rewind_files"`
+	RewoundPaths  []string `json:"rewound_paths,omitempty"`
+	FailedPath    string   `json:"failed_path,omitempty"`
+	FailedReason  string   `json:"failed_reason,omitempty"`
+	CancelledTurn bool     `json:"cancelled_turn,omitempty"`
+}
+
+func (c *Client) RetractSession(ctx context.Context, id SessionID, rewindFiles bool) (RetractResult, error) {
+	var result RetractResult
+	body := map[string]bool{"rewind_files": rewindFiles}
+	path := "/v1/sessions/" + url.PathEscape(string(id)) + "/retract"
+	if err := c.inner.DoJSON(ctx, http.MethodPost, path, body, &result); err != nil {
+		return result, fmt.Errorf("retract session: %w", err)
+	}
+	return result, nil
+}
