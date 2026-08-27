@@ -103,6 +103,41 @@ find_goreleaser() {
   return 1
 }
 
+find_gh() {
+  if command -v gh >/dev/null 2>&1; then
+    command -v gh
+    return 0
+  fi
+  local c
+  for c in /usr/local/bin/gh /home/yyze/.local/bin/gh; do
+    if [[ -x "$c" ]]; then
+      echo "$c"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# GitHub Release body = docs/history/changelog/${TAG}.md.
+# goreleaser --release-notes is skipped when changelog.disable is true (v2 Skip);
+# always write the body with gh after assets upload.
+apply_release_notes() {
+  local gh_bin body
+  gh_bin=$(find_gh) || die "gh not found; cannot write Release body from ${NOTES}"
+  log "set GitHub Release body from ${NOTES}"
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    log "would run: gh release edit ${TAG} --notes-file ${NOTES}"
+    return 0
+  fi
+  GITHUB_TOKEN="${GITHUB_TOKEN}" GH_TOKEN="${GITHUB_TOKEN}" \
+    "$gh_bin" release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file "$NOTES"
+  body=$("$gh_bin" release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body --jq .body 2>/dev/null || true)
+  [[ -n "$body" ]] || die "GitHub Release ${TAG} body is still empty after --notes-file ${NOTES}"
+  echo "$body" | grep -q "YunmengZe Agent ${TAG}" \
+    || die "GitHub Release ${TAG} body does not match ${NOTES}"
+  log "GitHub Release body matches ${NOTES}"
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -h|--help) usage; exit 0 ;;
@@ -443,27 +478,6 @@ else
   "$GR" release --clean --parallelism "$PARALLELISM" --release-notes="$NOTES"
   gr_ec=$?
   set -e
-  if [[ "$gr_ec" -eq 0 ]]; then
-    GH_BIN=""
-    if command -v gh >/dev/null 2>&1; then
-      GH_BIN=$(command -v gh)
-    elif [[ -x /usr/local/bin/gh ]]; then
-      GH_BIN=/usr/local/bin/gh
-    elif [[ -x /home/yyze/.local/bin/gh ]]; then
-      GH_BIN=/home/yyze/.local/bin/gh
-    fi
-    if [[ -n "$GH_BIN" ]]; then
-      body=$("$GH_BIN" release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body --jq .body 2>/dev/null || true)
-      if [[ -z "$body" ]]; then
-        die "GitHub Release ${TAG} body is empty — goreleaser must use --release-notes=${NOTES}"
-      fi
-      echo "$body" | grep -q "YunmengZe Agent ${TAG}" \
-        || die "GitHub Release ${TAG} body does not match ${NOTES}"
-      log "GitHub Release body matches ${NOTES}"
-    else
-      log "WARN: gh not found; skip Release body check. Manual: gh release view ${TAG}"
-    fi
-  fi
   if [[ "$gr_ec" -ne 0 ]]; then
     cat <<'EOF' >&2
 
@@ -507,6 +521,8 @@ EOF
     exit "$gr_ec"
   fi
 fi
+
+apply_release_notes
 
 upload_vscode_vsix() {
   local vsix owner pkg_ec

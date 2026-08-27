@@ -88,6 +88,7 @@ release:
   draft: false
   # Alpha first binary: mark Pre-release on GitHub.
   prerelease: true
+  # replace: --release-notes must overwrite an existing tag's body (keep-existing would leave empty).
   mode: replace
 
 # Homebrew Cask + Scoop. Requires PACKAGE_GITHUB_TOKEN with Contents: R/W on
@@ -128,6 +129,6 @@ scoops:
     commit_msg_template: "Scoop update for {{ .ProjectName }} {{ .Tag }}"
     skip_upload: auto
 
-# Body MUST come from --release-notes=docs/history/changelog/<tag>.md (never git log).
-changelog:
-  disable: true
+# Do NOT set changelog.disable: goreleaser Skip() then never reads --release-notes.
+# Body comes from scripts/publish-release.sh / Actions: --release-notes=docs/history/changelog/<tag>.md
+# (that flag skips git-log generation). Script also gh release edit --notes-file after upload.

@@ -99,6 +99,17 @@ jobs:
           cache: npm
           cache-dependency-path: extensions/vscode/package-lock.json
 
+      - name: Set GitHub Release body
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          notes="docs/history/changelog/${tag}.md"
+          gh release edit "$tag" --notes-file "$notes"
+          body=$(gh release view "$tag" --json body --jq .body)
+          echo "$body" | grep -q "YunmengZe Agent ${tag}" \
+            || { echo "Release body does not match ${notes}" >&2; exit 1; }
+
       - name: Package and upload VS Code VSIX
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

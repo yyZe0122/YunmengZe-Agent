@@ -77,7 +77,7 @@ cd /home/yyze/projects/AutoZeAgent
 #   --message "docs(changelog): vX.Y.Z"
 ```
 
-Replace `vX.Y.Z` (e.g. `v0.4.0`). The script **refuses** a missing or stub changelog. It runs `make check`, creates an annotated tag, pushes `main` + tag, then **local** `goreleaser release --release-notes=docs/history/changelog/vX.Y.Z.md` (that markdown **is** the GitHub Release body). After Go assets upload, it packages `ymz-vscode_{version}.vsix` and `gh release upload`s it, then checks the Release body is non-empty. Missing Node **warns and skips** the VSIX; binaries still publish. Details: [`wiki/vscode.md`](wiki/vscode.md).
+Replace `vX.Y.Z` (e.g. `v0.4.0`). The script **refuses** a missing or stub changelog. It runs `make check`, creates an annotated tag, pushes `main` + tag, then **local** `goreleaser release`. After Go assets upload it runs `gh release edit --notes-file docs/history/changelog/vX.Y.Z.md` (that markdown **is** the GitHub Release body), then packages `ymz-vscode_{version}.vsix`. Missing Node **warns and skips** the VSIX; binaries still publish. Details: [`wiki/vscode.md`](wiki/vscode.md).
 
 ### Pre-flight checklist
 
@@ -161,8 +161,8 @@ GitHub Release **必须**有更新日志正文。来源只有一份：`docs/hist
 
 1. 发版前写好该文件（中英 Highlights、Assets、Install、Verify）。标题：`# YunmengZe Agent vX.Y.Z`。
 2. Tag 名 = 文件名：`v0.4.0` → `docs/history/changelog/v0.4.0.md`。
-3. `publish-release.sh` / Actions 用 `goreleaser … --release-notes=该文件`。脚本校验：文件存在、≥400 字节、标题、`## Highlights`、`## Assets`；上传后再 `gh release view` 核对 body 非空且含标题。
-4. 缺文件 / 空 stub / 无 Highlights → **拒绝发版**（不要用 git log 当 Release body；`.goreleaser.yaml` `changelog.disable: true`）。
+3. `publish-release.sh` 上传资产后执行 `gh release edit --notes-file=该文件`（goreleaser `--release-notes` 在 `changelog.disable` 时会被 Skip，不可单独依赖）。脚本校验：文件存在、≥400 字节、标题、`## Highlights`、`## Assets`；再 `gh release view` 核对 body 非空且含标题。
+4. 缺文件 / 空 stub / 无 Highlights → **拒绝发版**。不要用 git log 当 Release body。
 5. 工作笔记在 [`unreleased.md`](history/changelog/unreleased.md)；打 tag 时 promote，并把 unreleased 重置为空 stub。已发布的 `v*.md` 不改写。
 
 ## Auth / 鉴权
