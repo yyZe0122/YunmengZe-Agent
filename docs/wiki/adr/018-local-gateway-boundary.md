@@ -66,10 +66,10 @@ internal/tui             Charm v2 TUI（ADR-053）；消费窄 `tui.Gateway`（�
                           表现：`View() tea.View` + lipgloss 色块分区（无 UV 整页 / lazy list）；textarea；picker overlay；
                           完成态 glamour v2；streaming 冻结前缀 glamour + trail 永远 plain（T8）；
                           折叠 e/E/c（thinking / tool 默认折；**live 回复不折**）；**不设 MouseMode**（终端原生划词）；
-                          mid-turn refresh 保留 typewriter；吸底 pin；Tab = plan/agent/auto
+                          mid-turn refresh 保留 typewriter；吸底 pin；Tab = agent/plan/auto
 internal/gatewayclient   共享 HTTP/SSE 外观 + transport（不 import gateway server）
 internal/gateway         服务端 only：路由 / handlers / LocalRunner
 extensions/vscode        VS Code 扩展（ADR-054）；本相只开集成终端跑 `ymz` TUI，不调 Gateway
 ```
 
-TUI 与 CLI 不得 import `tools`、`providers`、`store/sqlite`、`agent`、`chatsession` 实现。主交互斜杠：`/new`（离焦 ready，运行中则 cancel）、`/undo`、`/cron`、`/compact`、`/perm`、`/memory`、`/expand`、`/journey`（memory + skill 事件）、`/skills`（含 apply/reject/archived；显式预载快照）、`/<skill-id>`、`/<command>`（`chat.commands`）、`/model`（全局）/ `/model prefer`（会话偏好并在 run 时生效）、`/status`（含 daemon 版本）。运行中普通回车 = steer（不 cancel）。`ask_user` 弹出问题卡（perm 优先）。折叠快捷键：`e` / `E` / `c`（输入为空时）。用户规则：`<ConfigDir>/AGENTS.md` + 可选项目 `.yunmengze/AGENTS.md`。Prefix 含技能目录；正文仍 `skill_view`。CLI：`ymz config import-opencode`（离线写 ConfigDir，不经 Gateway）。可选尾巴见 `docs/backlog/current.md`。
+TUI 与 CLI 不得 import `tools`、`providers`、`store/sqlite`、`agent`、`chatsession` 实现。主交互斜杠：`/new`（离焦 ready，运行中则 cancel）、`/undo`、`/cron`、`/compact`、`/perm`、`/memory`、`/expand`、`/journey`（memory + skill 事件）、`/skills`（含 apply/reject/archived；显式预载快照）、`/<skill-id>`、`/<command>`（`chat.commands`）、`/model`（全局）/ `/model prefer`（会话偏好并在 run 时生效）、`/status`（含 daemon 版本）。运行中普通回车 = steer（不 cancel）；空闲/已结束会话回车提交新一轮；steer 409 回退 submit。`ask_user` 弹出问题卡（perm 优先）。折叠快捷键：`e` / `E` / `c`（输入为空时）。用户规则：`<ConfigDir>/AGENTS.md` + 可选项目 `.yunmengze/AGENTS.md`。Prefix 含技能目录；正文仍 `skill_view`。CLI：`ymz config import-opencode`（离线写 ConfigDir，不经 Gateway）。可选尾巴见 `docs/backlog/current.md`。

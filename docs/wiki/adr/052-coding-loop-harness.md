@@ -61,7 +61,7 @@ Inbox **只有 next-step**。没有 next-turn 队列：空闲回车走现有 `Su
 
 - `POST /v1/sessions/{id}/steer` `{text}`：先写入 `agent_run_records`（user），再 `Inbox.Enqueue`（`Persisted: true`）。
 - 仅当 session 有 `running` task 且 chat run 已创建；空闲 → conflict。
-- TUI：有 running turn 时普通回车走 steer，不另开 task；`/new` / Esc 仍取消并清 inbox。
+- TUI：仅当**当前** task 已是 `running`（乐观绘制之前判定）才走 steer；空闲/已结束会话回车提交新一轮 chat。steer 若 409（回合刚好结束）自动改走 submit，status `turn ended · sent as new message`。`/new` / Esc 仍取消并清 inbox。
 
 ### R4（已落地）
 

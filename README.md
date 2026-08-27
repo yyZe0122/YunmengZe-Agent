@@ -8,7 +8,7 @@
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Status](https://img.shields.io/badge/status-alpha-orange.svg)](#status)
 
-The open-source **local coding agent** for your terminal. A fail-as-observation harness, an ink-block TUI, and typed tools — not a background job runner with a chat bolted on.
+The open-source **local coding agent** for your terminal. A fail-as-observation harness, a xuan-paper TUI, and typed tools — not a background job runner with a chat bolted on.
 
 > **Alpha** — review config, workspace roots, and permissions before privileged use.  
 > **Alpha** — 接触重要数据或高权限凭据前，请先核对配置与权限边界。
@@ -16,8 +16,8 @@ The open-source **local coding agent** for your terminal. A fail-as-observation 
 ## Features
 
 - **Coding loop** — tool failures and non-zero exits come back as JSON observations; the turn continues. Steer mid-turn with Enter. Failures are not a dead run.
-- **Plan · Agent · Auto** — Tab cycles **plan** (read-only) → **agent** (writes; `/perm` for tests/git) → **auto** (this session pre-grants process + git).
-- **TUI-first** — ink-block chrome, live markdown, foldable thinking/tools, native select-to-copy. CLI is for scripts.
+- **Agent · Plan · Auto** — Tab cycles **agent** (writes; `/perm` for tests/git) → **plan** (read-only) → **auto** (this session pre-grants process + git).
+- **TUI-first** — xuan-paper chrome, live markdown, foldable thinking/tools, native select-to-copy. CLI is for scripts.
 - **Your models** — OpenAI / Anthropic / Gemini / OpenAI-compatible. `ymz config import-opencode` maps an existing OpenCode config.
 - **Local and bounded** — one daemon, one SQLite `core.db`. Tools only run through the Broker: Policy → Grant → path limits → Audit. No yolo.
 
@@ -122,7 +122,7 @@ Packing is a single `ContextView` (prefix + summary + tail + ephemeral todos). D
 
 | Input | Behavior |
 | --- | --- |
-| **Tab** · **Shift+Tab** | Cycle **plan** (RO) → **agent** (R/W, `/perm` for tests/git) → **auto** (this session pre-grants process+git) |
+| **Tab** · **Shift+Tab** | Cycle **agent** (R/W, `/perm` for tests/git) → **plan** (RO) → **auto** (this session pre-grants process+git) |
 | Plain text | Submit. **While a turn is running, Enter steers** |
 | `/new` | Leave to ready; cancels a running turn |
 | `/perm` | once · similar · permanent · deny |

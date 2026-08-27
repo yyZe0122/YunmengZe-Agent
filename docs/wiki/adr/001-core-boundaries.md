@@ -20,6 +20,6 @@ Gateway 不直接拼装领域状态：任务提交与 chat 运行进入窄应用
 
 - 组合根集中在 `cmd/ymzd`，使用具体类型和小接口；接线按阶段放在同包 `wire_{store,tools,chat,gateway}.go` 与 `adapters.go`，`main.go` 只保留 `run` / flag / defer / `--check`；
 - 状态机和不变量留在领域包与仓储中（`kernel` 仓储可按聚合同包再拆，不抽通用 Repository 包）；
-- 大文件只同包切开（`tui/cmds_*`、`tui/update_*`、`tui/view_*`、`tui/logo.go`/`panel.go`、`tools/fs_*`）；新 slash / 新聚合 SQL / 接线难 review 时再拆，不新建包；TUI 引擎见 ADR-053；
+- 大文件只同包切开（`tui/cmds_*`、`tui/update_*`、`tui/view_*`、`tui/{raster,paths,mascot,panel}.go`、`tools/fs_*`）；新 slash / 新聚合 SQL / 接线难 review 时再拆，不新建包；TUI 引擎见 ADR-053；
 - 不引入 ORM、通用 Repository、容器式 DI 或事件总线框架；
 - 新抽象必须由当前用户故事证明，而不是为假设中的扩展预留。

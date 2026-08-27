@@ -40,7 +40,7 @@ Do **not** restore deleted pieces: Module Runtime/Supervisor, out-of-process Mem
 | 18 | [050](adr/050-in-process-self-improvement.md) | In-process skill draft / habit hint / skill usage (H3/H4/H5-skill) |
 | 19 | [051](adr/051-coding-loop-contextview.md) | Phase Q ContextView + coding-loop contract (QB–QH) |
 | 20 | [052](adr/052-coding-loop-harness.md) | Phase R turn/step/next-step inbox + observation contract |
-| 21 | [053](adr/053-charm-v2-tui.md) | Charm v2 TUI: lipgloss 焦墨色块, textarea, no mouse |
+| 21 | [053](adr/053-charm-v2-tui.md) | Charm v2 TUI: 清宣纸 chrome, textarea, no mouse |
 | 22 | [054](adr/054-vscode-terminal-launcher.md) | VS Code extension: terminal launcher for existing TUI; no Gateway HTTP |
 
 Also: O3 `chat.commands` (ADR-038 / [provider-protocols](provider-protocols.md)); O4/H7 run resolve (`internal/modelresolve`, ADR-045：job pin → prefer → main).
@@ -96,7 +96,7 @@ Provider wire formats: [`provider-protocols.md`](provider-protocols.md). VS Code
 | 050 | In-process self-improvement | H3 skill draft+apply; H4 habit hint; H5-skill last-used/archive; ≠ Evolution |
 | 051 | Coding-loop ContextView | Single `Build`; retire `History`; todo / L3 / checkpoint boundaries |
 | 052 | Coding-loop harness | Observation contract; turn/step/next-step inbox; steer / ask_user（R1–R5 已落地） |
-| 053 | Charm v2 TUI | bubbletea/lipgloss/glamour v2 + 焦墨色块；无 UV 整页 / lazy list；no mouse grab |
+| 053 | Charm v2 TUI | bubbletea/lipgloss/glamour v2 + 清宣纸 chrome；无 UV 整页 / lazy list；no mouse grab |
 | 054 | VS Code terminal launcher | `extensions/vscode`; TUI-only; no Marketplace this phase |
 
 Missing numbers (002, 005, 014–015, 019–021, 025, …) are **historical gaps**, not missing files to recreate.
