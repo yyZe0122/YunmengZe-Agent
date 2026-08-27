@@ -148,7 +148,7 @@ func (b *Broker) SetPermission(gate PermissionGate) {
 	b.permission = gate
 }
 
-// SetEditCheckpointer attaches QG snapshots to registered fs_write/fs_patch tools.
+// SetEditCheckpointer attaches QG snapshots to registered fs_write/fs_patch/fs_mkdir/fs_remove tools.
 func (b *Broker) SetEditCheckpointer(cp EditCheckpointer) {
 	if b == nil {
 		return

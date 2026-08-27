@@ -315,6 +315,7 @@ func (s *Service) buildWorkspacePlan(planID kernel.PlanID, taskID kernel.TaskID,
 			approval.CapabilityScope{Capability: "fs_write", Paths: append([]string(nil), pathRoots...), MaxDurationMillis: defaultToolTimeoutMS, MaxCalls: defaultMaxCalls},
 			approval.CapabilityScope{Capability: "fs_patch", Paths: append([]string(nil), pathRoots...), MaxDurationMillis: defaultToolTimeoutMS, MaxCalls: defaultMaxCalls},
 			approval.CapabilityScope{Capability: "fs_mkdir", Paths: append([]string(nil), pathRoots...), MaxDurationMillis: defaultToolTimeoutMS, MaxCalls: defaultMaxCalls},
+			approval.CapabilityScope{Capability: "fs_remove", Paths: append([]string(nil), pathRoots...), MaxDurationMillis: defaultToolTimeoutMS, MaxCalls: defaultMaxCalls},
 		)
 		risk = policy.RiskR1
 		effects = append(effects, "write workspace files when needed")

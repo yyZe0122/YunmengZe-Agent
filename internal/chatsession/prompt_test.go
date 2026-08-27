@@ -15,8 +15,11 @@ func TestChatSystemPromptIncludesVersionAndRoles(t *testing.T) {
 	if !strings.Contains(agent, "build mode") {
 		t.Fatalf("agent prompt missing build mode: %s", agent)
 	}
-	if !strings.Contains(agent, "fs_patch") {
+	if !strings.Contains(agent, "fs_patch") || !strings.Contains(agent, "fs_remove") {
 		t.Fatalf("agent prompt missing write tools: %s", agent)
+	}
+	if !strings.Contains(agent, "git restore") {
+		t.Fatalf("agent prompt missing git restore hint: %s", agent)
 	}
 	if !strings.Contains(agent, "/perm") {
 		t.Fatalf("interactive agent prompt missing /perm: %s", agent)

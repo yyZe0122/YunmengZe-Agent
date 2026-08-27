@@ -24,16 +24,24 @@ func (t *fileTool) write(ctx context.Context, raw json.RawMessage) (json.RawMess
 	if err != nil {
 		return nil, err
 	}
+	created := false
 	before, beforeHash, err := readExistingText(path)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, err
+	}
+	if errors.Is(err, os.ErrNotExist) {
+		created = true
 	}
 	if want := strings.TrimSpace(input.ExpectedSHA256); want != "" && want != beforeHash {
 		return encodeResult(map[string]any{
 			"error": "expected_sha256 mismatch", "path": path, "sha256": beforeHash,
 		})
 	}
-	if err := t.checkpointWrite(ctx, path, []byte(before), sha256Hex([]byte(input.Content))); err != nil {
+	kind := "modify"
+	if created {
+		kind = "create"
+	}
+	if err := t.checkpointWrite(ctx, path, []byte(before), sha256Hex([]byte(input.Content)), kind); err != nil {
 		return nil, err
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
@@ -89,7 +97,7 @@ func (t *fileTool) patch(ctx context.Context, raw json.RawMessage) (json.RawMess
 			"context": hint,
 		})
 	}
-	if err := t.checkpointWrite(ctx, path, content, sha256Hex([]byte(updated))); err != nil {
+	if err := t.checkpointWrite(ctx, path, content, sha256Hex([]byte(updated)), "modify"); err != nil {
 		return nil, err
 	}
 	if err := atomicWrite(ctx, path, []byte(updated)); err != nil {
@@ -127,17 +135,62 @@ func (t *fileTool) mkdir(ctx context.Context, raw json.RawMessage) (json.RawMess
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	if _, err := os.Lstat(path); err == nil {
+		return encodeResult(map[string]any{"path": path, "existed": true})
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	if err := t.checkpointWrite(ctx, path, nil, "", "mkdir"); err != nil {
+		return nil, err
+	}
 	if err := os.MkdirAll(path, 0o750); err != nil {
 		return nil, err
 	}
 	return encodeResult(map[string]any{"path": path})
 }
 
-func (t *fileTool) checkpointWrite(ctx context.Context, path string, before []byte, shaAfter string) error {
+func (t *fileTool) remove(ctx context.Context, raw json.RawMessage) (json.RawMessage, error) {
+	var input struct {
+		Path string `json:"path"`
+	}
+	if err := decodeStrict(raw, &input); err != nil {
+		return nil, err
+	}
+	path, err := t.guard.Resolve(input.Path)
+	if err != nil {
+		return nil, err
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
+	}
+	if info.IsDir() {
+		return nil, errors.New("fs_remove deletes one regular file; directories are not removed")
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return nil, errors.New("refusing to remove symlink")
+	}
+	if !info.Mode().IsRegular() {
+		return nil, errors.New("fs_remove only deletes regular files")
+	}
+	before, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	if err := t.checkpointWrite(ctx, path, before, "", "delete"); err != nil {
+		return nil, err
+	}
+	if err := os.Remove(path); err != nil {
+		return nil, err
+	}
+	return encodeResult(map[string]any{"path": path, "removed": true})
+}
+
+func (t *fileTool) checkpointWrite(ctx context.Context, path string, before []byte, shaAfter, kind string) error {
 	if t == nil || t.checkpoints == nil {
 		return nil
 	}
-	return t.checkpoints.SnapshotBeforeWrite(ctx, path, before, shaAfter)
+	return t.checkpoints.SnapshotBeforeWrite(ctx, path, before, shaAfter, kind)
 }
 
 func atomicWrite(ctx context.Context, path string, content []byte) error {

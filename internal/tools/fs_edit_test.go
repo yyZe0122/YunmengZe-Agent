@@ -182,6 +182,28 @@ func TestFSGlobDoubleStar(t *testing.T) {
 	}
 }
 
+func TestFSRemoveRegularFileOnly(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "x.txt")
+	if err := os.WriteFile(path, []byte("bye\n"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	rm := fileToolByName(t, root, "fs_remove")
+	if _, err := rm.Execute(context.Background(), json.RawMessage(`{"path":"x.txt"}`)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("file still there: %v", err)
+	}
+	dir := filepath.Join(root, "d")
+	if err := os.Mkdir(dir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := rm.Execute(context.Background(), json.RawMessage(`{"path":"d"}`)); err == nil {
+		t.Fatal("expected directory remove to fail")
+	}
+}
+
 func TestTruncateToolOutputIncludesArtifactID(t *testing.T) {
 	body := truncateToolOutput([]byte(strings.Repeat("x", 5000)), 64, "art-1")
 	var out struct {
