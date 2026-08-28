@@ -7,7 +7,7 @@
 ## 现状
 
 生产形态稳定：`ymzd` + CLI·TUI（`ymz`）+ `core.db`。设计知识库：`docs/wiki/`。  
-当前发布线：**v0.4.0** = 清宣纸 TUI（ADR-053）+ VS Code 启动器（ADR-054）+ `/edit` retract + `fs_remove`。v0.3.1 = harness + Tab Auto。v0.3.0 = TUI `/new` 离焦。v0.2.8 = Phase Q。
+当前发布线：**v0.5.0** = models.dev 填窗 + Phase S/W/M。v0.4.0 = 清宣纸 TUI（ADR-053）+ VS Code 启动器（ADR-054）+ `/edit` retract + `fs_remove`。v0.3.1 = harness + Tab Auto。
 
 | 对标 | 契约重叠（粗） | 说明 |
 | --- | --- | --- |

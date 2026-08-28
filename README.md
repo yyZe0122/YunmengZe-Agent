@@ -268,6 +268,6 @@ Details: [`SECURITY.md`](SECURITY.md), [threat model ADR-008](docs/wiki/adr/008-
 
 Alpha. Focus is the **coding loop and TUI**. Cron, MCP, and memory are supporting pieces — not the headline.
 
-Released: **v0.4.0** (xuan-paper TUI + VS Code launcher + `/edit` + `fs_remove`). On this tree: typed sub-agents, web search, optional media, models.dev window fill — [`unreleased.md`](docs/history/changelog/unreleased.md). Optional tails (compat API, messaging channels) live in [`docs/backlog/current.md`](docs/backlog/current.md).
+Current line: **v0.5.0** (typed sub-agents + web search + optional media + models.dev window fill). Optional tails (compat API, messaging channels) live in [`docs/backlog/current.md`](docs/backlog/current.md).
 
 Release checklist: [`docs/release.md`](docs/release.md).

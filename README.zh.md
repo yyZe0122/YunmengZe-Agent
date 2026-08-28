@@ -193,4 +193,4 @@ go test ./... -count=1
 
 Alpha。焦点是**编码循环和 TUI**。Cron、MCP、记忆是支撑，不是主卖点。
 
-已发版：**v0.4.0**（清宣纸 TUI + VS Code 启动器 + `/edit` + `fs_remove`）。当前树：类型化子代理、网页检索、可选媒体、models.dev 填窗 — [`unreleased.md`](docs/history/changelog/unreleased.md)。可选尾巴（compat API、消息通道）见 [`docs/backlog/current.md`](docs/backlog/current.md)。
+当前线：**v0.5.0**（类型化子代理 + 网页检索 + 可选媒体 + models.dev 填窗）。可选尾巴（compat API、消息通道）见 [`docs/backlog/current.md`](docs/backlog/current.md)。

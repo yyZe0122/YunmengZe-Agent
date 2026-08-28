@@ -2,7 +2,7 @@
 
 Numbered ADRs plus the `core.db` map. Catalog: [`docs/README.md`](../README.md).
 
-Living status / backlog (only): [`backlog/current.md`](../backlog/current.md). **当前线 v0.4.0**（ADR-053/054 + retract）。**Phase S/W/M** `task.kind` + web 检索 + 辅助媒体已落地。**下一优先 VS Code V4**。O5–O6 / H2 / 飞书 M* / Marketplace 等用户再提。  
+Living status / backlog (only): [`backlog/current.md`](../backlog/current.md). **当前线 v0.5.0**（models.dev 填窗 + Phase S/W/M）。**下一优先 VS Code V4**。O5–O6 / H2 / 飞书 M* / Marketplace 等用户再提。  
 Agent/contributor entry: [`AGENTS.md`](../../AGENTS.md).  
 Database map: [`database.md`](database.md).
 
