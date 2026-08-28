@@ -102,7 +102,7 @@ func Load(configDir string) (*Resolved, error) {
 
 // LoadChat reads the optional chat section from the first resolvable config file.
 // Missing file or missing chat block returns a zero ChatConfig (empty roots; agent write allowed).
-// Secrets are not resolved; only structural validation runs.
+// chat.web.searxng_url / tavily_key resolve {env:}/{file:} like MCP secrets.
 func LoadChat(configDir string) (ChatConfig, error) {
 	if err := LoadEnvFromConfigDir(configDir); err != nil {
 		return ChatConfig{}, err
@@ -122,10 +122,43 @@ func LoadChat(configDir string) (ChatConfig, error) {
 		return ChatConfig{}, nil
 	}
 	chat := *file.Chat
+	if err := chat.resolveWeb(filepath.Dir(path)); err != nil {
+		return ChatConfig{}, err
+	}
 	if err := chat.validate(); err != nil {
 		return ChatConfig{}, err
 	}
 	return chat, nil
+}
+
+func (c *ChatConfig) resolveWeb(configDirectory string) error {
+	if c == nil || c.Web == nil {
+		return nil
+	}
+	search := strings.ToLower(strings.TrimSpace(c.Web.Search))
+	if search == "" {
+		search = WebSearchDDG
+	}
+	switch search {
+	case WebSearchDDG:
+		return nil
+	case WebSearchSearxNG:
+		resolved, err := resolveValue(c.Web.SearxNGURL, configDirectory)
+		if err != nil {
+			return fmt.Errorf("chat.web.searxng_url: %w", err)
+		}
+		c.Web.SearxNGURL = resolved
+		return nil
+	case WebSearchTavily:
+		resolved, err := resolveValue(c.Web.TavilyKey, configDirectory)
+		if err != nil {
+			return fmt.Errorf("chat.web.tavily_key: %w", err)
+		}
+		c.Web.TavilyKey = resolved
+		return nil
+	default:
+		return nil
+	}
 }
 
 // LoadMCP reads the optional mcp section. Missing file or mcp block returns zero config.

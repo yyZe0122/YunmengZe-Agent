@@ -27,6 +27,33 @@ func TestPlanContainsHTTPGetDomainNarrowing(t *testing.T) {
 	if planContainsScope(plan, "s1", wide) {
 		t.Fatal("must not widen to multiple domains")
 	}
+	webPlan := PlanDocument{Steps: []StepScope{{
+		StepID: "s1",
+		Capabilities: []CapabilityScope{{
+			Capability: "web_search", MaxDurationMillis: 30000, MaxCalls: 8,
+		}},
+	}}}
+	webNarrow := CapabilityScope{
+		Capability: "web_search", NetworkDomains: []string{"html.duckduckgo.com"},
+		MaxDurationMillis: 30000, MaxCalls: 8,
+	}
+	if !planContainsScope(webPlan, "s1", webNarrow) {
+		t.Fatal("web_search empty-domain plan should allow host-narrowed grant")
+	}
+	pathPlan := PlanDocument{Steps: []StepScope{{
+		StepID: "s1",
+		Capabilities: []CapabilityScope{{
+			Capability: "vision_analyze", Paths: []string{"/tmp/ws"},
+			MaxDurationMillis: 30000, MaxCalls: 8,
+		}},
+	}}}
+	pathNarrow := CapabilityScope{
+		Capability: "vision_analyze", Paths: []string{"/tmp/ws"},
+		NetworkDomains: []string{"example.com"}, MaxDurationMillis: 30000, MaxCalls: 8,
+	}
+	if planContainsScope(pathPlan, "s1", pathNarrow) {
+		t.Fatal("must not host-narrow a path-scoped vision_analyze grant")
+	}
 }
 
 func TestCommandArgsMatchSchemeA(t *testing.T) {

@@ -3,6 +3,7 @@ package providerconfig
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -241,7 +242,45 @@ func (c ChatConfig) validate() error {
 	if err := validateChatCommands(c.Commands); err != nil {
 		return err
 	}
+	if err := c.validateWeb(); err != nil {
+		return err
+	}
 	return nil
+}
+
+func (c ChatConfig) validateWeb() error {
+	if c.Web == nil {
+		return nil
+	}
+	search := strings.ToLower(strings.TrimSpace(c.Web.Search))
+	switch search {
+	case "", WebSearchDDG:
+		return nil
+	case WebSearchSearxNG:
+		raw := strings.TrimSpace(c.Web.SearxNGURL)
+		if raw == "" {
+			return fmt.Errorf("chat.web.searxng_url is required when search is searxng")
+		}
+		parsed, err := url.Parse(raw)
+		if err != nil || parsed.Host == "" {
+			return fmt.Errorf("chat.web.searxng_url must be an absolute http(s) URL")
+		}
+		scheme := strings.ToLower(parsed.Scheme)
+		if scheme != "http" && scheme != "https" {
+			return fmt.Errorf("chat.web.searxng_url scheme must be http or https")
+		}
+		if parsed.User != nil {
+			return fmt.Errorf("chat.web.searxng_url must not include userinfo")
+		}
+		return nil
+	case WebSearchTavily:
+		if strings.TrimSpace(c.Web.TavilyKey) == "" {
+			return fmt.Errorf("chat.web.tavily_key is required when search is tavily")
+		}
+		return nil
+	default:
+		return fmt.Errorf("chat.web.search must be ddg, searxng, or tavily")
+	}
 }
 
 // MaxChatCommandTemplateRunes caps one command template at load time.

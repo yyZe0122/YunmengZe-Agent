@@ -268,8 +268,11 @@ func TestStartChatInjectsAgentsMarkdown(t *testing.T) {
 	if !strings.Contains(joined, "<env>") || !strings.Contains(joined, "workspace: "+ws) || !strings.Contains(joined, "date: 2026-08-13") {
 		t.Fatalf("env missing: %q", joined)
 	}
-	if !strings.Contains(joined, "YunmengZe Agent") || !strings.Contains(joined, "No vision") {
+	if !strings.Contains(joined, "YunmengZe Agent") || !strings.Contains(joined, "models.subagent") {
 		t.Fatalf("identity missing: %q", joined)
+	}
+	if strings.Contains(joined, "No vision") {
+		t.Fatalf("identity must not hard-code No vision: %q", joined)
 	}
 }
 
@@ -1037,7 +1040,7 @@ func TestStartChatCronNeverGetsProcessGrant(t *testing.T) {
 	tools := fake.request.AllowedTools
 	fake.mu.Unlock()
 	for _, name := range tools {
-		if name == "process_exec" || name == "process_shell" || name == "http_get" {
+		if name == "process_exec" || name == "process_shell" || name == "http_get" || name == "web_search" || name == "web_extract" {
 			t.Fatalf("cron must not grant %s: %v", name, tools)
 		}
 	}
@@ -1097,6 +1100,7 @@ func TestStartChatAgentModeWriteGrants(t *testing.T) {
 		"task": true, "memory_search": true, "memory_write": true,
 		"memory_promote": true, "session_search": true, "skill_draft": true,
 		"skills_list": true, "skill_view": true, "ask_user": true, "http_get": true,
+		"web_search": true, "web_extract": true,
 	}
 	got := map[string]bool{}
 	for _, name := range req.AllowedTools {
@@ -1112,6 +1116,66 @@ func TestStartChatAgentModeWriteGrants(t *testing.T) {
 	}
 	if !strings.Contains(req.Messages[0].Content, "skills_list") || !strings.Contains(req.Messages[0].Content, "mcp_*") {
 		t.Fatalf("agent prompt missing skill/MCP guidance: %q", req.Messages[0].Content)
+	}
+	if containsTool(req.AllowedTools, "vision_analyze") {
+		t.Fatal("unconfigured vision must not be advertised")
+	}
+}
+
+func TestStartChatAdvertisesVisionWhenConfigured(t *testing.T) {
+	ctx := context.Background()
+	database, err := storesqlite.Open(ctx, t.TempDir()+"/core.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	db := database.SQL()
+	repo, err := kernel.NewRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	approvals, err := approval.NewRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	queries, err := corequery.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
+	session, err := repo.CreateSession(ctx, "session-vision", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, err := repo.CreateTaskWithSkillSnapshot(ctx, "task-vision", session.ID, "look", "look", nil, "", kernel.ExecutionModeAgent, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fake := &fakeAgent{done: make(chan struct{})}
+	svc, err := New(Config{
+		DB: db, Repository: repo, Approvals: approvals, Agent: fake, Transcript: queries,
+		WorkspaceRoots: []string{t.TempDir()}, ConfiguredRoles: []string{"vision"},
+		Now: func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.StartChat(ctx, StartRequest{Task: task, Actor: "test", UserText: "look", Interactive: true}); err != nil {
+		t.Fatalf("StartChat: %v", err)
+	}
+	select {
+	case <-fake.done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("agent.Run not called")
+	}
+	fake.mu.Lock()
+	tools := fake.request.AllowedTools
+	fake.mu.Unlock()
+	if !containsTool(tools, "vision_analyze") || !containsTool(tools, "video_analyze") {
+		t.Fatalf("vision tools missing: %v", tools)
+	}
+	if n := countTool(tools, "vision_analyze"); n != 1 {
+		t.Fatalf("vision_analyze advertised %d times: %v", n, tools)
 	}
 }
 

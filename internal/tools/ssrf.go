@@ -23,9 +23,18 @@ var blockedHostExact = map[string]struct{}{
 // validateHTTPGetURLHost rejects private, link-local, and cloud-metadata targets.
 // Resolves DNS when possible so raw IPs and names both fail closed.
 func validateHTTPGetURLHost(ctx context.Context, host string) error {
+	return validateHTTPURLHost(ctx, host, nil)
+}
+
+// validateHTTPURLHost is validateHTTPGetURLHost with an optional exact-host allowlist
+// (SearXNG instance from chat.web.searxng_url; web_search only).
+func validateHTTPURLHost(ctx context.Context, host string, allowHosts map[string]struct{}) error {
 	host = strings.TrimSpace(strings.ToLower(host))
 	if host == "" {
 		return fmt.Errorf("URL host is required")
+	}
+	if _, ok := allowHosts[host]; ok {
+		return nil
 	}
 	// Strip zone id if present (fe80::1%eth0).
 	if i := strings.IndexByte(host, '%'); i >= 0 {

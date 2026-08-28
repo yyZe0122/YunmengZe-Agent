@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yyZe0122/yunmengze-agent/internal/approval"
 	storesqlite "github.com/yyZe0122/yunmengze-agent/internal/store/sqlite"
 )
 
@@ -152,5 +153,37 @@ func TestWaiterNotify(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("timeout")
+	}
+}
+
+func TestFindPlanScopeVisionURLSkipsPathGrant(t *testing.T) {
+	plan := approval.PlanDocument{Steps: []approval.StepScope{{
+		StepID: "st1",
+		Capabilities: []approval.CapabilityScope{
+			{Capability: "vision_analyze", Paths: []string{"/tmp/ws"}, MaxDurationMillis: 30000, MaxCalls: 8},
+			{Capability: "vision_analyze", MaxDurationMillis: 30000, MaxCalls: 1, OneTime: true},
+			{Capability: "vision_analyze", MaxDurationMillis: 30000, MaxCalls: 8},
+		},
+	}}}
+	got, err := findPlanScope(plan, "st1", "vision_analyze", "vision_analyze", DecisionAllowSimilar, "", "example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Paths) != 0 || got.OneTime || got.MaxCalls != 8 {
+		t.Fatalf("url similar must pick host session scope: %+v", got)
+	}
+	got, err = findPlanScope(plan, "st1", "vision_analyze", "vision_analyze", DecisionAllowOnce, "", "example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.OneTime || got.MaxCalls != 1 || len(got.Paths) != 0 {
+		t.Fatalf("url once must pick host once scope: %+v", got)
+	}
+	got, err = findPlanScope(plan, "st1", "vision_analyze", "vision_analyze", DecisionAllowSimilar, "/tmp/ws/a.png", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Paths) == 0 {
+		t.Fatalf("path similar must pick path scope: %+v", got)
 	}
 }

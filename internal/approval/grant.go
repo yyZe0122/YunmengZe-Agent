@@ -393,7 +393,7 @@ func planContainsScope(plan PlanDocument, stepID kernel.StepID, scope Capability
 			if slices.Equal(encoded, expected) {
 				return true
 			}
-			if httpGetDomainNarrowing(candidate, scope) {
+			if hostCapabilityNarrowing(candidate, scope) {
 				return true
 			}
 		}
@@ -401,16 +401,24 @@ func planContainsScope(plan PlanDocument, stepID kernel.StepID, scope Capability
 	return false
 }
 
-// httpGetDomainNarrowing allows issuing a grant whose only difference from a
-// plan http_get scope is filling empty NetworkDomains with a single host.
-func httpGetDomainNarrowing(planScope, grantScope CapabilityScope) bool {
-	if planScope.Capability != "http_get" || grantScope.Capability != "http_get" {
+// hostCapabilityNarrowing allows issuing a grant whose only difference from a
+// plan host-only scope (empty Paths) is filling empty NetworkDomains with a single host.
+func hostCapabilityNarrowing(planScope, grantScope CapabilityScope) bool {
+	switch planScope.Capability {
+	case "http_get", "web_search", "web_extract", "vision_analyze":
+	default:
+		return false
+	}
+	if planScope.Capability != grantScope.Capability {
 		return false
 	}
 	if len(planScope.NetworkDomains) != 0 || len(grantScope.NetworkDomains) != 1 {
 		return false
 	}
 	if strings.TrimSpace(grantScope.NetworkDomains[0]) == "" {
+		return false
+	}
+	if len(planScope.Paths) != 0 || len(grantScope.Paths) != 0 {
 		return false
 	}
 	if planScope.OneTime != grantScope.OneTime || planScope.MaxCalls != grantScope.MaxCalls ||

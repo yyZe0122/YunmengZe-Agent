@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log/slog"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -48,7 +49,8 @@ const (
 		"After compaction, recover paths and errors with session_search instead of relying on memory. " +
 		"For specialized workflows, call skills_list then skill_view before improvising. " +
 		"When a user decision is required, call ask_user instead of guessing. " +
-		"Use http_get for approved HTTP(S) fetches (not process_shell). " +
+		"Use web_search for queries, web_extract for page text, and http_get for raw HTTP(S) (not process_shell). " +
+		"If advertised, use vision_analyze for images, audio_transcribe for speech, and video_analyze for video frames. " +
 		"Prefer configured mcp_* tools over process_exec/process_shell or writing a script that reimplements them."
 	chatToolProtocolAgent = "You may read and write files under the workspace. " +
 		"Edit with fs_patch and expected_sha256. Use fs_write only to create a new file. " +
@@ -73,25 +75,68 @@ const (
 	defaultMaxCalls      uint64 = 10_000
 )
 
-func chatIdentityBlock(plan bool) string {
+func chatIdentityBlock(plan bool, configuredRoles []string) string {
 	mode := "build mode"
 	if plan {
 		mode = "plan mode"
 	}
-	return "You are YunmengZe Agent " + version.Version + ", a local coding assistant (" + mode + "). " +
-		"Roles: this chat is main; task children use models.subagent; /compact uses models.compact. " +
-		"No vision. /model switches global main only; other roles need operator config plus ymz restart."
+	text := "You are YunmengZe Agent " + version.Version + ", a local coding assistant (" + mode + "). " +
+		"Roles: this chat is main; task children use models.subagent; /compact uses models.compact."
+	if extras := extraConfiguredRoles(configuredRoles); len(extras) > 0 {
+		named := make([]string, 0, len(extras))
+		for _, role := range extras {
+			named = append(named, "models."+role)
+		}
+		text += " Also configured: " + strings.Join(named, ", ") + "."
+	}
+	return text + " /model switches global main only; other roles need operator config plus ymz restart."
 }
 
-func chatSystemPrompt(plan, interactive bool) string {
+func extraConfiguredRoles(roles []string) []string {
+	seen := make(map[string]struct{}, len(roles))
+	out := make([]string, 0, len(roles))
+	for _, role := range roles {
+		role = strings.TrimSpace(role)
+		if role == "" || role == providerconfig.RoleMain || role == providerconfig.RoleSubagent || role == providerconfig.RoleCompact {
+			continue
+		}
+		if _, ok := seen[role]; ok {
+			continue
+		}
+		seen[role] = struct{}{}
+		out = append(out, role)
+	}
+	slices.Sort(out)
+	return out
+}
+
+func uniqueRoleNames(roles []string) []string {
+	seen := make(map[string]struct{}, len(roles))
+	out := make([]string, 0, len(roles))
+	for _, role := range roles {
+		role = strings.TrimSpace(role)
+		if role == "" {
+			continue
+		}
+		if _, ok := seen[role]; ok {
+			continue
+		}
+		seen[role] = struct{}{}
+		out = append(out, role)
+	}
+	slices.Sort(out)
+	return out
+}
+
+func chatSystemPrompt(plan, interactive bool, configuredRoles []string) string {
 	if plan {
-		return chatIdentityBlock(true) + " " + chatToolProtocolShared + " " + chatToolProtocolPlan
+		return chatIdentityBlock(true, configuredRoles) + " " + chatToolProtocolShared + " " + chatToolProtocolPlan
 	}
 	ungranted := chatToolProtocolAgentHeadless
 	if interactive {
 		ungranted = chatToolProtocolAgentInteractive
 	}
-	return chatIdentityBlock(false) + " " + chatToolProtocolShared + " " + chatToolProtocolAgent + " " + ungranted
+	return chatIdentityBlock(false, configuredRoles) + " " + chatToolProtocolShared + " " + chatToolProtocolAgent + " " + ungranted
 }
 
 func chatEnvBlock(model, workspace, date string) string {
@@ -213,11 +258,13 @@ type Config struct {
 	AllowProcess bool
 	// ExtraTools are additional broker tool names (e.g. mcp_*) granted for chat runs.
 	ExtraTools []string
+	// ConfiguredRoles are models.* keys present at daemon start (ADR-045). Prefix lists extras beyond subagent/compact.
+	ConfiguredRoles []string
 	// Skills is optional; when set, Prefix includes an id + one-line catalog (ADR-052 R5).
 	Skills *skillcatalog.Catalog
-	// ContextWindow is model context length for packing; 0 = unknown.
+	// ContextWindow is model context length for packing; 0 → DefaultContextWindow after catalog fill.
 	ContextWindow int64
-	// MaxOutputTokens is the model output cap (maxTokens); 0 → ClampMaxOutput default.
+	// MaxOutputTokens is the model output cap (maxTokens); 0 omits max_tokens on OpenAI-compatible wires.
 	MaxOutputTokens int64
 	// Context persists pressure snapshots and session compactions (optional).
 	Context *contextpack.Store
@@ -280,6 +327,7 @@ type Service struct {
 	allowGit          bool
 	allowProcess      bool
 	extraTools        []string
+	configuredRoles   []string
 	skills            *skillcatalog.Catalog
 	contextWindow     int64
 	maxOutputTokens   int64
@@ -378,9 +426,10 @@ func New(config Config) (*Service, error) {
 		configDir:    strings.TrimSpace(config.ConfigDir),
 		chatCfg:      config.ChatConfig,
 		writeCeiling: writeCeiling, allowGit: config.AllowGit, allowProcess: config.AllowProcess,
-		extraTools:    extra,
-		skills:        config.Skills,
-		contextWindow: config.ContextWindow, maxOutputTokens: config.MaxOutputTokens,
+		extraTools:      extra,
+		configuredRoles: uniqueRoleNames(config.ConfiguredRoles),
+		skills:          config.Skills,
+		contextWindow:   config.ContextWindow, maxOutputTokens: config.MaxOutputTokens,
 		contextStore: config.Context,
 		compactor:    config.Compactor, compactionEnabled: compactionEnabled,
 		calibrator: config.Calibrator, memory: config.Memory, todos: config.Todos, edits: config.Edits,

@@ -15,6 +15,7 @@ import (
 	"github.com/yyZe0122/yunmengze-agent/internal/audit"
 	"github.com/yyZe0122/yunmengze-agent/internal/kernel"
 	"github.com/yyZe0122/yunmengze-agent/internal/policy"
+	"github.com/yyZe0122/yunmengze-agent/internal/providerconfig"
 )
 
 func (s *Service) resolveGrantRoots(ctx context.Context, task kernel.Task) []string {
@@ -288,7 +289,10 @@ func (p grantPosture) shouldIssue(scope approval.CapabilityScope) bool {
 	if strings.HasPrefix(name, "git_") {
 		return p.pregrantGit && !scope.OneTime
 	}
-	if name == "http_get" {
+	if name == "http_get" || name == "web_search" || name == "web_extract" {
+		return false
+	}
+	if name == "vision_analyze" && len(scope.Paths) == 0 {
 		return false
 	}
 	return !scope.OneTime
@@ -361,16 +365,52 @@ func (s *Service) buildWorkspacePlan(planID kernel.PlanID, taskID kernel.TaskID,
 		effects = append(effects, "use git tools under workspace roots")
 	}
 	if kernel.NormalizeExecutionMode(string(mode)) == kernel.ExecutionModeAgent && !posture.cron {
-		caps = append(caps,
-			approval.CapabilityScope{
-				Capability: "http_get", MaxDurationMillis: defaultToolTimeoutMS, MaxCalls: 1, OneTime: true,
-			},
-			approval.CapabilityScope{
-				Capability: "http_get", MaxDurationMillis: defaultToolTimeoutMS, MaxCalls: defaultMaxCalls, OneTime: false,
-			},
-		)
-		effects = append(effects, "fetch approved http/https URLs after /perm (SSRF baseline still applies)")
+		for _, name := range []string{"http_get", "web_search", "web_extract"} {
+			caps = append(caps,
+				approval.CapabilityScope{
+					Capability: name, MaxDurationMillis: defaultToolTimeoutMS, MaxCalls: 1, OneTime: true,
+				},
+				approval.CapabilityScope{
+					Capability: name, MaxDurationMillis: defaultToolTimeoutMS, MaxCalls: defaultMaxCalls, OneTime: false,
+				},
+			)
+		}
+		effects = append(effects, "search the web and fetch approved http/https URLs after /perm (SSRF baseline still applies)")
 		risk = policy.RiskR2
+	}
+	if hasConfiguredRole(s.configuredRoles, providerconfig.RoleVision) {
+		caps = append(caps, approval.CapabilityScope{
+			Capability: "vision_analyze", Paths: append([]string(nil), pathRoots...),
+			MaxDurationMillis: defaultToolTimeoutMS, MaxCalls: defaultMaxCalls,
+		})
+		caps = append(caps, approval.CapabilityScope{
+			Capability: "video_analyze", Paths: append([]string(nil), pathRoots...),
+			MaxDurationMillis: defaultToolTimeoutMS, MaxCalls: defaultMaxCalls,
+		})
+		if kernel.NormalizeExecutionMode(string(mode)) == kernel.ExecutionModeAgent && !posture.cron {
+			caps = append(caps,
+				approval.CapabilityScope{
+					Capability: "vision_analyze", MaxDurationMillis: defaultToolTimeoutMS, MaxCalls: 1, OneTime: true,
+				},
+				approval.CapabilityScope{
+					Capability: "vision_analyze", MaxDurationMillis: defaultToolTimeoutMS, MaxCalls: defaultMaxCalls, OneTime: false,
+				},
+			)
+		}
+		effects = append(effects, "analyze workspace images and video frames with models.vision")
+		if risk == policy.RiskR0 {
+			risk = policy.RiskR1
+		}
+	}
+	if hasConfiguredRole(s.configuredRoles, providerconfig.RoleSpeech) {
+		caps = append(caps, approval.CapabilityScope{
+			Capability: "audio_transcribe", Paths: append([]string(nil), pathRoots...),
+			MaxDurationMillis: defaultToolTimeoutMS, MaxCalls: defaultMaxCalls,
+		})
+		effects = append(effects, "transcribe workspace audio with models.speech")
+		if risk == policy.RiskR0 {
+			risk = policy.RiskR1
+		}
 	}
 	// Logical sub-agent (ADR-039): both modes may spawn task; grants do not expand FS.
 	caps = append(caps, approval.CapabilityScope{
@@ -456,4 +496,14 @@ func (s *Service) buildWorkspacePlan(planID kernel.PlanID, taskID kernel.TaskID,
 			Rollback: "none", TimeoutMillis: defaultToolTimeoutMS, Capabilities: caps,
 		}},
 	}
+}
+
+func hasConfiguredRole(roles []string, want string) bool {
+	want = strings.TrimSpace(want)
+	for _, role := range roles {
+		if strings.TrimSpace(role) == want {
+			return true
+		}
+	}
+	return false
 }

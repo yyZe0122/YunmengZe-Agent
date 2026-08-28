@@ -668,6 +668,54 @@ func TestLoadChatPermissionMode(t *testing.T) {
 	}
 }
 
+func TestLoadChatWeb(t *testing.T) {
+	root := t.TempDir()
+	write := func(web string) {
+		t.Helper()
+		body := fmt.Sprintf(`{
+  "model": "deepseek/deepseek-chat",
+  "provider": {"deepseek": {"type": "openai-compatible", "options": {"baseURL": "https://api.deepseek.com"}, "models": {"deepseek-chat": {}}}},
+  "chat": {"web": %s}
+}`, web)
+		if err := os.WriteFile(filepath.Join(root, Filename), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(`{}`)
+	chat, err := LoadChat(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if chat.WebSearchBackend() != WebSearchDDG {
+		t.Fatalf("default backend = %q", chat.WebSearchBackend())
+	}
+	write(`{"search": "searxng"}`)
+	if _, err := LoadChat(root); err == nil {
+		t.Fatal("expected missing searxng_url")
+	}
+	write(`{"search": "searxng", "searxng_url": "http://127.0.0.1:8888"}`)
+	chat, err = LoadChat(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if chat.WebSearchBackend() != WebSearchSearxNG || chat.Web.SearxNGURL != "http://127.0.0.1:8888" {
+		t.Fatalf("searxng = %+v", chat.Web)
+	}
+	t.Setenv("YMZ_TEST_TAVILY", "tvly-test")
+	write(`{"search": "tavily", "tavily_key": "{env:YMZ_TEST_TAVILY}"}`)
+	chat, err = LoadChat(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if chat.Web.TavilyKey != "tvly-test" {
+		t.Fatalf("tavily key = %q", chat.Web.TavilyKey)
+	}
+	write(`{"search": "bing"}`)
+	if _, err := LoadChat(root); err == nil {
+		t.Fatal("expected unknown backend")
+	}
+}
+
 func TestLoadModelRolesAndValidation(t *testing.T) {
 	root := t.TempDir()
 	base := `{
@@ -737,8 +785,24 @@ func TestLoadModelRolesAndValidation(t *testing.T) {
 		t.Fatal("expected models.main rejection")
 	}
 	write(`{"vision": "deepseek/deepseek-chat"}`)
+	main, roles, err = LoadModelRoles(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if roles[RoleVision] != "deepseek/deepseek-chat" {
+		t.Fatalf("vision role = %v", roles)
+	}
+	write(`{"tts": "deepseek/deepseek-chat"}`)
 	if _, err := Load(root); err == nil {
 		t.Fatal("expected unknown role rejection")
+	}
+	write(`{"web": "deepseek/deepseek-flash"}`)
+	main, roles, err = LoadModelRoles(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if main != "deepseek/deepseek-chat" || roles[RoleWeb] != "deepseek/deepseek-flash" {
+		t.Fatalf("web role: main=%q roles=%v", main, roles)
 	}
 	write(`{"compact": "missing/model"}`)
 	if _, err := Load(root); err == nil {

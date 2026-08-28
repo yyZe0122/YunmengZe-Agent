@@ -242,7 +242,7 @@ func (s *Service) DecideWithOptions(ctx context.Context, permissionID, decision,
 	// IssueGrant requires exact CapabilityScope present in the plan (ADR-011).
 	// ask-mode plans embed once + session variants for high-risk tools.
 	// similar/permanent use non-once (session) plan scopes.
-	scope, err := findPlanScope(plan, kernel.StepID(req.StepID), req.Capability, req.ToolName, decision)
+	scope, err := findPlanScope(plan, kernel.StepID(req.StepID), req.Capability, req.ToolName, decision, req.Path, req.NetworkDomain)
 	if err != nil {
 		return Request{}, err
 	}
@@ -314,7 +314,7 @@ func narrowScopeForSimilar(scope approval.CapabilityScope, req Request) approval
 	if req.Capability == "process_exec" || req.Capability == "process_shell" {
 		scope = applyProcessSimilarPrefix(scope, req)
 	}
-	if req.Capability == "http_get" {
+	if req.Capability == "http_get" || req.Capability == "web_search" || req.Capability == "web_extract" || req.Capability == "vision_analyze" {
 		if host := strings.TrimSpace(req.NetworkDomain); host != "" && len(scope.NetworkDomains) == 0 {
 			scope.NetworkDomains = []string{strings.ToLower(host)}
 		}
@@ -392,12 +392,16 @@ func firstPath(paths []string) string {
 }
 
 // findPlanScope picks the plan capability matching tool + once/session variant.
-func findPlanScope(plan approval.PlanDocument, stepID kernel.StepID, capability, toolName, decision string) (approval.CapabilityScope, error) {
+// Path vs host: url requests (network domain, empty path) skip path-scoped entries so
+// vision_analyze similar/permanent does not mint a Paths grant that then fails pathAllowed.
+func findPlanScope(plan approval.PlanDocument, stepID kernel.StepID, capability, toolName, decision, path, networkDomain string) (approval.CapabilityScope, error) {
 	capName := strings.TrimSpace(capability)
 	if capName == "" {
 		capName = strings.TrimSpace(toolName)
 	}
 	wantOnce := decision == DecisionAllowOnce
+	wantHost := strings.TrimSpace(networkDomain) != "" && strings.TrimSpace(path) == ""
+	wantPath := strings.TrimSpace(path) != ""
 	try := func(filterStep bool) (approval.CapabilityScope, bool) {
 		var fallback approval.CapabilityScope
 		foundFallback := false
@@ -411,6 +415,12 @@ func findPlanScope(plan approval.PlanDocument, stepID kernel.StepID, capability,
 					continue
 				}
 				if cn.Capability != capName {
+					continue
+				}
+				if wantHost && len(cn.Paths) != 0 {
+					continue
+				}
+				if wantPath && len(cn.Paths) == 0 {
 					continue
 				}
 				if wantOnce && cn.OneTime && cn.MaxCalls == 1 {

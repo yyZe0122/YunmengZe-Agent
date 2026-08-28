@@ -14,6 +14,7 @@ import (
 type taskRunnerSetter interface {
 	SetRunner(tools.SubagentRunner)
 	SetAgentsOverlay(configDir, workspace string)
+	SetConfiguredRoles(roles []string)
 }
 
 type memoryBackendSetter interface {
@@ -81,6 +82,9 @@ func wireTools(stores coreStores, layout paths.Layout, workingDirectory string) 
 		return out, err
 	}
 	out.pathGuard = pathGuard
+	if err := tools.RegisterWebTools(broker, chatCfg); err != nil {
+		return out, err
+	}
 	if chatCfg.WorkspaceAllowAll() {
 		slog.Warn("chat.workspace.allow_all enabled: path containment disabled",
 			"component", "daemon", "operation", "path_guard", "result", "warning")

@@ -75,7 +75,7 @@ func (s *Service) executeChat(
 	// H7 job pin > O4 session prefer > daemon main. Pin before Prefix env + Build (ADR-051).
 	pin := s.resolveRunModelPin(ctx, task.SessionID, modelRef)
 	window := s.contextWindow
-	maxOut := contextpack.ClampMaxOutput(s.maxOutputTokens)
+	reqMax := s.maxOutputTokens
 	modelID := ""
 	modelLabel := strings.TrimSpace(s.mainModel)
 	if pin != nil {
@@ -83,7 +83,7 @@ func (s *Service) executeChat(
 			window = pin.ContextWindow
 		}
 		if pin.MaxTokens > 0 {
-			maxOut = contextpack.ClampMaxOutput(pin.MaxTokens)
+			reqMax = pin.MaxTokens
 		}
 		modelID = pin.Model
 		if ref := strings.TrimSpace(pin.Ref); ref != "" {
@@ -100,7 +100,7 @@ func (s *Service) executeChat(
 		}, "source", src, "pin", pin.Ref, "model", pin.Model)...)
 	}
 
-	sysPrompt := chatSystemPrompt(kernel.NormalizeExecutionMode(string(task.ExecutionMode)) == kernel.ExecutionModePlan, interactive)
+	sysPrompt := chatSystemPrompt(kernel.NormalizeExecutionMode(string(task.ExecutionMode)) == kernel.ExecutionModePlan, interactive, s.configuredRoles)
 	prefix := []providerapi.Message{
 		{Role: providerapi.RoleSystem, Content: sysPrompt},
 		{Role: providerapi.RoleSystem, Content: chatEnvBlock(modelLabel, s.sessionWorkspace(ctx, task), s.now().UTC().Format("2006-01-02"))},
@@ -120,7 +120,11 @@ func (s *Service) executeChat(
 			prefix = append(prefix, providerapi.Message{Role: providerapi.RoleSystem, Content: block})
 		}
 	}
-	view, err := s.buildContextView(ctx, task.SessionID, task.ID, userText, prefix, window, maxOut, modelID)
+	if window <= 0 {
+		window = contextpack.DefaultContextWindow
+	}
+	packMax := contextpack.ClampMaxOutput(reqMax)
+	view, err := s.buildContextView(ctx, task.SessionID, task.ID, userText, prefix, window, packMax, modelID)
 	if err != nil {
 		s.failChat(context.WithoutCancel(ctx), task, runID, stepID, err)
 		s.onError(err)
@@ -140,7 +144,7 @@ func (s *Service) executeChat(
 		Actor: runActor, TraceID: string(runID), Interactive: interactive,
 		Messages: persist, ProviderMessages: view.Messages(),
 		AllowedTools: allowed, CapabilityGrantIDs: grantIDs,
-		MaxOutputTokens: maxOut, MaxTotalTokens: plan.Budget.MaxTokens,
+		MaxOutputTokens: reqMax, MaxTotalTokens: plan.Budget.MaxTokens,
 		MaxCostMicros: plan.Budget.MaxCostMicros, ToolTimeoutMillis: timeoutMS,
 		ContextWindow: window,
 		Compacted:     view.Compacted,

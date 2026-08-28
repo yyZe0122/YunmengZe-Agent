@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 
+	"github.com/yyZe0122/yunmengze-agent/internal/providerconfig"
 	"github.com/yyZe0122/yunmengze-agent/internal/tools/internal/executor"
 )
 
@@ -74,6 +75,23 @@ func RegisterBuiltinsWithOptions(broker *Broker, roots []string, allowAll bool, 
 		}
 	}
 	return guard, nil
+}
+
+// RegisterWebTools registers web_search and web_extract (Phase W). chat.web selects the search backend.
+func RegisterWebTools(broker *Broker, chat providerconfig.ChatConfig) error {
+	if broker == nil {
+		return errors.New("tool broker is required")
+	}
+	cfg, err := newWebSearchConfig(chat)
+	if err != nil {
+		return err
+	}
+	for _, tool := range []Tool{newWebSearchTool(cfg), newWebExtractTool(16 * 1024 * 1024)} {
+		if err := broker.Register(tool); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // RegisterTaskTool registers the ADR-039 task tool. Runner may be set later via SetRunner.
