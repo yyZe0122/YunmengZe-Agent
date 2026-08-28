@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -17,9 +18,12 @@ import (
 	"github.com/yyZe0122/yunmengze-agent/internal/platform/paths"
 	"github.com/yyZe0122/yunmengze-agent/internal/providerconfig"
 	"github.com/yyZe0122/yunmengze-agent/internal/providerruntime"
+	"github.com/yyZe0122/yunmengze-agent/internal/providers"
 	"github.com/yyZe0122/yunmengze-agent/internal/sessiontodo"
 	"github.com/yyZe0122/yunmengze-agent/internal/toolpermission"
+	"github.com/yyZe0122/yunmengze-agent/internal/tools"
 	"github.com/yyZe0122/yunmengze-agent/internal/userquestion"
+	"github.com/yyZe0122/yunmengze-agent/pkg/providerapi"
 )
 
 type chatStack struct {
@@ -143,6 +147,15 @@ func wireChat(
 	}
 	stack.broker.SetEditCheckpointer(editStore)
 
+	var configuredRoles []string
+	if _, roles, roleMapErr := providerconfig.LoadModelRoles(layout.ConfigDir); roleMapErr == nil {
+		for role := range roles {
+			configuredRoles = append(configuredRoles, role)
+		}
+	}
+	if err := registerAuxMedia(stack, layout.ConfigDir, configuredRoles); err != nil {
+		return out, err
+	}
 	if providerRuntime != nil && providerRuntime.Provider() != nil && strings.TrimSpace(providerRuntime.LoadError()) == "" {
 		roleEndpoints, roleErr := providerruntime.BuildRoleEndpoints(layout.ConfigDir, providerRuntime.SelectedRef())
 		if roleErr != nil {
@@ -160,6 +173,7 @@ func wireChat(
 		}
 		out.agentRunner = agentRunner
 		stack.taskTool.SetRunner(agentRunner)
+		stack.taskTool.SetConfiguredRoles(configuredRoles)
 	}
 
 	if out.agentRunner != nil {
@@ -177,8 +191,9 @@ func wireChat(
 			Agent: out.agentRunner, Transcript: queries, WorkspaceRoots: chatRoots,
 			PathGuard: stack.pathGuard, DaemonCWD: workingDirectory, ConfigDir: layout.ConfigDir, ChatConfig: &chatCfgCopy,
 			AllowWriteCeiling: &writeCeiling, AllowGit: allowGit, AllowProcess: allowProcess,
-			ExtraTools:    stack.mcpToolNames,
-			ContextWindow: out.contextWindow, MaxOutputTokens: out.maxOutputTokens,
+			ExtraTools:      stack.mcpToolNames,
+			ConfiguredRoles: configuredRoles,
+			ContextWindow:   out.contextWindow, MaxOutputTokens: out.maxOutputTokens,
 			Context: contextStore, Compactor: out.agentRunner,
 			MemoryCurator: out.agentRunner, CompactionEnabled: &compactionEnabled, Calibrator: out.calibrator,
 			MainModel: providerRuntime.Model(),
@@ -198,4 +213,75 @@ func wireChat(
 			"context_window", out.contextWindow, "max_iterations", maxIterations, "compaction_enabled", compactionEnabled)
 	}
 	return out, nil
+}
+
+type visionToolAdapter struct {
+	inner providers.VisionBackend
+}
+
+func (a visionToolAdapter) Complete(ctx context.Context, prompt string, images []tools.ImageBytes) (string, error) {
+	parts := make([]providerapi.ImagePart, 0, len(images))
+	for _, img := range images {
+		if len(img.Data) == 0 {
+			continue
+		}
+		parts = append(parts, providerapi.ImagePart{MIME: img.MIME, Base64: encodeStdBase64(img.Data)})
+	}
+	return a.inner.Complete(ctx, prompt, parts)
+}
+
+func registerAuxMedia(stack toolStack, configDir string, configuredRoles []string) error {
+	hasVision, hasSpeech := false, false
+	for _, role := range configuredRoles {
+		switch role {
+		case providerconfig.RoleVision:
+			hasVision = true
+		case providerconfig.RoleSpeech:
+			hasSpeech = true
+		}
+	}
+	if !hasVision && !hasSpeech {
+		return nil
+	}
+	_, roles, err := providerconfig.LoadModelRoles(configDir)
+	if err != nil {
+		return err
+	}
+	var vision tools.VisionCompleter
+	var speech tools.AudioTranscriber
+	if hasVision {
+		ref := strings.TrimSpace(roles[providerconfig.RoleVision])
+		if ref == "" {
+			return fmt.Errorf("models.vision is configured but empty")
+		}
+		resolved, err := providerconfig.ResolveModel(configDir, ref)
+		if err != nil {
+			return fmt.Errorf("resolve models.vision: %w", err)
+		}
+		provider, err := providers.NewConfigured(*resolved)
+		if err != nil {
+			return fmt.Errorf("configure models.vision: %w", err)
+		}
+		vision = visionToolAdapter{inner: providers.VisionBackend{Provider: provider, Model: resolved.ModelID}}
+	}
+	if hasSpeech {
+		ref := strings.TrimSpace(roles[providerconfig.RoleSpeech])
+		if ref == "" {
+			return fmt.Errorf("models.speech is configured but empty")
+		}
+		resolved, err := providerconfig.ResolveModel(configDir, ref)
+		if err != nil {
+			return fmt.Errorf("resolve models.speech: %w", err)
+		}
+		backend, err := providers.NewWhisperBackend(*resolved)
+		if err != nil {
+			return fmt.Errorf("configure models.speech: %w", err)
+		}
+		speech = backend
+	}
+	return tools.RegisterMediaTools(stack.broker, stack.pathGuard, vision, speech)
+}
+
+func encodeStdBase64(data []byte) string {
+	return base64.StdEncoding.EncodeToString(data)
 }
