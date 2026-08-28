@@ -137,6 +137,7 @@ func run(args []string) error {
 	defer cancel()
 
 	if chat.providerRuntime != nil {
+		chat.providerRuntime.StartCatalogRefresh(ctx)
 		chat.providerRuntime.NoteFingerprint()
 		if w, werr := configreload.New(configreload.Options{
 			ConfigDir: layout.ConfigDir,

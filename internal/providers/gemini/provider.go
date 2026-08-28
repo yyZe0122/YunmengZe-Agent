@@ -170,6 +170,12 @@ func (p *Provider) requestBody(request providerapi.CompletionRequest) ([]byte, e
 	}
 	payload := generateRequest{}
 	toolNamesByID := make(map[string]string)
+	lastUser := -1
+	for i, message := range request.Messages {
+		if message.Role == providerapi.RoleUser {
+			lastUser = i
+		}
+	}
 	for index, message := range request.Messages {
 		switch message.Role {
 		case providerapi.RoleSystem:
@@ -186,7 +192,13 @@ func (p *Provider) requestBody(request providerapi.CompletionRequest) ([]byte, e
 			if message.ToolCallID != "" || len(message.ToolCalls) > 0 {
 				return nil, fmt.Errorf("user message %d cannot contain tool calls", index)
 			}
-			payload.Contents = append(payload.Contents, content{Role: "user", Parts: []part{{Text: message.Content}}})
+			parts := []part{{Text: message.Content}}
+			if index == lastUser {
+				for _, img := range request.Images {
+					parts = append(parts, part{InlineData: &inlineData{MIMEType: strings.TrimSpace(img.MIME), Data: img.Base64}})
+				}
+			}
+			payload.Contents = append(payload.Contents, content{Role: "user", Parts: parts})
 		case providerapi.RoleAssistant:
 			if message.ToolCallID != "" {
 				return nil, fmt.Errorf("assistant message %d cannot contain a tool call ID", index)
@@ -316,8 +328,14 @@ type content struct {
 
 type part struct {
 	Text             string            `json:"text,omitempty"`
+	InlineData       *inlineData       `json:"inlineData,omitempty"`
 	FunctionCall     *functionCall     `json:"functionCall,omitempty"`
 	FunctionResponse *functionResponse `json:"functionResponse,omitempty"`
+}
+
+type inlineData struct {
+	MIMEType string `json:"mimeType"`
+	Data     string `json:"data"`
 }
 
 type functionCall struct {

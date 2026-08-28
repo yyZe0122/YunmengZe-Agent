@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/yyZe0122/yunmengze-agent/internal/modelcatalog"
 )
 
 func loadFile(path string) (Resolved, error) {
@@ -41,7 +43,7 @@ func validateModelsMap(config File) error {
 			return errors.New(`models.main is not allowed; use top-level "model"`)
 		}
 		if _, ok := AllowedModelRoles[role]; !ok {
-			return fmt.Errorf("models.%s is not a supported role (allowed: subagent, compact)", role)
+			return fmt.Errorf("models.%s is not a supported role (allowed: %s)", role, allowedModelRoleList())
 		}
 		ref = strings.TrimSpace(ref)
 		if ref == "" {
@@ -197,11 +199,8 @@ func resolveFromFile(path string, config File, providerID, modelID string) (Reso
 	if modelConfig.Temperature != nil && (*modelConfig.Temperature < 0 || *modelConfig.Temperature > 2) {
 		return Resolved{}, fmt.Errorf("model %q temperature must be between 0 and 2", modelID)
 	}
-	if modelConfig.MaxTokens < 0 {
-		return Resolved{}, fmt.Errorf("model %q maxTokens must not be negative", modelID)
-	}
-	if modelConfig.ContextWindow < 0 {
-		return Resolved{}, fmt.Errorf("model %q contextWindow must not be negative", modelID)
+	if err := applyModelLimits(&modelConfig, modelID); err != nil {
+		return Resolved{}, err
 	}
 	reasoningEffort := strings.TrimSpace(modelConfig.ReasoningEffort)
 	if reasoningEffort != "" && protocol != ProtocolOpenAIChat && protocol != ProtocolOpenAIResponses {
@@ -226,6 +225,38 @@ func resolveFromFile(path string, config File, providerID, modelID string) (Reso
 		AnthropicVersion: strings.TrimSpace(provider.Options.AnthropicVersion),
 		Headers:          headers,
 	}, nil
+}
+
+func applyModelLimits(modelConfig *Model, modelID string) error {
+	if modelConfig.MaxTokens < 0 {
+		return fmt.Errorf("model %q maxTokens must not be negative", modelID)
+	}
+	if modelConfig.ContextWindow < 0 {
+		return fmt.Errorf("model %q contextWindow must not be negative", modelID)
+	}
+	if modelConfig.Limit != nil {
+		if modelConfig.Limit.Context < 0 {
+			return fmt.Errorf("model %q limit.context must not be negative", modelID)
+		}
+		if modelConfig.Limit.Output < 0 {
+			return fmt.Errorf("model %q limit.output must not be negative", modelID)
+		}
+		if modelConfig.ContextWindow == 0 && modelConfig.Limit.Context > 0 {
+			modelConfig.ContextWindow = modelConfig.Limit.Context
+		}
+		if modelConfig.MaxTokens == 0 && modelConfig.Limit.Output > 0 {
+			modelConfig.MaxTokens = modelConfig.Limit.Output
+		}
+	}
+	if modelConfig.ContextWindow > 0 {
+		return nil
+	}
+	query := strings.TrimSpace(modelConfig.ID)
+	if query == "" {
+		query = modelID
+	}
+	modelConfig.ContextWindow = modelcatalog.Lookup(query).Context
+	return nil
 }
 
 func resolveProtocol(protocol, providerType string) (string, error) {

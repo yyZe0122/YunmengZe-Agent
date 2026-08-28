@@ -175,6 +175,9 @@ func (p *Provider) requestBody(request providerapi.CompletionRequest) ([]byte, e
 	if strings.TrimSpace(request.Model) == "" || len(request.Messages) == 0 {
 		return nil, errors.New("model and at least one message are required")
 	}
+	if len(request.Images) > 0 {
+		return nil, errors.New("openai-responses does not support auxiliary images")
+	}
 	payload := responsesRequest{
 		Model: request.Model, MaxOutputTokens: request.MaxOutputTokens, Temperature: request.Temperature,
 	}

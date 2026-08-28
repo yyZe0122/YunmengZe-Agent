@@ -43,6 +43,11 @@ type ToolDefinition struct {
 	InputSchema json.RawMessage `json:"input_schema"`
 }
 
+type ImagePart struct {
+	MIME   string `json:"mime"`
+	Base64 string `json:"base64"`
+}
+
 type CompletionRequest struct {
 	Model           string           `json:"model"`
 	Messages        []Message        `json:"messages"`
@@ -51,6 +56,9 @@ type CompletionRequest struct {
 	MaxOutputTokens int64            `json:"max_output_tokens,omitempty"`
 	Temperature     *float64         `json:"temperature,omitempty"`
 	ReasoningEffort string           `json:"reasoning_effort,omitempty"`
+	// Images are auxiliary vision parts (ADR-055). Only openai-chat / anthropic / gemini serialize them.
+	// The main tool loop never sets this field.
+	Images []ImagePart `json:"images,omitempty"`
 }
 
 type TokenCount int64

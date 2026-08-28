@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yyZe0122/yunmengze-agent/internal/modelcatalog"
 	"github.com/yyZe0122/yunmengze-agent/internal/providers/internal/providerhttp"
 	"github.com/yyZe0122/yunmengze-agent/pkg/providerapi"
 )
@@ -170,9 +171,18 @@ func (p *Provider) requestBody(request providerapi.CompletionRequest) ([]byte, e
 	}
 	maxTokens := request.MaxOutputTokens
 	if maxTokens <= 0 {
-		maxTokens = 4096
+		maxTokens = modelcatalog.Lookup(request.Model).Output
+		if maxTokens <= 0 {
+			maxTokens = modelcatalog.DefaultMaxOutput
+		}
 	}
 	payload := messageRequest{Model: request.Model, MaxTokens: maxTokens, Temperature: request.Temperature}
+	lastUser := -1
+	for i, message := range request.Messages {
+		if message.Role == providerapi.RoleUser {
+			lastUser = i
+		}
+	}
 	for index, message := range request.Messages {
 		switch message.Role {
 		case providerapi.RoleSystem:
@@ -189,7 +199,16 @@ func (p *Provider) requestBody(request providerapi.CompletionRequest) ([]byte, e
 			if len(message.ToolCalls) > 0 || message.ToolCallID != "" {
 				return nil, fmt.Errorf("user message %d cannot contain tool calls", index)
 			}
-			payload.Messages = append(payload.Messages, anthropicMessage{Role: "user", Content: []contentBlock{{Type: "text", Text: message.Content}}})
+			blocks := []contentBlock{{Type: "text", Text: message.Content}}
+			if index == lastUser {
+				for _, img := range request.Images {
+					blocks = append(blocks, contentBlock{
+						Type:   "image",
+						Source: &imageSource{Type: "base64", MediaType: strings.TrimSpace(img.MIME), Data: img.Base64},
+					})
+				}
+			}
+			payload.Messages = append(payload.Messages, anthropicMessage{Role: "user", Content: blocks})
 		case providerapi.RoleAssistant:
 			if message.ToolCallID != "" {
 				return nil, fmt.Errorf("assistant message %d cannot contain a tool call ID", index)
@@ -306,6 +325,13 @@ type contentBlock struct {
 	Input     json.RawMessage `json:"input,omitempty"`
 	ToolUseID string          `json:"tool_use_id,omitempty"`
 	Content   string          `json:"content,omitempty"`
+	Source    *imageSource    `json:"source,omitempty"`
+}
+
+type imageSource struct {
+	Type      string `json:"type"`
+	MediaType string `json:"media_type"`
+	Data      string `json:"data"`
 }
 
 type anthropicTool struct {

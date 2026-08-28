@@ -34,3 +34,17 @@ func TestRequestBodyIncludesModelParameters(t *testing.T) {
 		t.Fatalf("payload = %+v", payload)
 	}
 }
+
+func TestRequestBodyRejectsImages(t *testing.T) {
+	provider, err := New(Config{BaseURL: "https://example.com"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = provider.requestBody(providerapi.CompletionRequest{
+		Model: "m", Messages: []providerapi.Message{{Role: providerapi.RoleUser, Content: "x"}},
+		Images: []providerapi.ImagePart{{MIME: "image/png", Base64: "AA"}},
+	})
+	if err == nil {
+		t.Fatal("expected images rejection")
+	}
+}

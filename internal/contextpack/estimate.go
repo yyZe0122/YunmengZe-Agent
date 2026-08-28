@@ -234,7 +234,7 @@ func truncateRunes(s string, max int) string {
 }
 
 // UsableWindow is context capacity left for prompt after output and reserve.
-// Zero contextWindow means unknown → no hard pack limit (caller may still trim).
+// Zero contextWindow means unknown → no hard pack limit (callers should pass DefaultContextWindow).
 func UsableWindow(contextWindow, maxOutput, reserve int64) int64 {
 	if contextWindow <= 0 {
 		return 0

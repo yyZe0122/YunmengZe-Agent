@@ -56,7 +56,7 @@ type Config struct {
 	// MaxToolResultRunes caps tool/assistant Content length on provider
 	// requests only. Zero uses DefaultMaxToolResultRunes. Records stay full.
 	MaxToolResultRunes int
-	// ContextWindow is the model context length in tokens; 0 = unknown (pack still L1-trims).
+	// ContextWindow is the model context length in tokens; 0 → DefaultContextWindow for packing.
 	ContextWindow int64
 	// Roles maps optional role names (subagent, compact) to endpoints.
 	// Unset roles fall back to main Provider/Model/ContextWindow.
@@ -197,7 +197,7 @@ func (r *Runner) SetContextWindow(n int64) {
 	r.contextWindow = n
 }
 
-// ContextWindow returns the configured model context length (0 = unknown).
+// ContextWindow returns the configured model context length (0 = use packing default).
 func (r *Runner) ContextWindow() int64 {
 	r.mu.RLock()
 	defer r.mu.RUnlock()

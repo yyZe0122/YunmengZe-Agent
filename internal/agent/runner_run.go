@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yyZe0122/yunmengze-agent/internal/contextpack"
 	"github.com/yyZe0122/yunmengze-agent/pkg/providerapi"
 )
 
@@ -88,7 +87,7 @@ func (r *Runner) Run(ctx context.Context, request RunRequest) (Result, error) {
 		request.ContextWindow = roleWindow
 	}
 	if r.useModelOverride(request) && request.OverrideMaxOutputTokens > 0 {
-		request.MaxOutputTokens = contextpack.ClampMaxOutput(request.OverrideMaxOutputTokens)
+		request.MaxOutputTokens = request.OverrideMaxOutputTokens
 	}
 	var stepSigs []string
 	toolsDisabled := false
@@ -101,9 +100,12 @@ func (r *Runner) Run(ctx context.Context, request RunRequest) (Result, error) {
 			return result, err
 		}
 		maxOutputTokens := request.MaxOutputTokens
-		if request.MaxTotalTokens > 0 {
+		if request.MaxTotalTokens > 0 && maxOutputTokens > 0 {
 			remaining := request.MaxTotalTokens - int64(result.Usage.TotalTokens)
-			if maxOutputTokens <= 0 || maxOutputTokens > remaining {
+			if remaining < 0 {
+				remaining = 0
+			}
+			if maxOutputTokens > remaining {
 				maxOutputTokens = remaining
 			}
 		}

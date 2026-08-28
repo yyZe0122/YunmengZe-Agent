@@ -326,6 +326,12 @@ func (p *Provider) requestBodyWithFormat(request providerapi.CompletionRequest, 
 	if strings.TrimSpace(request.Model) == "" || len(request.Messages) == 0 {
 		return nil, errors.New("model and at least one message are required")
 	}
+	lastUser := -1
+	for i, message := range request.Messages {
+		if message.Role == providerapi.RoleUser {
+			lastUser = i
+		}
+	}
 	messages := make([]chatMessage, len(request.Messages))
 	for i, message := range request.Messages {
 		if message.Role != providerapi.RoleSystem && message.Role != providerapi.RoleUser &&
@@ -343,6 +349,16 @@ func (p *Provider) requestBodyWithFormat(request providerapi.CompletionRequest, 
 			return nil, fmt.Errorf("non-assistant message %d cannot contain tool calls", i)
 		}
 		converted := chatMessage{Role: string(message.Role), Content: message.Content, ToolCallID: message.ToolCallID}
+		if i == lastUser && len(request.Images) > 0 && message.Role == providerapi.RoleUser {
+			parts := []chatContentPart{{Type: "text", Text: message.Content}}
+			for _, img := range request.Images {
+				parts = append(parts, chatContentPart{
+					Type:     "image_url",
+					ImageURL: &chatImageURL{URL: "data:" + strings.TrimSpace(img.MIME) + ";base64," + img.Base64},
+				})
+			}
+			converted.Content = parts
+		}
 		for _, call := range message.ToolCalls {
 			if strings.TrimSpace(call.ID) == "" || strings.TrimSpace(call.Name) == "" || !json.Valid([]byte(call.Arguments)) {
 				return nil, fmt.Errorf("assistant message %d has an invalid tool call", i)
@@ -590,9 +606,19 @@ type chatRequest struct {
 
 type chatMessage struct {
 	Role       string         `json:"role"`
-	Content    string         `json:"content"`
+	Content    any            `json:"content"`
 	ToolCallID string         `json:"tool_call_id,omitempty"`
 	ToolCalls  []chatToolCall `json:"tool_calls,omitempty"`
+}
+
+type chatContentPart struct {
+	Type     string        `json:"type"`
+	Text     string        `json:"text,omitempty"`
+	ImageURL *chatImageURL `json:"image_url,omitempty"`
+}
+
+type chatImageURL struct {
+	URL string `json:"url"`
 }
 
 type chatTool struct {

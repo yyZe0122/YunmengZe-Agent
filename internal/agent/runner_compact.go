@@ -176,16 +176,10 @@ func (r *Runner) maybeCompactMidTurn(ctx context.Context, messages []providerapi
 		window = r.contextWindow
 		r.mu.RUnlock()
 	}
-	raw := contextpack.EstimateMessages(messages)
 	if window <= 0 {
-		if raw < 32_000 {
-			return messages, false
-		}
-		slog.Info("agent mid-turn compact (unknown window, large estimate)",
-			"component", "agent", "operation", "mid_turn_compact", "result", "succeeded",
-			"run_id", request.RunID, "task_id", request.TaskID)
-		return r.rebuildProviderView(ctx, messages, request, model), true
+		window = contextpack.DefaultContextWindow
 	}
+	raw := contextpack.EstimateMessages(messages)
 	maxOut := contextpack.ClampMaxOutput(request.MaxOutputTokens)
 	usable := contextpack.UsableWindow(window, maxOut, 0)
 	est := raw
@@ -221,6 +215,9 @@ func (r *Runner) rebuildProviderView(ctx context.Context, messages []providerapi
 		r.mu.RLock()
 		window = r.contextWindow
 		r.mu.RUnlock()
+	}
+	if window <= 0 {
+		window = contextpack.DefaultContextWindow
 	}
 	maxOut := contextpack.ClampMaxOutput(request.MaxOutputTokens)
 	usable := contextpack.UsableWindow(window, maxOut, 0)

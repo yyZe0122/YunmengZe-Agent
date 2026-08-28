@@ -7,8 +7,10 @@ import (
 )
 
 const (
-	// DefaultMaxOutputTokens is the output cap when model maxTokens is unset or huge.
-	DefaultMaxOutputTokens int64 = 8_192
+	// DefaultContextWindow is packing/TUI window when the model window is still unset after catalog fill.
+	DefaultContextWindow int64 = 1_048_576
+	// DefaultMaxOutputTokens is the packing output term when model maxTokens is unset.
+	DefaultMaxOutputTokens int64 = 128_000
 	// HistoryBudgetShare is the fraction of usable window reserved for Tail packing.
 	HistoryBudgetShare = 60
 	// MinHistoryBudget floors a positive usable window's tail budget.
@@ -105,9 +107,9 @@ func HistoryBudget(usable int64) int64 {
 	return budget
 }
 
-// ClampMaxOutput returns a sane output cap for UsableWindow.
+// ClampMaxOutput returns the packing output term. Zero/negative → 128k; configured values are kept.
 func ClampMaxOutput(maxOutput int64) int64 {
-	if maxOutput <= 0 || maxOutput > 16_384 {
+	if maxOutput <= 0 {
 		return DefaultMaxOutputTokens
 	}
 	return maxOutput

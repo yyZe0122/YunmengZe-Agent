@@ -110,11 +110,14 @@ func TestHistoryBudgetAndClamp(t *testing.T) {
 	if got := HistoryBudget(3_000); got != MinHistoryBudget {
 		t.Fatalf("floor=%d", got)
 	}
-	if ClampMaxOutput(0) != DefaultMaxOutputTokens || ClampMaxOutput(128_000) != DefaultMaxOutputTokens {
-		t.Fatal("clamp")
+	if ClampMaxOutput(0) != DefaultMaxOutputTokens {
+		t.Fatal("unset → 128k")
+	}
+	if ClampMaxOutput(128_000) != 128_000 || ClampMaxOutput(384_000) != 384_000 {
+		t.Fatal("keep configured maxTokens")
 	}
 	if ClampMaxOutput(2048) != 2048 {
-		t.Fatal("keep configured maxTokens")
+		t.Fatal("keep small configured maxTokens")
 	}
 }
 

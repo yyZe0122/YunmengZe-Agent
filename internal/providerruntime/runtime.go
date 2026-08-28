@@ -14,6 +14,7 @@ import (
 	"github.com/yyZe0122/yunmengze-agent/internal/agent"
 	"github.com/yyZe0122/yunmengze-agent/internal/applicationerror"
 	"github.com/yyZe0122/yunmengze-agent/internal/gateway"
+	"github.com/yyZe0122/yunmengze-agent/internal/modelcatalog"
 	"github.com/yyZe0122/yunmengze-agent/internal/providerconfig"
 	"github.com/yyZe0122/yunmengze-agent/internal/providers"
 	"github.com/yyZe0122/yunmengze-agent/pkg/providerapi"
@@ -65,6 +66,7 @@ type Runtime struct {
 // LoadError set (gateway still starts). Hard provider construction errors return err.
 func FromConfigDir(configDir string) (*Runtime, error) {
 	configDir = strings.TrimSpace(configDir)
+	modelcatalog.Init(configDir)
 	rt := &Runtime{configDir: configDir}
 	configured, err := providerconfig.Load(configDir)
 	if err != nil {
@@ -101,6 +103,34 @@ func (r *Runtime) Bind(agent MainEndpoint, chat ContextWindow, snap SnapshotSink
 	r.agent = agent
 	r.chat = chat
 	r.gateway = snap
+}
+
+// StartCatalogRefresh refreshes models.dev in the background and reapplies packing window/cap.
+func (r *Runtime) StartCatalogRefresh(ctx context.Context) {
+	if r == nil {
+		return
+	}
+	configDir := r.configDir
+	go func() {
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		if err := modelcatalog.Refresh(ctx, configDir); err != nil {
+			slog.Warn("model catalog refresh failed", "component", "modelcatalog", "operation", "refresh", "result", "warning", "error", err)
+			return
+		}
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		if r.loadError != "" || r.selectedRef == "" {
+			return
+		}
+		resolved, err := providerconfig.ResolveModel(r.configDir, r.selectedRef)
+		if err != nil || resolved == nil {
+			return
+		}
+		_ = r.applyMainLocked(r.provider, resolved.ModelID, resolved.ContextWindow, resolved.MaxTokens)
+		r.pushSnapshotLocked("")
+	}()
 }
 
 // Provider returns the current main provider (may be nil).

@@ -47,6 +47,87 @@ func TestLoadResolvesSelectedModelOptions(t *testing.T) {
 	}
 }
 
+func TestLoadFillsContextWindowFromCatalog(t *testing.T) {
+	root := t.TempDir()
+	config := `{
+  "model": "deepseek1/deepseek-v4-flash",
+  "provider": {
+    "deepseek1": {
+      "type": "openai-compatible",
+      "options": {"baseURL": "https://api.deepseek.com"},
+      "models": {"deepseek-v4-flash": {"name": "Flash"}}
+    }
+  }
+}`
+	if err := os.WriteFile(filepath.Join(root, LocalFilename), []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.MaxTokens != 0 {
+		t.Fatalf("maxTokens should stay unset for omit-on-wire, got %d", resolved.MaxTokens)
+	}
+	if resolved.ContextWindow < 100_000 {
+		t.Fatalf("contextWindow = %d, want catalog fill", resolved.ContextWindow)
+	}
+}
+
+func TestLoadAcceptsLimitAlias(t *testing.T) {
+	root := t.TempDir()
+	config := `{
+  "model": "test/custom",
+  "provider": {
+    "test": {
+      "type": "openai-compatible",
+      "options": {"baseURL": "https://provider.example"},
+      "models": {"custom": {"name": "Custom", "limit": {"context": 200000, "output": 32000}}}
+    }
+  }
+}`
+	if err := os.WriteFile(filepath.Join(root, LocalFilename), []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.ContextWindow != 200000 || resolved.MaxTokens != 32000 {
+		t.Fatalf("limit alias = %+v", resolved)
+	}
+}
+
+func TestLoadExplicitFieldsBeatLimit(t *testing.T) {
+	root := t.TempDir()
+	config := `{
+  "model": "test/custom",
+  "provider": {
+    "test": {
+      "type": "openai-compatible",
+      "options": {"baseURL": "https://provider.example"},
+      "models": {
+        "custom": {
+          "maxTokens": 1111,
+          "contextWindow": 2222,
+          "limit": {"context": 999999, "output": 888888}
+        }
+      }
+    }
+  }
+}`
+	if err := os.WriteFile(filepath.Join(root, LocalFilename), []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.ContextWindow != 2222 || resolved.MaxTokens != 1111 {
+		t.Fatalf("explicit should win: %+v", resolved)
+	}
+}
+
 func TestLoadRejectsInvalidSelectedModelOptions(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -57,6 +138,7 @@ func TestLoadRejectsInvalidSelectedModelOptions(t *testing.T) {
 		{name: "temperature", provider: "openai-compatible", modelBlock: `"temperature": 2.1`, want: "temperature"},
 		{name: "max tokens", provider: "openai-compatible", modelBlock: `"maxTokens": -1`, want: "maxTokens"},
 		{name: "context window", provider: "openai-compatible", modelBlock: `"contextWindow": -1`, want: "contextWindow"},
+		{name: "limit context", provider: "openai-compatible", modelBlock: `"limit": {"context": -1, "output": 1}`, want: "limit.context"},
 		{name: "unsupported reasoning", provider: "anthropic", modelBlock: `"reasoningEffort": "high"`, want: "reasoningEffort"},
 	}
 	for _, test := range tests {

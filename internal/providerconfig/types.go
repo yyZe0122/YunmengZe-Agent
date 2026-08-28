@@ -2,6 +2,7 @@
 package providerconfig
 
 import (
+	"slices"
 	"strings"
 	"time"
 )
@@ -22,7 +23,7 @@ type File struct {
 	Schema string `json:"$schema,omitempty"`
 	Model  string `json:"model"`
 	// Models maps optional role → provider/model (ADR-045). Unset role falls back to Model.
-	// Allowed keys: subagent, compact. Unknown keys are rejected.
+	// Allowed keys: subagent, compact, web, vision, speech. Unknown keys are rejected.
 	Models   map[string]string   `json:"models,omitempty"`
 	Provider map[string]Provider `json:"provider"`
 	// Chat configures agent-mode session chat workspace grants (optional).
@@ -36,12 +37,27 @@ const (
 	RoleMain     = "main"
 	RoleSubagent = "subagent"
 	RoleCompact  = "compact"
+	RoleWeb      = "web"
+	RoleVision   = "vision"
+	RoleSpeech   = "speech"
 )
 
 // AllowedModelRoles are keys permitted under top-level "models" (excluding main).
 var AllowedModelRoles = map[string]struct{}{
 	RoleSubagent: {},
 	RoleCompact:  {},
+	RoleWeb:      {},
+	RoleVision:   {},
+	RoleSpeech:   {},
+}
+
+func allowedModelRoleList() string {
+	names := make([]string, 0, len(AllowedModelRoles))
+	for role := range AllowedModelRoles {
+		names = append(names, role)
+	}
+	slices.Sort(names)
+	return strings.Join(names, ", ")
 }
 
 // MCPConfig is the optional MCP servers section of agent.json.
@@ -102,6 +118,24 @@ type ChatConfig struct {
 	// Commands are user slash templates (O3). Instruction text only — no grants.
 	// Key is slash name without leading slash. Builtin TUI names are rejected.
 	Commands map[string]ChatCommandConfig `json:"commands,omitempty"`
+	// Web selects the search backend for web_search (Phase W). Omit → ddg.
+	Web *ChatWebConfig `json:"web,omitempty"`
+}
+
+const (
+	WebSearchDDG     = "ddg"
+	WebSearchSearxNG = "searxng"
+	WebSearchTavily  = "tavily"
+)
+
+// ChatWebConfig is optional chat.web (Phase W). Secrets may use {env:}/{file:}.
+type ChatWebConfig struct {
+	// Search is ddg (default) | searxng | tavily.
+	Search string `json:"search,omitempty"`
+	// SearxNGURL is required when Search is searxng. {env:}/{file:} resolved at LoadChat.
+	SearxNGURL string `json:"searxng_url,omitempty"`
+	// TavilyKey is required when Search is tavily. Never log or serve this value.
+	TavilyKey string `json:"tavily_key,omitempty"`
 }
 
 // ChatCommandConfig is one chat.commands entry (O3).
@@ -209,6 +243,18 @@ func (c ChatConfig) AgentProcessEnabled() bool {
 		return true
 	}
 	return c.permissionAllowContains("process")
+}
+
+// WebSearchBackend returns ddg | searxng | tavily. Omit / empty → ddg.
+func (c ChatConfig) WebSearchBackend() string {
+	if c.Web == nil {
+		return WebSearchDDG
+	}
+	search := strings.ToLower(strings.TrimSpace(c.Web.Search))
+	if search == "" {
+		return WebSearchDDG
+	}
+	return search
 }
 
 func (c ChatConfig) permissionAllowContains(name string) bool {
@@ -350,9 +396,17 @@ type Model struct {
 	Temperature    *float64 `json:"temperature,omitempty"`
 	MaxTokens      int64    `json:"maxTokens,omitempty"`
 	// ContextWindow is the model context length in tokens (not maxTokens output cap).
-	// Omit or 0 when unknown.
-	ContextWindow   int64  `json:"contextWindow,omitempty"`
-	ReasoningEffort string `json:"reasoningEffort,omitempty"`
+	// Omit or 0 to fill from models.dev or the 2026-08 default (1M).
+	ContextWindow int64 `json:"contextWindow,omitempty"`
+	// Limit is the OpenCode-style alias for context/output; explicit fields win when set.
+	Limit           *ModelLimit `json:"limit,omitempty"`
+	ReasoningEffort string      `json:"reasoningEffort,omitempty"`
+}
+
+// ModelLimit is OpenCode provider.models.*.limit.
+type ModelLimit struct {
+	Context int64 `json:"context,omitempty"`
+	Output  int64 `json:"output,omitempty"`
 }
 
 type Resolved struct {

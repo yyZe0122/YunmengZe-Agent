@@ -24,8 +24,11 @@ func (r *Runner) packForProvider(
 		window = r.contextWindow
 		r.mu.RUnlock()
 	}
+	if window <= 0 {
+		window = contextpack.DefaultContextWindow
+	}
 	toolEst := contextpack.EstimateTools(definitions)
-	usable = contextpack.UsableWindow(window, maxOutputTokens, 0)
+	usable = contextpack.UsableWindow(window, contextpack.ClampMaxOutput(maxOutputTokens), 0)
 	budget := int64(0)
 	if usable > 0 {
 		budget = usable - toolEst
