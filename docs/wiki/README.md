@@ -2,7 +2,7 @@
 
 Numbered ADRs plus the `core.db` map. Catalog: [`docs/README.md`](../README.md).
 
-Living status / backlog (only): [`docs/backlog/current.md`](../backlog/current.md). **当前线 v0.4.0**（ADR-053/054 + retract）。O5–O6 / H2 / M* / Marketplace 等用户再提。  
+Living status / backlog (only): [`backlog/current.md`](../backlog/current.md). **当前线 v0.4.0**（ADR-053/054 + retract）。**Phase S/W/M** `task.kind` + web 检索 + 辅助媒体已落地。**下一优先 VS Code V4**。O5–O6 / H2 / 飞书 M* / Marketplace 等用户再提。  
 Agent/contributor entry: [`AGENTS.md`](../../AGENTS.md).  
 Database map: [`database.md`](database.md).
 
@@ -27,7 +27,7 @@ Do **not** restore deleted pieces: Module Runtime/Supervisor, out-of-process Mem
 | 5 | [037](adr/037-cli-daemon-lifecycle.md) | Daemon ensure / stop semantics |
 | 6 | [038](adr/038-session-chat-boundary.md) | OpenCode-style agent build / plan RO chat |
 | 7 | [022](adr/022-application-query-boundaries.md) | Writes via services, reads via corequery |
-| 8 | [039](adr/039-logical-child-runs.md) | Logical child Runs (`task` tool, `parent_run_id`) |
+| 8 | [039](adr/039-logical-child-runs.md) | Logical child Runs (`task` tool, `parent_run_id`, kind catalog) |
 | 9 | [040](adr/040-mcp-tool-broker.md) | MCP stdio + remote HTTP/SSE via Tool Broker |
 | 10 | [041](adr/041-context-packing-and-pressure.md) | Provider-view packing, compaction, context API |
 | 11 | [042](adr/042-chat-native-jobs.md) | Chat-native Job/cron (timed chatsession submit; H7 model pin) |
@@ -36,12 +36,13 @@ Do **not** restore deleted pieces: Module Runtime/Supervisor, out-of-process Mem
 | 14 | [045](adr/045-model-roles.md) | Optional model roles (main / subagent / compact); O4 session prefer + run resolve |
 | 15 | [046](adr/046-session-workspace-and-permission-tiers.md) | Session workspace + permission tiers |
 | 16 | [047](adr/047-structured-logging-and-debug-chain.md) | Structured logs + real-machine debug chain |
-| 17 | [048](adr/048-provider-config-hot-reload.md) | Provider config watch + main-stack hot-reload |
+| 17 | [048](adr/048-provider-config-hot-reload.md) | Provider config watch + main-stack hot-reload; models.dev catalog fill |
 | 18 | [050](adr/050-in-process-self-improvement.md) | In-process skill draft / habit hint / skill usage (H3/H4/H5-skill) |
 | 19 | [051](adr/051-coding-loop-contextview.md) | Phase Q ContextView + coding-loop contract (QB–QH) |
 | 20 | [052](adr/052-coding-loop-harness.md) | Phase R turn/step/next-step inbox + observation contract |
 | 21 | [053](adr/053-charm-v2-tui.md) | Charm v2 TUI: 清宣纸 chrome, textarea, no mouse |
 | 22 | [054](adr/054-vscode-terminal-launcher.md) | VS Code extension: terminal launcher for existing TUI; no Gateway HTTP |
+| 23 | [055](adr/055-auxiliary-media-boundary.md) | Auxiliary vision/speech/video tools; main loop stays text |
 
 Also: O3 `chat.commands` (ADR-038 / [provider-protocols](provider-protocols.md)); O4/H7 run resolve (`internal/modelresolve`, ADR-045：job pin → prefer → main).
 
@@ -83,21 +84,22 @@ Provider wire formats: [`provider-protocols.md`](provider-protocols.md). VS Code
 | 036 | Task skill snapshot | Explicit `skill_ids` preload; model `skills_list`/`skill_view`; chatsession injects explicit snapshot |
 | 037 | CLI / daemon lifecycle | |
 | 038 | Session chat boundary | Dual-track agent/plan; Tab Auto stance; `permission.allow`; `AGENTS.md` inject |
-| 039 | Logical child runs | `parent_run_id` + `task` tool (sync) |
+| 039 | Logical child runs | `parent_run_id` + `task` tool (sync); kind catalog; child is always a leaf |
 | 040 | MCP via Tool Broker | stdio + remote Streamable HTTP / legacy SSE; no Module Runtime |
 | 041 | Context packing / pressure | Token budget pack, compaction triggers, anti-thrash, `/compact` |
 | 042 | Chat-native jobs | Timed session chat submit; lease from 017; TUI `/cron` primary |
 | 043 | Tool-call permission interaction | TUI Agent `/perm`; Tab Auto session stance; `permission.allow`; SSE `permission.*` |
 | 044 | In-process memory boundary | Layered L0–L3 memory; freeze inject; FTS; `/memory` `/memory archived` `/journey`; injectscan (H6); H1-lite curator; H5-lite `default_ttl` + soft-archive; no Module Runtime |
-| 045 | Model roles | Optional `models.subagent` / `models.compact`; O4 session prefer + H7 job pin resolve |
+| 045 | Model roles | Optional `models.subagent` / `compact` / `web` / `vision` / `speech`; Prefix lists extra configured roles; O4 session prefer + H7 job pin resolve |
 | 046 | Session workspace + permission tiers | Client cwd session root; once/similar/permanent/deny |
 | 047 | Structured logging / debug chain | slog JSON stage boundaries; `ymz logs`; tests vs real-machine |
-| 048 | Provider config hot-reload | Main stack only; no late-bind chat |
+| 048 | Provider config hot-reload | Main stack only; no late-bind chat; models.dev window fill |
 | 050 | In-process self-improvement | H3 skill draft+apply; H4 habit hint; H5-skill last-used/archive; ≠ Evolution |
 | 051 | Coding-loop ContextView | Single `Build`; retire `History`; todo / L3 / checkpoint boundaries |
 | 052 | Coding-loop harness | Observation contract; turn/step/next-step inbox; steer / ask_user（R1–R5 已落地） |
 | 053 | Charm v2 TUI | bubbletea/lipgloss/glamour v2 + 清宣纸 chrome；无 UV 整页 / lazy list；no mouse grab |
 | 054 | VS Code terminal launcher | `extensions/vscode`; TUI-only; no Marketplace this phase |
+| 055 | Auxiliary media boundary | Tool-internal Complete / Whisper; no multimodal main loop |
 
 Missing numbers (002, 005, 014–015, 019–021, 025, …) are **historical gaps**, not missing files to recreate.
 

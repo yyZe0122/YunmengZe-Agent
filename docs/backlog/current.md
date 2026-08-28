@@ -1,6 +1,6 @@
 # YunmengZe Agent 当前状态
 
-更新：2026-08-27（**v0.4.0** 清宣纸 TUI + VS Code 启动器 + `/edit` retract）
+更新：2026-08-28（**Phase S/W/M 已落地**。下一优先 = VS Code V4；O5–O6 / 飞书等用户再提）
 
 **本文件是唯一活着的优化/backlog 文档。** 只写未完成与暂缓项；已落地细节见 ADR（`docs/wiki/adr/`）、[`docs/wiki/database.md`](../wiki/database.md)、changelog 与 git。目录：[`docs/README.md`](../README.md)。
 
@@ -17,10 +17,12 @@
 | Crush TUI | 契约 ~95%；画面不对标 | 快捷键/perm/steer/折叠仍学 Crush 契约；**chrome 为清宣纸**（不抄 Crush 圆角/渐变/字母表） |
 | Hermes 分层记忆 | 架构 ~90% | + H6；**H1-lite curator**；**H5-lite** `default_ttl` + 过期软归档（冻结块仍手动 refresh） |
 | Hermes 自进化 | ~40% | H3 草稿+人工 apply；H4 习惯提示；H5-skill 软归档（ADR-050）；无自动 apply / yolo |
+| Hermes 委派 | ~50% | 同步 `task` + `kind` general/explore/web + 叶子禁带；**无** 并行 / 后台 / orchestrator |
+| Hermes Media & Web | ~70% | `web_search`/`web_extract`/`http_get` + 辅助 vision/speech/video 工具；无实时 Voice / 图生 |
 | Hermes 消息网关 | ~0% | 仅本机 UDS/loopback；**暂不上**飞书/微信（本机编码/定时为主） |
 
 **产品焦点：** 本机编码循环质量（工具观察 + turn/step/inbox + TUI 跟手）+ 简单任务 + 定时任务。通道/SDK 是添头。  
-**下一优先：** 原生聊天 / Marketplace（V4–V5）与 O5–O6 / H2 / M* 等用户再提。
+**下一优先：** **VS Code V4**（Claude Code 式侧栏）。O5–O6 / H2 / 飞书 M* / Marketplace 仍用户再提。
 
 ## 原则（不变）
 
@@ -29,7 +31,8 @@
 - Skill 仅指令文本，不扩大授权；`skill_ids` 仅显式预载（TUI/job）；Prefix 注入技能目录（id+一句话）；正文仍 `skills_list` → `skill_view`（ADR-036 / 052）。用户规则：`<ConfigDir>/AGENTS.md` + 可选项目 `.yunmengze/AGENTS.md`（子代理同样继承）。
 - plan 永远只读；高风险工具仅 agent。TUI Tab **Agent → Plan → Auto**：Agent 未预授则 `/perm`；Auto 为本 session 预授 process+git（切走结束）。记住放行：`chat.permission.allow` 或 `chat.tools.*`（OR）。cron / CLI 永不 wait。见 ADR-038 / 043 / 046。
 - 会话记忆为 in-process MemoryManager（ADR-044），非独立 Memory 进程。
-- **客户端分层（ADR-018/022/054）：** 业务用例只在 daemon；Gateway 仅 HTTP 适配；CLI 与 TUI 经 `gatewayclient` 并列，TUI **不** exec CLI、**不** import tools/providers/agent。VS Code 扩展（本相）只启动 TUI，不走 Gateway HTTP。
+- **客户端分层（ADR-018/022/054）：** 业务用例只在 daemon；Gateway 仅 HTTP 适配；CLI 与 TUI 经 `gatewayclient` 并列，TUI **不** exec CLI、**不** import tools/providers/agent。VS Code 扩展（本相）只启动 TUI，不走 Gateway HTTP。拖文件 / 原生聊天 = V4 Webview，终端启动器做不到。
+- **子代理：** 逻辑子 Run（`parent_run_id` + `task` 工具，ADR-039）；同步阻塞；grant/工具不得扩大。`task.kind` 目录：广告 `general`/`explore`/`web`；配了 `models.vision|speech` 才广告 vision/speech/video。子永远叶子。**不上** Hermes 并行/后台/`role=orchestrator`。
 - **消息通道（规划）：** 第二客户端 → `tasksubmission` / `taskcontrol`；**不**在 Gateway 内跑 tool/provider/grant。
 - **Go 精神：** 具体类型 + 调用方小接口；composition root 在 `cmd/`；无 DI 容器 / ORM / 通用事件总线。
 
@@ -75,13 +78,67 @@ Phase R：harness 循环语义（ADR-052）✅
 Phase TUI-v2：Charm v2 机械迁（引擎/textarea/快捷键/todos）✅ v0.4.0
 Phase TUI-ink：清宣纸 chrome ✅ v0.4.0
 Phase QG retract：`/edit` · `fs_remove` · kind 028 ✅ v0.4.0
-Phase IDE-launcher：VS Code 终端启动器（ADR-054）V0–V3 ✅ v0.4.0；V4–V5 等用户再提
-H2 / O5–O6 / M* / IDE-webview / Marketplace ── 用户再提（不插队）
+Phase IDE-launcher：VS Code 终端启动器（ADR-054）V0–V3 ✅ v0.4.0
+Phase S：类型化子代理 `general`/`explore` ✅
+Phase W：网页检索 `web_search`/`web_extract` + `kind=web` ✅
+Phase M：辅助媒体 vision/speech/video ✅
+Phase IDE-webview：VS Code V4   ← 下一优先
+H2 / O5–O6 / 飞书 M* / Marketplace ── 用户再提（不插队）
 ```
 
-### Phase IDE-launcher（VS Code 终端启动器）
+### Phase S — 类型化子代理 ✅
+
+已落地：kind 目录 `internal/tools/taskkind.go`；广告 `general`/`explore`/`web`；子永远剔 `task`；显式禁带请求 fail-closed；Prefix 不再写死「No vision」。`vision`/`speech`/`video` 在目录里占位且 `Advertised=false`。`AllowedModelRoles`：`subagent`/`compact`/`web`。
+
+```json
+{ "prompt": "…", "kind": "explore", "tools": ["fs_grep"] }
+```
+
+| ID | 项 | 状态 |
+| --- | --- | --- |
+| **S0** | 扩 ADR-039 / ADR-045 | ✅ |
+| **S1** | `task` kind + 叶子 | ✅ |
+| **S2** | `AllowedModelRoles` 报错数据源 | ✅（W 已加 `web`） |
+| **S3** | kind 过滤 / 禁带 / 未广告不建 Run | ✅ |
+
+**不做（本轨）：** Hermes `delegate_task` 并行/后台、`role=orchestrator`、worktree isolation、`/review`、`/agents` overlay。
+
+### Phase W — 网页检索 ✅
+
+已落地：`web_search` / `web_extract`（Broker）；交互 agent 广告，plan/cron 不广告；`/perm similar` = host。`chat.web.search` = `ddg`（默认）| `searxng` | `tavily`；缺 URL/key → LoadChat 失败。SearXNG 配置 URL 的 host 仅对 `web_search` 作 SSRF 例外。`task(kind=web)` 已广告；`models.web` 进 whitelist（缺则回落 subagent）。父集没有 web 工具则不建 Run。
+
+**不做：** Playwright / `browser_*` / Computer Use。
+
+### Phase M — 图片 / 语音 / 视频 ✅
+
+已落地（ADR-055）：`vision_analyze`（path 或 `/perm` url）、`audio_transcribe`（Whisper `/v1/audio/transcriptions`）、`video_analyze`（ffmpeg 抽 ≤8 帧）。未配 `models.vision|speech` 不广告。主循环仍文本。`task(kind=vision|speech|video)` 配了 role 才广告。
+
+**不做：** `audio_speak` / `models.tts`、`image_generate` / `video_generate`、实时麦克风、TUI 贴图。
+
+配置示例（改 `models.*` 需 `ymz restart`）：
+
+```json
+{
+  "model": "deepseek/deepseek-chat",
+  "models": {
+    "subagent": "deepseek/deepseek-flash",
+    "compact": "deepseek/deepseek-flash",
+    "vision": "openai/gpt-4o-mini",
+    "speech": "openai/whisper-1",
+    "web": "deepseek/deepseek-flash"
+  }
+}
+```
+
+无新表则 **不必** 新 migration（子 Run 仍用 `parent_run_id`）。
+
+### Phase IDE-launcher / V4（S/W/M 之后）
 
 V0–V3 已发 **v0.4.0**：`extensions/vscode` 启动 TUI；`make vscode` 本机打包；发版脚本 / Actions 在 goreleaser 之后挂 `ymz-vscode_{version}.vsix`。用户说明：[`docs/wiki/vscode.md`](../wiki/vscode.md)。架构：[ADR-054](../wiki/adr/054-vscode-terminal-launcher.md)。
+
+终端 TUI **接不住**拖文件。要 Claude Code 式 GUI 就开 **V4 Webview**（新 ADR 或扩 ADR-054）：侧栏 → `gatewayclient` HTTP/SSE，`interactive: true`；拖文件 / 资源管理器 → 工作区相对路径写入用户消息（`@path`）；**不**在扩展里跑 tool。关编辑器仍不 `ymz stop`。不上 Marketplace。
+
+启动器薄补丁（cwd = 工作区、设置里填 `ymz` 路径）可当 V4 前的小步，不挡 S/W/M。
 
 | ID | 项 | 状态 |
 | --- | --- | --- |
@@ -89,8 +146,8 @@ V0–V3 已发 **v0.4.0**：`extensions/vscode` 启动 TUI；`make vscode` 本�
 | **V1** | 三命令 + PATH + `@file#L` | ✅ |
 | **V2** | `make vscode` 本机 VSIX | ✅ |
 | **V3** | Release 挂 VSIX | ✅ |
-| **V4** | 原生侧栏 Webview 聊天 | 等用户再提 |
-| **V5** | Marketplace / Open VSX | 等用户再提 |
+| **V4** | 原生侧栏 Webview 聊天 + 拖文件 | 下一优先 |
+| **V5** | Marketplace / Open VSX | 用户量上来再做 |
 
 ### 等用户再提
 
@@ -98,8 +155,7 @@ V0–V3 已发 **v0.4.0**：`extensions/vscode` 启动 TUI；`make vscode` 本�
 | --- | --- | --- | --- |
 | **O5** | 薄 compat 子集（可选） | `/compat/opencode/*` 映射 session/message/compact/skills/health | 文档 **compat profile v0.1**；PTY/LSP → 501；**非** SDK drop-in |
 | **O6** | 最小 OpenAPI + 可选 TS 客户端（可选） | 只覆盖真路径或 O5 | 不宣称全量 OC SDK；IDE Webview 若落地再触发最小契约 |
-| **H2** | write_approval | messaging/cron 来源的 memory/skill 写入先 stage | 跟 M* |
-| **V4** | VS Code 原生聊天面板 | 侧栏 Webview + Gateway HTTP/SSE；`interactive: true` | 仍不在扩展进程跑 tool/provider/db |
+| **H2** | write_approval | messaging/cron 来源的 memory/skill 写入先 stage | 跟飞书 M* |
 | **V5** | Marketplace / Open VSX | publisher + `vsce publish` | 用户量上来再做 |
 
 ### Phase 4 — 消息通道（飞书 / 企微 / 微信）
@@ -128,14 +184,14 @@ V0–V3 已发 **v0.4.0**：`extensions/vscode` 启动 TUI；`make vscode` 本�
 | **gatewayclient 薄 ops** | CLI↔TUI 组请求胶水痛时再抽；不新建第二控制面 |
 | CLI skills | `run --skill` / `skills list`（主路径仍是 TUI `/skills`） |
 | CJK FTS 扩展 | unicode61/trigram + LIKE 兜底；专用 C 扩展另议 |
-| 更多 model roles | vision 等：有工具后再加 |
+| `audio_speak` / `models.tts` | Phase M 可后做；不挡 transcribe |
 | **O5–O6** | 仅有真实外部 OC 客户端绑定时（用户再提） |
 
 ```text
 用例（daemon services）     → 已统一
 外观（gatewayclient）       → 已共享
 语法（CLI argv / TUI slash / HTTP）→ 故意分叉
-IDE（extensions/vscode）    → 本相只启动 TUI；Webview 以后才走 HTTP
+IDE（extensions/vscode）    → 本相只启动 TUI；V4 Webview 在 S/W/M 之后才走 HTTP
 通道（channel adapter）     → 规划中；与 gatewayclient 并列的 Core 客户端
 ```
 
@@ -143,6 +199,11 @@ IDE（extensions/vscode）    → 本相只启动 TUI；Webview 以后才走 HTT
 
 | 项 | 说明 |
 | --- | --- |
+| Hermes 并行/后台 `delegate_task` / orchestrator | 本轮保持同步扁平 `task`；并行另案 |
+| Playwright / 真浏览器 / Computer Use | 网页 = search + extract + `http_get` |
+| 主循环多模态 / TUI 剪贴板贴图 | 媒体走辅助工具回文本；`/paste` 另案 |
+| 实时 Voice Mode / Discord 语音房 | 语音 = 文件转写（+ 可选 TTS 落盘） |
+| `image_generate` / `video_generate` | 厂商图生另案 |
 | 全量 OpenCode API/SDK 兼容 | ~162 路径 + 生成 SDK；与三件套冲突；只用 O5 子集或体验兼容 |
 | Crush 鼠标抓取 | 不设 `MouseMode`；终端原生划词复制 |
 | streaming 每 token 全量 glamour | 禁止；T8 = 合帧 + 冻结前缀 glamour + trail 永远 plain + 未闭合围栏不切 + 失败回退 C2 |

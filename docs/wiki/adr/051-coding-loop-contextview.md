@@ -11,7 +11,7 @@
 ```text
 StartChat.loadHistory
   SessionTranscript ASC LIMIT 500          ← 长会话看见最旧 500 条
-  packSessionHistory                       ← pack #1：main 窗、Apply("")、maxOut=8192
+  packSessionHistory                       ← pack #1：当时 main 窗、Apply("")、maxOut=8192（现行 packing 输出项见 ADR-041：unset → 128_000）
 executeChat
   resolveRunModelPin                       ← 晚于 pack #1
   agent.Run({Messages, History})
@@ -41,7 +41,7 @@ Messages() = Prefix + Summary + Tail + Ephemeral
 - `Build` 只对 **Tail** 做 L1–L3。Prefix **不得**进入 `dropOldestTurn`。
 - extractive 摘要 **newest-first** 选取（预算紧时保住近轮路径/错误），写出时可再正序。
 - 估计：CJK rune ≈ 1 token，其余 /4。校准器按 **真 model id** `Apply`；禁止 `Apply("")`。
-- 可用窗：`UsableWindow(contextWindow, model.maxTokens, reserve)`。`maxTokens` 是输出帽，不是 `plan.Budget.MaxTokens`（今日默认 128_000）。未配置时输出帽回退 8192。
+- 可用窗：`UsableWindow(contextWindow, packingOutput, reserve)`。packing 输出项来自用户 `maxTokens`，未配置时 **128_000**。`plan.Budget.MaxTokens`（默认 128_000）是 run 寿命预算，不再在 `MaxOutputTokens==0` 时顶进请求 body。
 
 ### 装配时机
 

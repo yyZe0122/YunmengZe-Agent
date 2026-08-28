@@ -22,6 +22,21 @@
           "type": "string",
           "pattern": "^[^/\\s]+/.+$",
           "description": "Model for session head compaction summaries. Omit → main model."
+        },
+        "web": {
+          "type": "string",
+          "pattern": "^[^/\\s]+/.+$",
+          "description": "Model for task(kind=web) child runs. Omit → models.subagent then main."
+        },
+        "vision": {
+          "type": "string",
+          "pattern": "^[^/\\s]+/.+$",
+          "description": "Auxiliary vision model for vision_analyze / video_analyze. Omit → tools not advertised."
+        },
+        "speech": {
+          "type": "string",
+          "pattern": "^[^/\\s]+/.+$",
+          "description": "OpenAI-compatible Whisper model for audio_transcribe. Omit → tool not advertised."
         }
       }
     },
@@ -94,7 +109,16 @@
         "contextWindow": {
           "type": "integer",
           "minimum": 0,
-          "description": "Model context length in tokens for UI/metrics. Omit or 0 when unknown. Not maxTokens."
+          "description": "Model context length in tokens for packing/UI. Omit or 0 to fill from models.dev (or 1M default)."
+        },
+        "limit": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "OpenCode-style alias. Explicit contextWindow/maxTokens win when set.",
+          "properties": {
+            "context": {"type": "integer", "minimum": 0},
+            "output": {"type": "integer", "minimum": 0}
+          }
         },
         "reasoningEffort": {"type": "string", "minLength": 1}
       }
@@ -273,6 +297,27 @@
             }
           },
           "description": "User slash templates (O3). Keys are slash names without /. Instruction only — no grants. Injectscan at load."
+        },
+        "web": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Web search backend for web_search (Phase W). Omit = ddg. Not hot-reloaded.",
+          "properties": {
+            "search": {
+              "type": "string",
+              "enum": ["ddg", "searxng", "tavily"],
+              "default": "ddg",
+              "description": "Search backend. ddg needs no key. searxng requires searxng_url; tavily requires tavily_key."
+            },
+            "searxng_url": {
+              "type": "string",
+              "description": "SearXNG instance URL. Supports {env:VAR} / {file:…}. Required when search is searxng."
+            },
+            "tavily_key": {
+              "type": "string",
+              "description": "Tavily API key. Supports {env:VAR} / {file:…}. Required when search is tavily. Never logged."
+            }
+          }
         }
       }
     }

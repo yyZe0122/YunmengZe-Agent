@@ -27,7 +27,7 @@
 2. **L2** 旧 tool 结果改 placeholder（保护最近 ~40k 估计 tool tokens；回收不足阈值则跳过）。
 3. **L3** pair-safe 丢弃最旧完整 turn（保留至少最后一轮 user turn 与 leading system）。
 4. **摘要（默认开）**：压力 ≥ 可用窗 75% 且确定性裁切后仍不够时，对 **full transcript head** 做 LLM 摘要（失败则 extractive）；写入 `session_compactions`；provider 视图 = summary + tail。
-5. 可用窗：`contextWindow - maxOutput - reserve`（`contextWindow` 来自 model 配置，参与 packing，不仅 UI）。
+5. 可用窗：`contextWindow - maxOutput - reserve`。`contextWindow` 优先用户配置，否则 models.dev 目录，再否则 **1_048_576**。packing 输出项：用户 `maxTokens`/`limit.output`，否则 **128_000**（不再把 `>16384` 打回 8192）。
 6. **Tool-pair 安全切分**：`SplitHeadTail` / `alignToolPairCut` 不拆开 assistant `tool_calls` 与其 tool 结果。
 
 ### 压缩触发点
@@ -79,7 +79,7 @@
 | `compaction.enabled` | `true`（省略整块或字段时） | `false` 时仅 L1–L3，不调 LLM 摘要、不写入新 `session_compactions`；已有摘要仍可被加载；`ForceCompact` 也拒绝 |
 | `max_iterations` | `0`（不硬顶） | 每 turn 的 agent step 上限；1–256 时最后一步 soft-landing；省略 / 0 = 只靠 Esc / 30min / token / loop-detect（ADR-052） |
 
-`contextWindow` 仍在 **model** 配置上（非 `chat`）。
+`contextWindow` 仍在 **model** 配置上（非 `chat`）。省略时由 `internal/modelcatalog` 从 models.dev 填；未命中 → 1M。
 
 ### 边界
 

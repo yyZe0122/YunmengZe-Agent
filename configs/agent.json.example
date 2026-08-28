@@ -14,14 +14,11 @@
       },
       "models": {
         "deepseek-chat": {
-          "name": "DeepSeek Chat (official bare id)",
-          "maxTokens": 4096,
-          "contextWindow": 65536
+          "name": "DeepSeek Chat (official bare id)"
         },
         "deepseek-v4-flash": {
           "name": "DeepSeek Flash",
-          "maxTokens": 8192,
-          "contextWindow": 128000
+          "limit": { "context": 1000000, "output": 384000 }
         }
       }
     },
@@ -33,15 +30,11 @@
       },
       "models": {
         "deepseek/deepseek-v4-flash": {
-          "name": "Nested wire id (select deepseek2/deepseek/deepseek-v4-flash)",
-          "maxTokens": 8192,
-          "contextWindow": 128000
+          "name": "Nested wire id (select deepseek2/deepseek/deepseek-v4-flash)"
         },
         "flash": {
           "name": "Short key + id override (select deepseek2/flash)",
-          "id": "deepseek/deepseek-v4-flash",
-          "maxTokens": 8192,
-          "contextWindow": 128000
+          "id": "deepseek/deepseek-v4-flash"
         }
       }
     },
@@ -134,6 +127,9 @@
         "description": "Code review focus",
         "template": "Review with security and API design in mind.\n\n$ARGUMENTS"
       }
+    },
+    "web": {
+      "search": "ddg"
     }
   }
 }

@@ -3,10 +3,11 @@
 - 状态：Accepted（已实现）
 - 日期：2026-08-06
 - 更新：2026-08-13（H4：pending 只读 suggested_decision；不自动 decide）
+- 更新：2026-08-28（Phase W：`web_search` / `web_extract` 与 `http_get` 同闸，similar = host）
 
 ## 背景
 
-Session chat（ADR-038）对 workspace 工具做 **preauth grant**；高风险工具（`process_exec` / `process_shell` / `git_*` / 交互 agent 的 `http_get`）经 `chat.permission.allow` / `chat.tools.*` 记住 process/git，或 Tab **Auto** 本 session 预授 process+git（shell 与 exec **同一闸**）。`http_get` **不**进 `permission.allow` / Auto 预授；交互 agent 广告后须 `/perm`（similar = 该 host）。未覆盖 grant 且 Policy 为 `require_approval` 时：交互 TUI Agent **挂起 `/perm`**；CLI / cron **立即 deny**。
+Session chat（ADR-038）对 workspace 工具做 **preauth grant**；高风险工具（`process_exec` / `process_shell` / `git_*` / 交互 agent 的 `http_get` / `web_search` / `web_extract`）经 `chat.permission.allow` / `chat.tools.*` 记住 process/git，或 Tab **Auto** 本 session 预授 process+git（shell 与 exec **同一闸**）。`http_get` / `web_search` / `web_extract` / `vision_analyze`（url）**不**进 `permission.allow` / Auto 预授；交互 agent 广告后须 `/perm`（similar = 该 host）。未覆盖 grant 且 Policy 为 `require_approval` 时：交互 TUI Agent **挂起 `/perm`**；CLI / cron **立即 deny**。
 
 Crush 等产品在 **单次 tool call** 边界提供 allow/deny 队列，无需整单 plan 审批。产品需要：在 **agent** 模式下，对未预授权的高风险 call 可挂起 → 人在 TUI 决策 → 发 **scoped grant** → **同一 agent 循环**继续。
 
@@ -66,7 +67,7 @@ agent loop → Broker.Execute
   - `POST /v1/permissions/{id}/decide` body：`{ "decision": "allow_once"|"allow_similar"|"allow_permanent"|"deny", "actor": "…", "confirm": false }`
 - TUI：`/perm` 列表；`/perm once|similar|permanent|deny <id-prefix>`；热键 1–4
 - H4：List pending 可带只读 `suggested_decision` / `suggested_reason`（once/similar 或 deny 提示）；**不**自动 decide、**不**建议 permanent。路径：双方皆空才只比 tool+capability；一侧空不匹配；非空须 `filepath.Clean` 后相等或带分隔符的目录前缀（`/tmp/foo` 不匹配 `/tmp/foobar`）。有 `session_id` 时只查同会话。
-- Agent（未预授）：chat plan **嵌入** process/git/`http_get` 的 once + session CapabilityScope，**不**预发这些 grant（`issueChatGrants` 跳过）。`AllowedTools` **按名 unique**（ADR-052）：双 scope 仍给 `/perm` decide 选 once vs session，但模型只看见每个工具一次。`http_get` similar 把请求 host 写入 grant。Plan / cron 不广告 `http_get`。
+- Agent（未预授）：chat plan **嵌入** process/git/`http_get`/`web_search`/`web_extract` 的 once + session CapabilityScope，**不**预发这些 grant（`issueChatGrants` 跳过）。`AllowedTools` **按名 unique**（ADR-052）：双 scope 仍给 `/perm` decide 选 once vs session，但模型只看见每个工具一次。host 类工具 similar 把请求 host 写入 grant。Plan / cron 不广告 `http_get` / `web_search` / `web_extract`。
 
 ### 事件 / SSE（C1）
 

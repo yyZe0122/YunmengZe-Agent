@@ -167,9 +167,7 @@ Put the API key in `~/.yunmengze/env` or the process environment, then reference
       },
       "models": {
         "deepseek-chat": {
-          "name": "DeepSeek Chat",
-          "maxTokens": 4096,
-          "contextWindow": 65536
+          "name": "DeepSeek Chat"
         }
       }
     }
@@ -178,7 +176,7 @@ Put the API key in `~/.yunmengze/env` or the process environment, then reference
 ```
 
 - Selection is `providerId/modelId…` (first `/` only; the model segment may contain `/`).
-- `maxTokens` = output cap; `contextWindow` = packing / UI pressure.
+- `maxTokens` = output cap (omit → do not send `max_tokens` except Anthropic); `contextWindow` = packing / UI window. Omit both to fill the window from [models.dev](https://models.dev) (`internal/modelcatalog`; miss → 1M / packing 128k). OpenCode `limit.{context,output}` is accepted.
 - Optional `chat` (workspace, tools, permission, memory, slash templates): [`configs/agent.json.example`](configs/agent.json.example).
 - User rules: `~/.yunmengze/AGENTS.md`; project `.yunmengze/AGENTS.md` is appended when present. Instruction text only — no grants.
 - `ymz config import-opencode` maps OpenCode config → `agent.local.json` (MCP, `chat.commands`, compaction; warns and drops plugins/LSP).

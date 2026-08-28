@@ -26,7 +26,7 @@
 - synthetic plan + 系统审批记录 + Capability Grant（满足 Broker，非人类业务审批）；
 - 副作用只经 Tool Broker（Policy → Grant → 路径/超时 → Audit）。
 
-默认不预授权：`process_exec` / `process_shell` / `http_get` / `git_*`。  
+默认不预授权：`process_exec` / `process_shell` / `http_get` / `web_search` / `web_extract` / `git_*`。  
 记住放行：`chat.permission.allow: ["process","git"]` 或 `chat.tools.*`（OR）。`process_shell` 与 `process_exec` **同一闸**。TUI Auto 只预授**当前 session**。**plan / cron 永不**获得这些能力。CLI/`ymz run` 无 `/perm`，高风险仍立刻 deny。
 
 ### 不得恢复（反回归）
@@ -83,5 +83,5 @@
 ## 结果
 
 - Tab 语义对齐 OpenCode；单一 chat 编排器；
-- `AllowedTools` 按名 unique；工具业务失败回灌模型（ADR-052）；运行中回车 = steer；`ask_user` 问题卡（perm 优先）；Prefix 含技能目录；交互 agent 广告 `http_get` 不预发（plan/cron 不广告）；
+- `AllowedTools` 按名 unique；工具业务失败回灌模型（ADR-052）；运行中回车 = steer；`ask_user` 问题卡（perm 优先）；Prefix 含技能目录；交互 agent 广告 `http_get`/`web_search`/`web_extract` 不预发（plan/cron 不广告）；
 - 定时 Job 见 ADR-042。

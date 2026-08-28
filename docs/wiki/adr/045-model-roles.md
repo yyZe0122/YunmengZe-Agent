@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (2026-08-10). Updated 2026-08-14: Prefix states no vision; `models.vision` already rejected at load.
+Accepted (2026-08-10). Updated 2026-08-28 (Phase S/W/M): Prefix lists extra configured roles; whitelist `subagent`/`compact`/`web`/`vision`/`speech`. `models.video` is never a key.
 
 ## Context
 
@@ -34,20 +34,23 @@ Optional top-level map:
 | Field | Meaning |
 | --- | --- |
 | `model` | **Main** model (required). TUI `/model` and `PUT /v1/config/model` only change this. |
-| `models.subagent` | Optional. Used by `task` tool child runs. |
+| `models.subagent` | Optional. Used by `task` child runs (`kind` general/explore; `kind=web` falls back here when `models.web` is unset). |
 | `models.compact` | Optional. Used by `CompactSummary*` / mid-turn compact LLM path. |
+| `models.web` | Optional. Used by `task(kind=web)`. Omit → `subagent` then main. |
+| `models.vision` | Optional. Auxiliary Complete for `vision_analyze` / `video_analyze`. Omit → tools not advertised. |
+| `models.speech` | Optional. Whisper `/v1/audio/transcriptions` for `audio_transcribe` only — **not** a chat `RoleEndpoint`. `task(kind=speech)` still requires this key to advertise, then runs as `subagent`. Omit → tool not advertised. |
 
 Rules:
 
 - Omit `models` or a key → that role uses main
 - Empty string value → treat as unset (fallback main)
 - Values must be `provider/model` present in the catalog
-- Allowed keys only: `subagent`, `compact` (no `models.main`; unknown keys fail load)
+- Allowed keys: `subagent`, `compact`, `web`, `vision`, `speech` (no `models.main`; unknown keys fail load). `validateModelsMap` error text comes from `AllowedModelRoles`. `models.video` is never a key (reuses vision).
 - Changing `models.*` requires **daemon restart** (no hot rewrite). Main `model` / provider options may hot-reload (ADR-048); role endpoints are built only at start.
 
 ### Runtime
 
-- Daemon builds optional role endpoints at startup (`ResolveModel` + `providers.NewConfigured` per distinct ref ≠ main)
+- Daemon builds optional role endpoints at startup (`ResolveModel` + `providers.NewConfigured` per distinct ref ≠ main). **`models.speech` is skipped** (Whisper is not Complete).
 - `agent.Runner` holds main provider/model plus `map[role]RoleEndpoint`
 - `RunRequest.Role`: empty/`main` → main; `subagent` when set by `task` tool; unconfigured → main
 - `CompactSummary*` always selects role `compact` (fallback main)
@@ -71,7 +74,7 @@ Not a substitute for `models.subagent` / `models.compact`. H7 job model pin: `jo
 
 ### Out of scope
 
-- Vision / image-gen / browser roles (no product tools yet). `models.vision` is rejected at load. The system prompt states this; do not invent a vision setting path.
+- Image/video generation, TTS (`models.tts`), TUI paste, and a multimodal main loop (ADR-055). Chat Prefix lists extra configured roles; it does not hard-code “No vision”.
 - Per-call model in `task` tool input
 - Gateway API for role map
 - Hot-reload of `models.*`
@@ -91,6 +94,6 @@ Not a substitute for `models.subagent` / `models.compact`. H7 job model pin: `jo
 - `internal/agent.Runner` (`Role`, `Roles`, `snapshotForRole`, model override, `ProposeMemoryFacts`)
 - `internal/modelresolve`
 - `internal/scheduler` / `pkg/schedulerapi` (`model_ref`)
-- `internal/tools/task.go` (`Role: "subagent"`)
+- `internal/tools/task.go` / `taskkind.go` (`Role` from kind spec; general/explore → `subagent`)
 - `cmd/ymzd` (`BuildRoleEndpoints`, `NewStoreWithMainRef`)
 - ADR-039, ADR-041, ADR-042

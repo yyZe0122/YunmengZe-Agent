@@ -66,4 +66,4 @@ Debounce ~500ms; OnChange coalesced (one in flight; dirty re-run). Panic in OnCh
 
 ## Related
 
-- ADR-037 lifecycle, ADR-045 roles, `docs/wiki/provider-protocols.md`, `internal/providerruntime`
+- ADR-037 lifecycle, ADR-045 roles, `docs/wiki/provider-protocols.md`, `internal/providerruntime`, `internal/modelcatalog` (models.dev window fill; background refresh does not block Gateway)

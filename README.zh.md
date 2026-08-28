@@ -124,7 +124,7 @@ API key 放 `~/.yunmengze/env` 或进程环境，JSON 里写 `{env:VAR}`。也�
 最小示意见 [英文 README · Configure](README.md#configure)。完整 `chat` / MCP / 角色映射：[`configs/agent.json.example`](configs/agent.json.example)。
 
 - 选型：`providerId/modelId…`（只切第一道 `/`；模型段可以再含 `/`）。
-- `maxTokens` = 输出帽；`contextWindow` = 装配 / UI 窗压。
+- `maxTokens` = 输出帽（省略则除 Anthropic 外不发 `max_tokens`）；`contextWindow` = 装配 / UI 窗。都省略时从 [models.dev](https://models.dev) 填窗（未命中 → 1M / packing 128k）。也接受 OpenCode 的 `limit.{context,output}`。
 - 用户规则：`~/.yunmengze/AGENTS.md`；项目 `.yunmengze/AGENTS.md` 存在则追加。只是指令，不扩授权。
 - `ymz config import-opencode` 把 OpenCode 配置映到 `agent.local.json`。
 

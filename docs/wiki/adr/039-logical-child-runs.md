@@ -2,6 +2,7 @@
 
 - 状态：Accepted（已实现首版）
 - 日期：2026-07-31
+- 更新：2026-08-28（Phase S+W：`task.kind` 目录；广告 `general`/`explore`/`web`；子 Run 永远叶子，剔 `task`）
 - 更新：2026-08-17（ADR-052 R5：子代理 Prefix 继承 AGENTS.md；`http_get` 可随父 allowed_tools 继承，仍不预发）
 - 更新：2026-08-11 可观测：`GET /v1/runs/{id}/usage` 父 Run self+children 上卷（T5）
 
@@ -23,21 +24,34 @@
 
 - `runs.parent_run_id`：可空外键（逻辑引用父 Run ID）；新 migration 追加，不改历史 migration 文件。
 - 子 Run 属于同一 Task（与父相同 `task_id`），共享 Session/transcript 投影规则由查询层定义。
-- 深度上限：`max_depth`（建议默认 2）；超限 fail-closed，工具返回错误文本，不创建 Run。
+- 深度上限：`max_depth`（默认 2）仍作保险；超限 fail-closed，工具返回错误文本，不创建 Run。子 Run **永远叶子**：解析后的 `allowed_tools` 不含 `task`，主模型不能靠深度再叠一层委派。
 
 ### 授权与预算
 
 - Grant：子 Run **不得扩大**父的 workspace roots / 读写天花板；父为 plan（只读）则子只读。
 - 预算：子消耗计入父 Task 用量聚合；子 Run 使用父剩余 token/cost 上限（或明确份额），超限 fail-closed。
 - 可观测（读路径）：`corequery.RunUsage(runID)` = 本 Run + 一层 `parent_run_id` 子 Run 的 assistant usage 汇总；Gateway `GET /v1/runs/{id}/usage`；TUI Metrics 在存在子 Run 时展示 parent/children 旁注。不改预算策略。
-- 高风险工具：子 **不得** 自行扩大；仅当父 agent 已因 `chat.tools`（或其它合法 Grant）具备 `git_*` / `process_exec` / `process_shell` 时，子才可经 `allowed_tools ⊆ 父` 继承。`http_get` 若在父广告集中可继承，仍不预发（须 `/perm`）。子 Prefix 继承同一套 AGENTS.md，不继承父 Tail / 记忆 / 技能正文。首版：子 allowed_tools ⊆ 父 allowed_tools。
+- 高风险工具：子 **不得** 自行扩大；仅当父 agent 已因 `chat.tools`（或其它合法 Grant）具备 `git_*` / `process_exec` / `process_shell` 时，子才可经 `allowed_tools ⊆ 父` 继承。`http_get` 若在父广告集中可继承，仍不预发（须 `/perm`）。子 Prefix 继承同一套 AGENTS.md，不继承父 Tail / 记忆 / 技能正文。
+- 子 `allowed_tools` = kind 默认集 ∩ 父集 − kind 禁带 − `task`。空 `tools` 用 kind 默认（`general` = 父集 − 禁带）。显式请求了 kind 禁带的名字 → fail-closed，不建 Run。
 
-### 工具 `task` 语义（首版）
+### 工具 `task` 语义
 
-输入（示意）：prompt（必填）、可选 mode 覆盖（不得放宽父只读）、可选 tools 子集。  
-输出：子 Run 终态摘要（content / error / run_id），写入父的 tool result（经 Broker 正常路径）。
+输入：`prompt`（必填）、可选 `kind`、可选 `tools` 子集。`kind` 省略 = `general`。schema enum 只列 **当前广告** 的 kind。
 
-实现必须：`Agent → Tool Broker → Policy/Grant/Audit →` 编排创建 child Run → 同步 `agent.Run` / chatsession 等价路径。禁止 Broker 外直接调 Runner。
+| kind | 广告（S） | Role | 默认工具 | 禁带（另：永远剔 `task`） |
+| --- | --- | --- | --- | --- |
+| `general` | 是 | `subagent`（缺则 main） | 父集 − 禁带；保留父已有的 `mcp_*` | `ask_user` `memory_write` `memory_promote` `skill_draft` |
+| `explore` | 是 | `subagent` | 只读 fs + grep/glob + skills_list/view + session/memory_search + todo_list | 写文件 / process / git / http / mcp / 上列 |
+| `web` | 是 | `models.web`，缺则 `subagent` | `web_search` `web_extract` `http_get` + 只读 fs | 写文件 / process / git / mcp / 上列；父无 web 工具 → 不建 Run |
+| `vision` | 配了 `models.vision` | `vision` | `vision_analyze` + 只读 fs | 未配 role → 不建 Run |
+| `speech` | 配了 `models.speech` | `subagent`（Whisper 不是 Complete；`models.speech` 只给 `audio_transcribe`） | `audio_transcribe` + 只读 fs | 未配 role → 不建 Run |
+| `video` | 配了 `models.vision` | `vision` | `video_analyze` + 只读 fs | 未配 role → 不建 Run |
+
+未知 kind / 未广告 kind / 空工具集 / 显式禁带请求：观察错误，**不建 Run**。`kind=web` 要求父集含 `web_search`/`web_extract`/`http_get` 之一。`vision`/`speech`/`video` RequireRole（未配 `models.*` 不建 Run）。
+
+输出：子 Run 终态摘要（content / error / run_id / kind），写入父的 tool result。
+
+实现：kind 目录在 `internal/tools/taskkind.go`；`Agent → Tool Broker → Policy/Grant/Audit →` 编排 child Run → 同步 `agent.Run`。禁止 Broker 外直接调 Runner。不新开委派工具。
 
 ### 恢复
 
@@ -45,13 +59,14 @@
 
 ### 不做
 
-- 异步并行子 Run、跨 Task 子代理、新进程/模块框架。
+- 异步并行子 Run、跨 Task 子代理、新进程/模块框架、Hermes `delegate_task` / `role=orchestrator`。
 - 恢复交互 Planner 审批轨。
 - Job/cron 直接生成子 Run（定时 Job 只提交顶层 chat task，见 ADR-042；子 Run 仍仅由模型 `task` 工具触发）。
+- worktree isolation、`/agents` overlay。
 
 ## 后果
 
 - 首版已落地：migration 015、`task` 工具、`runmeta`、预算/深度 fail-closed。
-- 子代理 Prefix 继承同一套 AGENTS.md（ADR-052 R5）；`http_get` 可随父广告集继承，仍不预发。
+- Phase S/W/M：kind 目录 + 叶子禁带；广告 `general`/`explore`/`web`，配了 role 才广告 vision/speech/video。子 Prefix 按 kind 系统词 + AGENTS.md。
 - TUI timeline 在子 Run 标题展示 `←parent` 短链；完整父子树 UI 非目标。
 - Run-scoped usage 上卷已落地（可观测 only）；Task 级 `…/usage` 仍含全部 runs。

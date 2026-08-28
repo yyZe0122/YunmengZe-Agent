@@ -69,6 +69,26 @@ Header/env values support `{env:VAR}` / `{file:…}`. Gateway MCP status never r
 
 Omit or `0` = no hard step cap (Esc / 30min / token / loop-detect). `1`–`256` = last step is a text-only soft landing. Default is no hard cap.
 
+### Chat web search (`chat.web`, Phase W)
+
+```json
+"chat": {
+  "web": {
+    "search": "ddg",
+    "searxng_url": "{env:SEARXNG_URL}",
+    "tavily_key": "{env:TAVILY_API_KEY}"
+  }
+}
+```
+
+| Field | Detail |
+| --- | --- |
+| `search` | `ddg` (default) \| `searxng` \| `tavily`. Omit `chat.web` → ddg |
+| `searxng_url` | Required when `search` is searxng. `{env:}`/`{file:}` resolved at load. Host is the only SSRF exception, and only for `web_search` |
+| `tavily_key` | Required when `search` is tavily. Never logged or served on Gateway |
+| Tools | Interactive agent: `web_search` / `web_extract` / `http_get` wait `/perm` (similar = host). Plan / cron never advertise |
+| Reload | `chat.*` — `ymz restart` |
+
 ## API keys (choose any; nothing is forced)
 
 `options.apiKey` supports three forms:
@@ -160,10 +180,11 @@ While `ymzd` runs, edits to `agent.json` / `agent.local.json` / `env` rebuild th
 | Change | Hot-reload? |
 | --- | --- |
 | `model`, baseURL, protocol, maxTokens, contextWindow | Yes |
+| models.dev catalog cache (window fill) | Background; next resolve / reload |
 | Literal `apiKey` or `{file:…}` content | Yes |
 | `{env:VAR}` via `env` file when process VAR is empty | Yes |
 | Process env already set for `{env:VAR}` | **No** — change process env + restart |
-| `chat.*`, MCP, `models.subagent\|compact` | **No** — `ymz restart` |
+| `chat.*`, MCP, `models.subagent\|compact\|web` | **No** — `ymz restart` |
 | Daemon started without agent (bad config) | Fix file then **`ymz restart`** (no late-bind) |
 
 In-flight runs keep the previous client until the next turn.
@@ -182,7 +203,7 @@ Top-level `models` maps roles to other **selection** refs (ADR-045). Unset roles
 }
 ```
 
-Allowed keys: `subagent` (`task` child runs), `compact` (session head summarization). Do not set `models.main`. Unknown keys (including `vision`) fail load. Changing `models.*` requires a daemon restart. The chat Prefix states this; after model pin it also injects `<env>` with the current model / workspace / UTC date. The model cannot switch roles.
+Allowed keys: `subagent`, `compact`, `web`, `vision`, `speech`. Do not set `models.main` or `models.video`. Unknown keys fail load. Changing `models.*` requires a daemon restart. The chat Prefix lists extra configured roles and does not hard-code “No vision”. `task.kind` advertises `general`/`explore`/`web` always; `vision`/`speech`/`video` only when the matching role is configured. Auxiliary media: see ADR-055.
 
 ## Protocol families and aliases
 
@@ -264,8 +285,9 @@ Generation options belong to each entry in `models`, so models sharing a provide
 ```
 
 - `temperature` is used when the request does not already specify a temperature.
-- `maxTokens` is a model-level output-token cap. It fills an unset request limit, caps a larger request limit, and is the **usable-window output term** in `ContextView.Build` (ADR-051; unset/huge → 8192). It is not `plan.Budget.MaxTokens`.
-- `contextWindow` is the model context length in tokens (optional). It is **not** the same as `maxTokens` (output cap). Used for **provider-view packing and TUI pressure** (ADR-041/051): usable window ≈ `contextWindow − maxTokens − reserve`. Omit or `0` when unknown (packing falls back to L1 trim only); do not copy run budgets into this field.
+- `maxTokens` is a model-level output-token cap. When set it is sent on the wire and used as the packing output term. Omit it to leave OpenAI-chat / Responses / Gemini uncapped (`max_tokens` omitted); Anthropic still requires a value (catalog hit or **128_000**). It is not `plan.Budget.MaxTokens`.
+- `contextWindow` is the model context length in tokens. It is **not** `maxTokens`. Used for **provider-view packing and TUI pressure** (ADR-041/051): usable window ≈ `contextWindow − packingOutput − reserve`. Omit or `0` to fill from the embedded **models.dev** catalog (`internal/modelcatalog`, `https://models.dev/models.json`); miss → **1_048_576**.
+- `limit: { context, output }` is the OpenCode-style alias. Explicit `contextWindow` / `maxTokens` win when set.
 - `reasoningEffort` is used when the request does not already specify an effort. It currently maps to `reasoning_effort` for OpenAI-compatible Chat Completions and to `reasoning.effort` for OpenAI Responses.
 - Request-level values take precedence over model defaults, except that `maxTokens` always remains an upper bound.
 - Configure only options supported by the selected model and endpoint. YunmengZe rejects `reasoningEffort` for the Anthropic and Gemini adapters rather than silently ignoring it.

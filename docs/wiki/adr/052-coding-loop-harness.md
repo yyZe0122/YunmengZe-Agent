@@ -72,7 +72,7 @@ Inbox **只有 next-step**。没有 next-turn 队列：空闲回车走现有 `Su
 ### R5（已落地）
 
 - Prefix 注入活跃技能 **目录**（id — 一句话）；正文仍 `skill_view`。`injectscan` 失败则跳过该项。
-- `http_get` 进交互 agent plan（once+session 双 scope，不预发）。`/perm similar` 把请求 host 写入 grant；`planContainsScope` 允许空域名 plan → 单 host 收窄。**Plan / cron 不广告。**
+- `http_get` / `web_search` / `web_extract` 进交互 agent plan（once+session 双 scope，不预发）。`/perm similar` 把请求 host 写入 grant；`planContainsScope` 允许空域名 plan → 单 host 收窄。**Plan / cron 不广告。**
 - 子代理 Prefix = 短身份 + 同一套 AGENTS.md（`providerconfig.OverlayAgents`）。不继承父 Tail / 记忆 / 技能正文。
 
 ### 不做

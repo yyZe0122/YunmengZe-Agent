@@ -22,7 +22,7 @@
 - 本地 Gateway 被同机其它用户滥用（socket 权限 / Windows token；任意本地客户端可 decide permission）；
 - Scheduler 或 Gateway 试图绕过 Broker（Job 只提交 chat task，不执行 tool）；
 - 日志泄漏 Secret；
-- SSRF（HTTP 工具域名审批 ≠ 完整 SSRF 防护；`http_get` 进 agent 广告但不预发，须 `/perm` 后按 host 收窄；plan/cron 不广告）。
+- SSRF（HTTP 工具域名审批 ≠ 完整 SSRF 防护；`http_get` / `web_extract` / `web_search` / `vision_analyze` url 进 agent 广告但不预发，须 `/perm` 后按 host 收窄；plan/cron 无 url。唯一例外：`chat.web.searxng_url` 的 host 仅放行 `web_search`）。
 
 ## 历史威胁（已删除架构）
 
