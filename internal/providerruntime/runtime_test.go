@@ -156,6 +156,56 @@ func TestReloadFailureKeepsProvider(t *testing.T) {
 	}
 }
 
+func TestBuildRoleEndpointsSkipsSpeech(t *testing.T) {
+	dir := t.TempDir()
+	body := `{
+  "model": "deepseek/deepseek-chat",
+  "models": {
+    "subagent": "deepseek/deepseek-v4-flash",
+    "speech": "deepseek/deepseek-chat",
+    "vision": "deepseek/deepseek-v4-flash",
+    "web": "deepseek/deepseek-v4-flash"
+  },
+  "provider": {
+    "deepseek": {
+      "type": "openai-compatible",
+      "options": {"baseURL": "https://api.example.com", "apiKey": "sk-ok"},
+      "models": {
+        "deepseek-chat": {"name": "Chat", "contextWindow": 65536},
+        "deepseek-v4-flash": {"name": "Flash", "contextWindow": 128000}
+      }
+    }
+  }
+}`
+	if err := os.WriteFile(filepath.Join(dir, providerconfig.LocalFilename), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	eps, err := BuildRoleEndpoints(dir, "deepseek/deepseek-chat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := eps[providerconfig.RoleSpeech]; ok {
+		t.Fatalf("speech must not be a chat endpoint: %v", keysOf(eps))
+	}
+	if _, ok := eps[providerconfig.RoleVision]; !ok {
+		t.Fatalf("vision missing: %v", keysOf(eps))
+	}
+	if _, ok := eps[providerconfig.RoleWeb]; !ok {
+		t.Fatalf("web missing: %v", keysOf(eps))
+	}
+	if _, ok := eps[providerconfig.RoleSubagent]; !ok {
+		t.Fatalf("subagent missing: %v", keysOf(eps))
+	}
+}
+
+func keysOf(m map[string]agent.RoleEndpoint) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
+}
+
 func TestSelectModelRequiresChatBound(t *testing.T) {
 	dir := t.TempDir()
 	writeLocalConfig(t, dir, "deepseek/deepseek-chat", "https://api.example.com", "sk-ok")

@@ -2,13 +2,13 @@ package tools
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
-
-	"os"
 
 	"github.com/yyZe0122/yunmengze-agent/internal/agent"
 	"github.com/yyZe0122/yunmengze-agent/internal/providerconfig"
@@ -33,7 +33,11 @@ func (s *stubSubagent) Run(_ context.Context, req agent.RunRequest) (agent.Resul
 }
 
 func TestTaskSystemPromptIncludesVersion(t *testing.T) {
-	got := taskSystemPrompt()
+	spec, ok := lookupKind(KindGeneral)
+	if !ok {
+		t.Fatal("missing general kind")
+	}
+	got := childSystemPrompt(spec.Prompt)
 	want := "YunmengZe Agent " + version.Version
 	if !strings.Contains(got, want) {
 		t.Fatalf("prompt missing %q: %s", want, got)
@@ -43,15 +47,20 @@ func TestTaskSystemPromptIncludesVersion(t *testing.T) {
 	}
 }
 
-func TestFilterChildTools(t *testing.T) {
-	parent := []string{"fs_read", "task", "fs_list"}
-	got := filterChildTools(parent, nil)
-	if len(got) != 3 {
-		t.Fatalf("got %v", got)
+func TestTaskToolDefinitionAdvertisesKinds(t *testing.T) {
+	tool, err := NewTaskTool(TaskToolConfig{DB: mustCoreDB(t).SQL()})
+	if err != nil {
+		t.Fatal(err)
 	}
-	got = filterChildTools(parent, []string{"fs_list", "process_exec", "fs_list"})
-	if len(got) != 1 || got[0] != "fs_list" {
-		t.Fatalf("subset = %v", got)
+	def := tool.Definition()
+	if !strings.Contains(def.Description, "explore") || !strings.Contains(string(def.InputSchema), `"general"`) {
+		t.Fatalf("definition = %+v", def)
+	}
+	if !strings.Contains(string(def.InputSchema), `"web"`) {
+		t.Fatalf("schema must advertise web: %s", def.InputSchema)
+	}
+	if strings.Contains(string(def.InputSchema), `"vision"`) {
+		t.Fatalf("schema must not advertise vision: %s", def.InputSchema)
 	}
 }
 
@@ -105,7 +114,7 @@ func TestTaskToolSpawnsChildRun(t *testing.T) {
 	if err := json.Unmarshal(out, &payload); err != nil {
 		t.Fatal(err)
 	}
-	if payload["state"] != "completed" || payload["content"] != "child-done" {
+	if payload["state"] != "completed" || payload["content"] != "child-done" || payload["kind"] != KindGeneral {
 		t.Fatalf("payload = %#v", payload)
 	}
 	runID, _ := payload["run_id"].(string)
@@ -123,6 +132,14 @@ func TestTaskToolSpawnsChildRun(t *testing.T) {
 	}
 	if !strings.Contains(stub.last.Messages[0].Content, "YunmengZe Agent "+version.Version) {
 		t.Fatalf("child system prompt = %q", stub.last.Messages[0].Content)
+	}
+	if stub.last.Role != "subagent" {
+		t.Fatalf("child role = %q", stub.last.Role)
+	}
+	for _, name := range stub.last.AllowedTools {
+		if name == "task" {
+			t.Fatalf("child inherited task: %v", stub.last.AllowedTools)
+		}
 	}
 	var parent string
 	if err := db.QueryRow(`SELECT parent_run_id FROM runs WHERE run_id = ?`, runID).Scan(&parent); err != nil {
@@ -235,5 +252,155 @@ func TestTaskToolRequiresContext(t *testing.T) {
 	_, err = tool.Execute(context.Background(), json.RawMessage(`{"prompt":"x"}`))
 	if err == nil {
 		t.Fatal("expected error")
+	}
+}
+
+func TestTaskToolExploreKind(t *testing.T) {
+	ctx := context.Background()
+	db := mustCoreDB(t).SQL()
+	seedParentRun(t, db)
+	stub := &stubSubagent{body: "found"}
+	tool, err := NewTaskTool(TaskToolConfig{DB: db, Runner: stub})
+	if err != nil {
+		t.Fatal(err)
+	}
+	parentCtx := runmeta.With(ctx, runmeta.Context{
+		RunID: "parent-run", TaskID: "t1", SessionID: "s1", PlanID: "p1", PlanHash: "h1",
+		StepID: "step1", AllowedTools: []string{"fs_read", "fs_grep", "fs_write", "process_exec", "http_get", "task"},
+		Depth: 0, CallID: "call-explore",
+	})
+	out, err := tool.Execute(parentCtx, json.RawMessage(`{"prompt":"find usages","kind":"explore"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(out, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload["kind"] != KindExplore || payload["state"] != "completed" {
+		t.Fatalf("payload = %#v", payload)
+	}
+	if !strings.Contains(stub.last.Messages[0].Content, "Read-only exploration") {
+		t.Fatalf("explore prompt = %q", stub.last.Messages[0].Content)
+	}
+	for _, name := range stub.last.AllowedTools {
+		switch name {
+		case "fs_write", "process_exec", "http_get", "task":
+			t.Fatalf("explore leaked %q: %v", name, stub.last.AllowedTools)
+		}
+	}
+}
+
+func TestTaskToolWebKind(t *testing.T) {
+	ctx := context.Background()
+	db := mustCoreDB(t).SQL()
+	seedParentRun(t, db)
+	stub := &stubSubagent{body: "hits"}
+	tool, err := NewTaskTool(TaskToolConfig{DB: db, Runner: stub})
+	if err != nil {
+		t.Fatal(err)
+	}
+	parentCtx := runmeta.With(ctx, runmeta.Context{
+		RunID: "parent-run", TaskID: "t1", SessionID: "s1", PlanID: "p1", PlanHash: "h1",
+		StepID: "step1", AllowedTools: []string{"fs_read", "web_search", "web_extract", "http_get", "task"},
+		Depth: 0, CallID: "call-web",
+	})
+	out, err := tool.Execute(parentCtx, json.RawMessage(`{"prompt":"search docs","kind":"web"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(out, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload["kind"] != KindWeb || payload["state"] != "completed" {
+		t.Fatalf("payload = %#v", payload)
+	}
+	if stub.last.Role != "subagent" {
+		t.Fatalf("role = %q", stub.last.Role)
+	}
+}
+
+func TestTaskToolUnadvertisedKindDoesNotSpawn(t *testing.T) {
+	ctx := context.Background()
+	db := mustCoreDB(t).SQL()
+	seedParentRun(t, db)
+	stub := &stubSubagent{body: "nope"}
+	tool, err := NewTaskTool(TaskToolConfig{DB: db, Runner: stub})
+	if err != nil {
+		t.Fatal(err)
+	}
+	parentCtx := runmeta.With(ctx, runmeta.Context{
+		RunID: "parent-run", TaskID: "t1", AllowedTools: []string{"fs_read", "vision_analyze", "task"}, Depth: 0, CallID: "call-vision",
+	})
+	out, err := tool.Execute(parentCtx, json.RawMessage(`{"prompt":"look","kind":"vision"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(out), kindErrUnavailable) {
+		t.Fatalf("out = %s", out)
+	}
+	if stub.last.RunID != "" {
+		t.Fatal("runner should not run for unadvertised kind")
+	}
+	var n int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM runs WHERE parent_run_id = ?`, "parent-run").Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Fatalf("spawned %d child runs", n)
+	}
+}
+
+func TestTaskToolForbiddenToolsDoesNotSpawn(t *testing.T) {
+	ctx := context.Background()
+	db := mustCoreDB(t).SQL()
+	seedParentRun(t, db)
+	stub := &stubSubagent{body: "nope"}
+	tool, err := NewTaskTool(TaskToolConfig{DB: db, Runner: stub})
+	if err != nil {
+		t.Fatal(err)
+	}
+	parentCtx := runmeta.With(ctx, runmeta.Context{
+		RunID: "parent-run", TaskID: "t1", AllowedTools: []string{"fs_read", "process_exec", "task"}, Depth: 0, CallID: "call-forbid",
+	})
+	out, err := tool.Execute(parentCtx, json.RawMessage(`{"prompt":"x","kind":"explore","tools":["process_exec"]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(out), kindErrForbidden) {
+		t.Fatalf("out = %s", out)
+	}
+	if stub.last.RunID != "" {
+		t.Fatal("runner should not run")
+	}
+}
+
+func mustCoreDB(t *testing.T) *coresqlite.DB {
+	t.Helper()
+	database, err := coresqlite.Open(context.Background(), filepath.Join(t.TempDir(), "core.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	return database
+}
+
+func seedParentRun(t *testing.T, db *sql.DB) {
+	t.Helper()
+	stamp := time.Now().UTC().Format(time.RFC3339Nano)
+	for _, q := range []struct {
+		sql  string
+		args []any
+	}{
+		{"INSERT INTO sessions(session_id,state,created_at,updated_at) VALUES(?,?,?,?)", []any{"s1", "active", stamp, stamp}},
+		{"INSERT INTO tasks(task_id,session_id,title,objective,state,created_at,updated_at) VALUES(?,?,?,?,?,?,?)", []any{"t1", "s1", "T", "O", "running", stamp, stamp}},
+		{"INSERT INTO plans(plan_id,task_id,revision,state,scope_hash,created_at,updated_at,document) VALUES(?,?,?,?,?,?,?,?)", []any{"p1", "t1", 1, "approved", "h1", stamp, stamp, `{}`}},
+		{"INSERT INTO plan_steps(step_id,plan_id,position,title,state,effect_level,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)", []any{"step1", "p1", 0, "S", "running", "R1", stamp, stamp}},
+		{"INSERT INTO runs(run_id,task_id,plan_id,state,started_at,updated_at,step_id) VALUES(?,?,?,?,?,?,?)", []any{"parent-run", "t1", "p1", "running", stamp, stamp, "step1"}},
+	} {
+		if _, err := db.Exec(q.sql, q.args...); err != nil {
+			t.Fatal(err)
+		}
 	}
 }

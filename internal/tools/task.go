@@ -28,15 +28,19 @@ const (
 
 	taskSystemPromptBody = "Complete the delegated task. " +
 		"Reply helpfully in the user's language. Prefer absolute paths under the workspace. " +
-		"Do not claim tool success without evidence."
+		"Do not claim tool success without evidence. You cannot spawn nested task runs, call ask_user, write memory, or draft skills."
 )
 
-func taskSystemPrompt() string {
-	return "You are a sub-agent of YunmengZe Agent " + version.Version + ". " + taskSystemPromptBody
+func childSystemPrompt(kindPrompt string) string {
+	kindPrompt = strings.TrimSpace(kindPrompt)
+	if kindPrompt == "" {
+		kindPrompt = taskSystemPromptBody
+	}
+	return "You are a sub-agent of YunmengZe Agent " + version.Version + ". " + kindPrompt
 }
 
-func childPrefixMessages(configDir, workspace, prompt string) []providerapi.Message {
-	msgs := []providerapi.Message{{Role: providerapi.RoleSystem, Content: taskSystemPrompt()}}
+func childPrefixMessages(configDir, workspace, prompt, kindPrompt string) []providerapi.Message {
+	msgs := []providerapi.Message{{Role: providerapi.RoleSystem, Content: childSystemPrompt(kindPrompt)}}
 	if overlay := providerconfig.OverlayAgents(configDir, workspace); overlay != "" {
 		msgs = append(msgs, providerapi.Message{Role: providerapi.RoleSystem, Content: overlay})
 	}
@@ -59,13 +63,14 @@ type TaskToolConfig struct {
 }
 
 type taskTool struct {
-	db        *sql.DB
-	mu        sync.RWMutex
-	runner    SubagentRunner
-	maxDepth  int
-	now       func() time.Time
-	configDir string
-	workspace string
+	db         *sql.DB
+	mu         sync.RWMutex
+	runner     SubagentRunner
+	maxDepth   int
+	now        func() time.Time
+	configDir  string
+	workspace  string
+	configured map[string]struct{}
 }
 
 // NewTaskTool builds the task tool. Call SetRunner after agent construction if needed.
@@ -104,26 +109,55 @@ func (t *taskTool) SetAgentsOverlay(configDir, workspace string) {
 	t.workspace = strings.TrimSpace(workspace)
 }
 
+// SetConfiguredRoles records models.* keys present at daemon start (ADR-045). Not hot-reloaded.
+func (t *taskTool) SetConfiguredRoles(roles []string) {
+	if t == nil {
+		return
+	}
+	configured := make(map[string]struct{}, len(roles))
+	for _, role := range roles {
+		role = strings.TrimSpace(role)
+		if role == "" || role == "main" {
+			continue
+		}
+		configured[role] = struct{}{}
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.configured = configured
+}
+
 func (t *taskTool) Definition() toolapi.Definition {
-	return toolapi.Definition{
-		Name:                 "task",
-		Description:          "Delegate work to a synchronous sub-agent run (same task, inherited tools/grants). Returns the sub-agent final reply.",
-		Risk:                 string(policy.RiskR1),
-		DefaultTimeoutMillis: 30 * 60 * 1000,
-		InputSchema: json.RawMessage(`{
+	t.mu.RLock()
+	configured := t.configured
+	t.mu.RUnlock()
+	kinds := AdvertisedKindsFor(configured)
+	enumJSON, err := json.Marshal(kinds)
+	if err != nil {
+		enumJSON = []byte(`["general","explore"]`)
+	}
+	schema := fmt.Sprintf(`{
 			"type":"object",
 			"additionalProperties":false,
 			"required":["prompt"],
 			"properties":{
 				"prompt":{"type":"string","description":"Instructions for the sub-agent"},
-				"tools":{"type":"array","items":{"type":"string"},"description":"Optional subset of parent allowed tools"}
+				"kind":{"type":"string","enum":%s,"description":"Sub-agent kind. Omit for general. explore is read-only search. web searches and extracts URLs."},
+				"tools":{"type":"array","items":{"type":"string"},"description":"Optional subset of parent allowed tools; must not include kind-forbidden names"}
 			}
-		}`),
+		}`, enumJSON)
+	return toolapi.Definition{
+		Name:                 "task",
+		Description:          "Delegate work to a synchronous sub-agent run (same task, inherited tools/grants; child cannot spawn task). kind general (default) completes the prompt; explore is read-only search; web uses web_search/web_extract; vision/speech/video require configured models.*. Returns the sub-agent final reply.",
+		Risk:                 string(policy.RiskR1),
+		DefaultTimeoutMillis: 30 * 60 * 1000,
+		InputSchema:          json.RawMessage(schema),
 	}
 }
 
 type taskInput struct {
 	Prompt string   `json:"prompt"`
+	Kind   string   `json:"kind,omitempty"`
 	Tools  []string `json:"tools,omitempty"`
 }
 
@@ -167,10 +201,13 @@ func (t *taskTool) Execute(ctx context.Context, raw json.RawMessage) (json.RawMe
 		return nil, errors.New("prompt is required")
 	}
 
-	allowed := filterChildTools(parent.AllowedTools, input.Tools)
 	t.mu.RLock()
-	configDir, workspace := t.configDir, t.workspace
+	configDir, workspace, configured := t.configDir, t.workspace, t.configured
 	t.mu.RUnlock()
+	child, err := ResolveChildTools(input.Kind, parent.AllowedTools, input.Tools, configured)
+	if err != nil {
+		return encodeKindError(err)
+	}
 	childRunID := childRunID(parent.RunID, prompt)
 	if callID := strings.TrimSpace(parent.CallID); callID != "" {
 		childRunID = childRunIDFromCall(parent.RunID, callID)
@@ -184,15 +221,15 @@ func (t *taskTool) Execute(ctx context.Context, raw json.RawMessage) (json.RawMe
 		RunID: childRunID, TaskID: parent.TaskID, SessionID: parent.SessionID,
 		PlanID: parent.PlanID, PlanHash: parent.PlanHash, StepID: parent.StepID,
 		Actor: parent.Actor, TraceID: parent.TraceID, Interactive: parent.Interactive,
-		Messages:           childPrefixMessages(configDir, workspace, prompt),
-		AllowedTools:       allowed,
+		Messages:           childPrefixMessages(configDir, workspace, prompt, child.Prompt),
+		AllowedTools:       child.Tools,
 		CapabilityGrantIDs: parent.CapabilityGrantIDs,
 		MaxOutputTokens:    parent.MaxOutputTokens,
 		MaxTotalTokens:     parent.MaxTotalTokens,
 		MaxCostMicros:      parent.MaxCostMicros,
 		ToolTimeoutMillis:  parent.ToolTimeoutMillis,
 		Depth:              parent.Depth + 1,
-		Role:               "subagent",
+		Role:               child.Role,
 	}
 
 	result, err := runner.Run(ctx, req)
@@ -201,6 +238,7 @@ func (t *taskTool) Execute(ctx context.Context, raw json.RawMessage) (json.RawMe
 		_ = t.finishChildRun(context.WithoutCancel(ctx), childRunID, kernel.RunFailed, err.Error(), finished)
 		return encodeResult(map[string]any{
 			"run_id":  childRunID,
+			"kind":    child.Kind,
 			"state":   "failed",
 			"error":   err.Error(),
 			"content": result.Content,
@@ -209,6 +247,7 @@ func (t *taskTool) Execute(ctx context.Context, raw json.RawMessage) (json.RawMe
 	_ = t.finishChildRun(context.WithoutCancel(ctx), childRunID, kernel.RunCompleted, "", finished)
 	return encodeResult(map[string]any{
 		"run_id":     childRunID,
+		"kind":       child.Kind,
 		"state":      "completed",
 		"content":    result.Content,
 		"iterations": result.Iterations,
@@ -220,42 +259,20 @@ func (t *taskTool) Execute(ctx context.Context, raw json.RawMessage) (json.RawMe
 	})
 }
 
-// filterChildTools returns allowed tools for the child: parent set, optionally
-// intersected with requested names. Empty requested → full parent set.
-func filterChildTools(parentAllowed, requested []string) []string {
-	parentSet := make(map[string]struct{}, len(parentAllowed))
-	parentOrder := make([]string, 0, len(parentAllowed))
-	for _, name := range parentAllowed {
-		name = strings.TrimSpace(name)
-		if name == "" {
-			continue
-		}
-		if _, exists := parentSet[name]; exists {
-			continue
-		}
-		parentSet[name] = struct{}{}
-		parentOrder = append(parentOrder, name)
+func encodeKindError(err error) (json.RawMessage, error) {
+	var kr *kindResolveError
+	if !errors.As(err, &kr) {
+		return nil, err
 	}
-	if len(requested) == 0 {
-		return parentOrder
+	payload := map[string]any{
+		"error":   kr.Code,
+		"kind":    kr.Kind,
+		"message": kr.Message,
 	}
-	out := make([]string, 0, len(requested))
-	seen := make(map[string]struct{})
-	for _, name := range requested {
-		name = strings.TrimSpace(name)
-		if name == "" {
-			continue
-		}
-		if _, ok := parentSet[name]; !ok {
-			continue
-		}
-		if _, dup := seen[name]; dup {
-			continue
-		}
-		seen[name] = struct{}{}
-		out = append(out, name)
+	if len(kr.Tools) > 0 {
+		payload["tools"] = kr.Tools
 	}
-	return out
+	return encodeResult(payload)
 }
 
 func (t *taskTool) insertChildRun(ctx context.Context, childRunID string, parent runmeta.Context) error {
