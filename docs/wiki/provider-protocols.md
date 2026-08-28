@@ -141,7 +141,7 @@ Selection and wire ids follow **OpenCode** rules:
 | Supplier deepseek2 | `provider.deepseek2` | gateway nested wire ids / `id` override |
 | Catalog key | `provider.<id>.models` | `"deepseek-chat"` or `"deepseek/deepseek-v4-flash"` |
 | Wire override | `models.<key>.id` | `"flash": { "id": "deepseek/deepseek-v4-flash" }` |
-| Role overrides | top-level `models` | `subagent` / `compact` → selection ref (ADR-045) — **not** the catalog |
+| Role overrides | top-level `models` | `subagent` / `compact` / `web` / `vision` / `speech` → selection ref (ADR-045) — **not** the catalog |
 
 Same model segment on two suppliers is fine; selection disambiguates. Templates use **`deepseek1`** / **`deepseek2`**:
 
@@ -184,7 +184,7 @@ While `ymzd` runs, edits to `agent.json` / `agent.local.json` / `env` rebuild th
 | Literal `apiKey` or `{file:…}` content | Yes |
 | `{env:VAR}` via `env` file when process VAR is empty | Yes |
 | Process env already set for `{env:VAR}` | **No** — change process env + restart |
-| `chat.*`, MCP, `models.subagent\|compact\|web` | **No** — `ymz restart` |
+| `chat.*`, MCP, `models.*` (`subagent` / `compact` / `web` / `vision` / `speech`) | **No** — `ymz restart` |
 | Daemon started without agent (bad config) | Fix file then **`ymz restart`** (no late-bind) |
 
 In-flight runs keep the previous client until the next turn.
@@ -198,7 +198,8 @@ Top-level `models` maps roles to other **selection** refs (ADR-045). Unset roles
   "model": "deepseek1/deepseek-chat",
   "models": {
     "subagent": "deepseek2/flash",
-    "compact": "deepseek2/flash"
+    "compact": "deepseek2/flash",
+    "web": "deepseek2/flash"
   }
 }
 ```

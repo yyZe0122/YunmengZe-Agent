@@ -3,7 +3,8 @@
   "model": "deepseek1/deepseek-chat",
   "models": {
     "subagent": "deepseek1/deepseek-chat",
-    "compact": "deepseek1/deepseek-chat"
+    "compact": "deepseek1/deepseek-chat",
+    "web": "deepseek1/deepseek-chat"
   },
   "provider": {
     "deepseek1": {

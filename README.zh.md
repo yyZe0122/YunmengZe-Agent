@@ -18,8 +18,11 @@
 
 - **编码循环** — 工具失败、非零退出以 JSON 观察回灌，turn 继续。运行中回车 steer 下一步。失败不是整轮死亡。
 - **Agent · Plan · Auto** — Tab 循环 **agent**（可写；测试/git 走 `/perm`）→ **plan**（只读）→ **auto**（本 session 预授 process + git）。
-- **TUI 为主** — 清宣纸 chrome、live markdown、可折叠 thinking/工具、终端原生划选复制。CLI 给脚本。
-- **自带模型** — OpenAI / Anthropic / Gemini / OpenAI 兼容。`ymz config import-opencode` 可映射已有 OpenCode 配置。
+- **模型会自己补窗** — OpenAI / Anthropic / Gemini / OpenAI 兼容。省略 `contextWindow` / `maxTokens` 时从 [models.dev](https://models.dev) 填窗。`ymz config import-opencode` 可映射已有 OpenCode 配置。
+- **类型化子代理** — `task.kind`：`general` / `explore` / `web`；配了 `models.vision` / `models.speech` 才有 vision / speech / video。子永远叶子，授权不扩大。
+- **网页** — 交互 agent 的 `web_search` / `web_extract`（`/perm`，similar = host）。默认 DuckDuckGo，可选 SearXNG / Tavily（`chat.web`）。plan / cron 不广告。
+- **可选媒体** — 配了 `models.vision` / `models.speech` 才广告 `vision_analyze` · `audio_transcribe` · `video_analyze`。主循环仍是文本。
+- **TUI 为主，IDE 可选** — 清宣纸 chrome、live markdown、可折叠 thinking/工具、终端原生划选复制。`/edit` 撤回一轮；`fs_remove` 可 `/undo`。可选 VS Code / Cursor 终端启动器（VSIX，不上 Marketplace）。CLI 给脚本。
 - **本机、有界** — 一个 daemon、一份 SQLite `core.db`。副作用只经 Tool Broker：Policy → Grant → 路径限制 → Audit。没有 yolo。
 
 ## 安装
@@ -89,6 +92,7 @@ flowchart LR
 | 输入 | 行为 |
 | --- | --- |
 | **Tab** · **Shift+Tab** | 循环 **agent**（可写，测试/git 走 `/perm`）→ **plan**（只读）→ **auto**（本 session 预授 process+git） |
+| **Ctrl+P** / **L** / **S** / **T** | 命令盘 · 模型盘 · 会话盘 · todos pills |
 | 普通文字 | 提交。**运行中回车 = steer** |
 | `/new` | 离焦到 ready；运行中则取消本轮 |
 | `/perm` | once · similar · permanent · deny |
@@ -125,6 +129,7 @@ API key 放 `~/.yunmengze/env` 或进程环境，JSON 里写 `{env:VAR}`。也�
 
 - 选型：`providerId/modelId…`（只切第一道 `/`；模型段可以再含 `/`）。
 - `maxTokens` = 输出帽（省略则除 Anthropic 外不发 `max_tokens`）；`contextWindow` = 装配 / UI 窗。都省略时从 [models.dev](https://models.dev) 填窗（未命中 → 1M / packing 128k）。也接受 OpenCode 的 `limit.{context,output}`。
+- 可选角色映射与网页检索（改 `models.*` 或 `chat.*` 需 `ymz restart`）：`models.subagent` / `compact` / `web`；配了 `models.vision` / `speech` 才广告看图 / 转写 / 抽帧。不要设 `models.main` 或 `models.video`。[ADR-045](docs/wiki/adr/045-model-roles.md) · [ADR-055](docs/wiki/adr/055-auxiliary-media-boundary.md)。`chat.web.search` 默认 `ddg`。
 - 用户规则：`~/.yunmengze/AGENTS.md`；项目 `.yunmengze/AGENTS.md` 存在则追加。只是指令，不扩授权。
 - `ymz config import-opencode` 把 OpenCode 配置映到 `agent.local.json`。
 
@@ -159,7 +164,7 @@ ymz  (TUI · CLI)  ──►  本地 Gateway  ──►  ymzd
 
 Gateway 不执行工具、不调模型、不发 grant。记忆、技能、MCP、cron 都在**同一进程**里 —— 不是独立产品面。
 
-设计 wiki：[`docs/wiki/`](docs/wiki/)（从 [ADR-038](docs/wiki/adr/038-session-chat-boundary.md)、[051](docs/wiki/adr/051-coding-loop-contextview.md)、[052](docs/wiki/adr/052-coding-loop-harness.md) 开始）。目录：[`docs/README.md`](docs/README.md)。
+设计 wiki：[`docs/wiki/`](docs/wiki/)（从 [ADR-038](docs/wiki/adr/038-session-chat-boundary.md)、[039](docs/wiki/adr/039-logical-child-runs.md)、[051](docs/wiki/adr/051-coding-loop-contextview.md)、[052](docs/wiki/adr/052-coding-loop-harness.md)、[055](docs/wiki/adr/055-auxiliary-media-boundary.md) 开始）。目录：[`docs/README.md`](docs/README.md)。
 
 ## 开发
 
@@ -188,4 +193,4 @@ go test ./... -count=1
 
 Alpha。焦点是**编码循环和 TUI**。Cron、MCP、记忆是支撑，不是主卖点。
 
-当前线：**v0.3.1**（编码循环 harness + Tab Auto + 产品 README）。可选尾巴（compat API、消息通道）见 [`docs/backlog/current.md`](docs/backlog/current.md)。
+已发版：**v0.4.0**（清宣纸 TUI + VS Code 启动器 + `/edit` + `fs_remove`）。当前树：类型化子代理、网页检索、可选媒体、models.dev 填窗 — [`unreleased.md`](docs/history/changelog/unreleased.md)。可选尾巴（compat API、消息通道）见 [`docs/backlog/current.md`](docs/backlog/current.md)。

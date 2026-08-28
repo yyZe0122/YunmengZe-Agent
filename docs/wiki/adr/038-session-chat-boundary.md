@@ -78,7 +78,7 @@
 - 任务状态机：`created → running → (paused) → completed|failed|cancelled`；无 Planner 遗留态；
 - Skill 与 `chat.commands` 仅指令文本，不扩大授权；TUI 可 `/skills`、`/skills apply|reject`、`/<skill-id>` 或 `/<command>` 显式使用（草稿见 ADR-050）。Prefix 注入技能目录（id+一句话）；正文仍 `skills_list` / `skill_view`（ADR-036 / 052）。
 - 可选用户规则：`<ConfigDir>/AGENTS.md`（EnsureConfig 缺则种子）始终注入；`<workspace>/.yunmengze/AGENTS.md` 存在则追加。经 `injectscan`；不扩 grant。子代理继承同一套 overlay。
-- Prefix：短身份（`YunmengZe Agent <version>` + 模式 + 三角色 + 无 vision + `/model` 只切 main）+ 共用工具协议。pin 之后另插一条 `<env>`（当前 model / workspace / UTC date）。用户/项目 `AGENTS.md` 仍是后面独立 system（preamble：不扩授权）。循环语义见 ADR-052。
+- Prefix：短身份（`YunmengZe Agent <version>` + 模式 + 已配 `models.*` 角色；不写死「No vision」；`/model` 只切 main）+ 共用工具协议。pin 之后另插一条 `<env>`（当前 model / workspace / UTC date）。用户/项目 `AGENTS.md` 仍是后面独立 system（preamble：不扩授权）。循环语义见 ADR-052。
 
 ## 结果
 

@@ -88,7 +88,7 @@ H2 / O5–O6 / 飞书 M* / Marketplace ── 用户再提（不插队）
 
 ### Phase S — 类型化子代理 ✅
 
-已落地：kind 目录 `internal/tools/taskkind.go`；广告 `general`/`explore`/`web`；子永远剔 `task`；显式禁带请求 fail-closed；Prefix 不再写死「No vision」。`vision`/`speech`/`video` 在目录里占位且 `Advertised=false`。`AllowedModelRoles`：`subagent`/`compact`/`web`。
+已落地：kind 目录 `internal/tools/taskkind.go`；广告 `general`/`explore`/`web`；子永远剔 `task`；显式禁带请求 fail-closed；Prefix 不再写死「No vision」。`vision`/`speech`/`video` 在目录里占位且 `Advertised=false`。`AllowedModelRoles`：`subagent`/`compact`/`web`/`vision`/`speech`。
 
 ```json
 { "prompt": "…", "kind": "explore", "tools": ["fs_grep"] }

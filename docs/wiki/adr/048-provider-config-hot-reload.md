@@ -49,7 +49,7 @@ Debounce ~500ms; OnChange coalesced (one in flight; dirty re-run). Panic in OnCh
 | --- | --- |
 | `chat.*` | restart |
 | MCP registration | restart |
-| `models.subagent` / `models.compact` (ADR-045) | restart |
+| `models.*` (`subagent` / `compact` / `web` / `vision` / `speech`; ADR-045) | restart |
 | Process env already set when using `{env:VAR}` | change process env + restart (or use literal / `{file:}`) |
 
 ### Key rotation that works without restart

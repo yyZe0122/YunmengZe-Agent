@@ -17,8 +17,11 @@ The open-source **local coding agent** for your terminal. A fail-as-observation 
 
 - **Coding loop** — tool failures and non-zero exits come back as JSON observations; the turn continues. Steer mid-turn with Enter. Failures are not a dead run.
 - **Agent · Plan · Auto** — Tab cycles **agent** (writes; `/perm` for tests/git) → **plan** (read-only) → **auto** (this session pre-grants process + git).
-- **TUI-first** — xuan-paper chrome, live markdown, foldable thinking/tools, native select-to-copy. CLI is for scripts.
-- **Your models** — OpenAI / Anthropic / Gemini / OpenAI-compatible. `ymz config import-opencode` maps an existing OpenCode config.
+- **Your models, filled in** — OpenAI / Anthropic / Gemini / OpenAI-compatible. Omit `contextWindow` / `maxTokens` and the window comes from [models.dev](https://models.dev). `ymz config import-opencode` maps an existing OpenCode config.
+- **Typed sub-agents** — `task` with `kind` `general` / `explore` / `web` (and `vision` / `speech` / `video` when those roles are configured). Children are leaves; grants never expand.
+- **Web** — `web_search` / `web_extract` on interactive agent (`/perm`, similar = host). Default DuckDuckGo; optional SearXNG / Tavily via `chat.web`. Plan and cron never get them.
+- **Media when you opt in** — `vision_analyze` · `audio_transcribe` · `video_analyze` only if `models.vision` / `models.speech` are set. Main loop stays text.
+- **TUI-first, IDE-optional** — xuan-paper chrome, live markdown, foldable thinking/tools, native select-to-copy. `/edit` retracts a turn; `fs_remove` is undoable. Optional VS Code/Cursor terminal launcher (VSIX, not Marketplace). CLI is for scripts.
 - **Local and bounded** — one daemon, one SQLite `core.db`. Tools only run through the Broker: Policy → Grant → path limits → Audit. No yolo.
 
 ## Install
@@ -123,6 +126,7 @@ Packing is a single `ContextView` (prefix + summary + tail + ephemeral todos). D
 | Input | Behavior |
 | --- | --- |
 | **Tab** · **Shift+Tab** | Cycle **agent** (R/W, `/perm` for tests/git) → **plan** (RO) → **auto** (this session pre-grants process+git) |
+| **Ctrl+P** / **L** / **S** / **T** | Command · model · session palettes; todo pills |
 | Plain text | Submit. **While a turn is running, Enter steers** |
 | `/new` | Leave to ready; cancels a running turn |
 | `/perm` | once · similar · permanent · deny |
@@ -177,7 +181,24 @@ Put the API key in `~/.yunmengze/env` or the process environment, then reference
 
 - Selection is `providerId/modelId…` (first `/` only; the model segment may contain `/`).
 - `maxTokens` = output cap (omit → do not send `max_tokens` except Anthropic); `contextWindow` = packing / UI window. Omit both to fill the window from [models.dev](https://models.dev) (`internal/modelcatalog`; miss → 1M / packing 128k). OpenCode `limit.{context,output}` is accepted.
-- Optional `chat` (workspace, tools, permission, memory, slash templates): [`configs/agent.json.example`](configs/agent.json.example).
+- Optional role map and web search (changing `models.*` or `chat.*` needs `ymz restart`):
+
+```json
+{
+  "model": "deepseek1/deepseek-chat",
+  "models": {
+    "subagent": "deepseek1/deepseek-chat",
+    "compact": "deepseek1/deepseek-chat",
+    "web": "deepseek1/deepseek-chat"
+  },
+  "chat": {
+    "web": { "search": "ddg" }
+  }
+}
+```
+
+- Optional `models.vision` / `models.speech` advertise look-at / transcribe / frame-extract tools. Do not set `models.main` or `models.video`. [ADR-045](docs/wiki/adr/045-model-roles.md) · [ADR-055](docs/wiki/adr/055-auxiliary-media-boundary.md).
+- Optional `chat` (workspace, tools, permission, memory, slash templates, `web`): [`configs/agent.json.example`](configs/agent.json.example).
 - User rules: `~/.yunmengze/AGENTS.md`; project `.yunmengze/AGENTS.md` is appended when present. Instruction text only — no grants.
 - `ymz config import-opencode` maps OpenCode config → `agent.local.json` (MCP, `chat.commands`, compaction; warns and drops plugins/LSP).
 
@@ -213,7 +234,7 @@ ymz  (TUI · CLI)  ──►  local Gateway  ──►  ymzd
 
 Gateway does not execute tools, call providers, or issue grants. Memory, skills, MCP, and cron jobs are **in-process** on the same daemon — not a product surface of their own.
 
-Design wiki: [`docs/wiki/`](docs/wiki/) (start at [ADR-038](docs/wiki/adr/038-session-chat-boundary.md), [051](docs/wiki/adr/051-coding-loop-contextview.md), [052](docs/wiki/adr/052-coding-loop-harness.md)). Catalog: [`docs/README.md`](docs/README.md).
+Design wiki: [`docs/wiki/`](docs/wiki/) (start at [ADR-038](docs/wiki/adr/038-session-chat-boundary.md), [039](docs/wiki/adr/039-logical-child-runs.md), [051](docs/wiki/adr/051-coding-loop-contextview.md), [052](docs/wiki/adr/052-coding-loop-harness.md), [055](docs/wiki/adr/055-auxiliary-media-boundary.md)). Catalog: [`docs/README.md`](docs/README.md).
 
 ## Development
 
@@ -247,6 +268,6 @@ Details: [`SECURITY.md`](SECURITY.md), [threat model ADR-008](docs/wiki/adr/008-
 
 Alpha. Focus is the **coding loop and TUI**. Cron, MCP, and memory are supporting pieces — not the headline.
 
-Current line: **v0.3.1** (coding-loop harness + Tab Auto + product README). Optional tails (compat API, messaging channels) live in [`docs/backlog/current.md`](docs/backlog/current.md).
+Released: **v0.4.0** (xuan-paper TUI + VS Code launcher + `/edit` + `fs_remove`). On this tree: typed sub-agents, web search, optional media, models.dev window fill — [`unreleased.md`](docs/history/changelog/unreleased.md). Optional tails (compat API, messaging channels) live in [`docs/backlog/current.md`](docs/backlog/current.md).
 
 Release checklist: [`docs/release.md`](docs/release.md).
