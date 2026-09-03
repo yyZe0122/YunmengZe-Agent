@@ -11,7 +11,9 @@ import (
 
 func (m model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
-	// Permission modal hotkeys (four tiers) while listPermissions is open.
+	if m.cardOpen() && key != "esc" {
+		m.clearDismiss()
+	}
 	if m.list == listPermissions && len(key) == 1 {
 		if decision, ok := permHotkeyDecision(key); ok {
 			if m.permInGrace() {
@@ -26,10 +28,10 @@ func (m model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, m.permDecideCmd(p.ID, decision)
 		}
 	}
-	if m.list == listQuestions && len(key) == 1 {
+	if m.list == listQuestions && !m.qCustomMode && len(key) == 1 {
 		r := key[0]
 		if r >= '1' && r <= '9' {
-			return m, m.answerSelectedQuestion(int(r - '1'))
+			return m, m.questionConfirmOption(int(r - '1'))
 		}
 	}
 
@@ -74,6 +76,17 @@ func (m model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.layout()
 			return m, nil
 		}
+		if m.cardOpen() {
+			if m.dismissArmed() {
+				cmd := m.dismissCurrentCard()
+				m.layout()
+				return m, cmd
+			}
+			m.armDismiss()
+			m.statusMsg = "press Esc again in 3s to dismiss"
+			m.layout()
+			return m, nil
+		}
 		if m.list != listNone {
 			m.closeList()
 			m.layout()
@@ -96,6 +109,9 @@ func (m model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "tab":
+		if m.cardOpen() {
+			return m, nil
+		}
 		if m.completer.visible {
 			if name := m.completer.accept(); name != "" {
 				if strings.HasPrefix(name, "/") {
@@ -121,6 +137,9 @@ func (m model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, m.patchStanceCmd()
 
 	case "shift+tab":
+		if m.cardOpen() {
+			return m, nil
+		}
 		m.cycleDraftMode(-1)
 		m.statusMsg = "mode " + string(m.draftMode)
 		return m, m.patchStanceCmd()
@@ -173,6 +192,21 @@ func (m model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.completer.move(-1)
 			return m, nil
 		}
+		if m.list == listQuestions {
+			if m.qOptIdx > 0 {
+				m.qOptIdx--
+			}
+			return m, nil
+		}
+		if m.list == listPermissions {
+			if m.permCycleIdx > 0 {
+				m.permCycleIdx--
+			} else if m.selectedIdx > 0 {
+				m.selectedIdx--
+				m.permCycleIdx = 0
+			}
+			return m, nil
+		}
 		if m.inListMode() {
 			if m.selectedIdx > 0 {
 				m.selectedIdx--
@@ -192,6 +226,22 @@ func (m model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.completer.move(1)
 			return m, nil
 		}
+		if m.list == listQuestions {
+			_, item, ok := m.currentQuestion()
+			if ok && m.qOptIdx < questionRowCount(item)-1 {
+				m.qOptIdx++
+			}
+			return m, nil
+		}
+		if m.list == listPermissions {
+			if m.permCycleIdx < 3 {
+				m.permCycleIdx++
+			} else if m.selectedIdx < len(m.permissions)-1 {
+				m.selectedIdx++
+				m.permCycleIdx = 0
+			}
+			return m, nil
+		}
 		if m.inListMode() {
 			if m.selectedIdx < m.listLen()-1 {
 				m.selectedIdx++
@@ -205,6 +255,27 @@ func (m model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.viewport.ScrollDown(1)
 		m.stickBottom = m.viewport.AtBottom()
 		return m, nil
+
+	case "left":
+		if m.list == listQuestions && !m.qCustomMode {
+			m.questionMoveItem(-1)
+			return m, nil
+		}
+
+	case "right":
+		if m.list == listQuestions && !m.qCustomMode {
+			m.questionMoveItem(1)
+			return m, nil
+		}
+
+	case " ":
+		if m.list == listQuestions && !m.qCustomMode {
+			_, item, ok := m.currentQuestion()
+			if ok && item.MultiSelect {
+				return m, m.questionConfirmOption(m.qOptIdx)
+			}
+			return m, m.questionConfirmHighlighted()
+		}
 
 	case "enter":
 		// Two-stage slash completer: first Enter completes prefix → full name;
@@ -251,6 +322,25 @@ func (m model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 		line := strings.TrimSpace(m.input.Value())
+		if m.cardOpen() {
+			m.completer.dismiss()
+			m.historyIdx = -1
+			var cmd tea.Cmd
+			if m.list == listQuestions && line != "" {
+				m.input.SetValue("")
+				cmd = m.questionSubmitCustom(line)
+			} else if line == "" {
+				cmd = m.listEnter()
+			} else if m.list == listQuestions {
+				m.input.SetValue("")
+				cmd = m.questionSubmitCustom(line)
+			} else {
+				return m, nil
+			}
+			m.layout()
+			m.syncViewport(false)
+			return m, cmd
+		}
 		m.input.SetValue("")
 		m.completer.dismiss()
 		m.historyIdx = -1

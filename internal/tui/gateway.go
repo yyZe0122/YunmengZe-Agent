@@ -59,6 +59,7 @@ type Gateway interface {
 	DecidePermissionConfirm(ctx context.Context, permissionID, decision string, confirm bool) (gatewayclient.Permission, error)
 	ListQuestions(ctx context.Context, sessionID string, limit int) ([]gatewayclient.UserQuestion, error)
 	AnswerQuestion(ctx context.Context, id, actor string, answers map[string][]string) (gatewayclient.UserQuestion, error)
+	DismissQuestion(ctx context.Context, id, actor string) (gatewayclient.UserQuestion, error)
 
 	ListMemory(ctx context.Context, sessionID, query, kind string, limit int) ([]gatewayclient.MemoryEntry, error)
 	ListMemoryFilter(ctx context.Context, sessionID, query, kind string, limit int, includeArchived bool) ([]gatewayclient.MemoryEntry, error)

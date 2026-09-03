@@ -150,8 +150,15 @@ type model struct {
 	autoOpenedQList    bool
 	// permGraceUntil ignores decision keys briefly after auto-open (Crush-style).
 	permGraceUntil time.Time
-	// permCycleIdx cycles Enter: once → similar → permanent → deny.
+	// permCycleIdx is the highlighted permission decision (0 once … 3 deny).
 	permCycleIdx int
+	dismissUntil time.Time
+
+	qItemIdx    int
+	qOptIdx     int
+	qDraft      map[string][]string
+	qPicked     map[string][]string
+	qCustomMode bool
 
 	animFrame int
 

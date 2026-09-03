@@ -82,9 +82,9 @@ func (m *model) listHint() string {
 	case listSkills:
 		return "↑↓ · Enter toggle · Esc done (applies to next submit)"
 	case listPermissions:
-		return "↑↓ · 1 once · 2 similar · 3 permanent · 4 deny · Enter cycle · Esc · /perm …"
+		return "↑↓ · 1 once · 2 similar · 3 permanent · 4 deny · Enter · Esc Esc dismiss"
 	case listQuestions:
-		return "↑↓ question · 1–9 option · Enter first option · Esc"
+		return "↑↓ option · ← → question · 1–9 · Space · Enter · Type your own · Esc Esc dismiss"
 	default:
 		return "↑↓ · Enter · Esc"
 	}
@@ -257,6 +257,18 @@ func renderPickerOverlay(m *model, width int) string {
 	if m.list == listNone {
 		return ""
 	}
+	if m.list == listPermissions {
+		if m.listLen() == 0 {
+			return stylePickerBox.Width(max(8, width-2)).Render(styleTitle.Render("Permissions") + "\n" + styleDim.Render("No pending permissions. (Agent mode + ungranted high-risk tools)"))
+		}
+		return renderPermCard(m, width)
+	}
+	if m.list == listQuestions {
+		if m.listLen() == 0 {
+			return stylePickerBox.Width(max(8, width-2)).Render(styleTitle.Render("Questions") + "\n" + styleDim.Render("No pending questions."))
+		}
+		return renderQuestionCard(m, width)
+	}
 	var b strings.Builder
 	b.WriteString(styleTitle.Render(m.listTitle()) + "  ")
 	b.WriteString(styleDim.Render(m.listHint()) + "\n")
@@ -324,7 +336,10 @@ func (m *model) openList(kind listKind) {
 		}
 	case listPermissions:
 		m.permCycleIdx = 0
+		m.clearDismiss()
 		// Caller sets permGraceUntil when auto-opening; manual /perm has no grace.
+	case listQuestions:
+		m.resetQuestionDraft()
 	case listSessions:
 		// Keep current task/timeline mounted; picker floats above.
 	case listSkills:
@@ -343,6 +358,7 @@ func (m *model) closeList() {
 	m.selectedIdx = 0
 	m.permCycleIdx = 0
 	m.permGraceUntil = time.Time{}
+	m.resetQuestionDraft()
 }
 
 func (m *model) permInGrace() bool {
@@ -420,47 +436,12 @@ func (m *model) listEnter() tea.Cmd {
 		m.errMsg = ""
 		return nil
 	case listPermissions:
-		if m.permInGrace() {
-			m.statusMsg = "permission open · wait a moment (grace) · 1–4 decide"
-			return nil
-		}
-		if m.selectedIdx < 0 || m.selectedIdx >= len(m.permissions) {
-			return nil
-		}
-		p := m.permissions[m.selectedIdx]
-		decision := permCycleOrder[m.permCycleIdx%len(permCycleOrder)]
-		m.permCycleIdx = (m.permCycleIdx + 1) % len(permCycleOrder)
-		m.busy = true
-		return m.permDecideCmd(p.ID, decision)
+		return m.permConfirmHighlighted()
 	case listQuestions:
-		if m.selectedIdx < 0 || m.selectedIdx >= len(m.questions) {
-			return nil
-		}
-		return m.answerSelectedQuestion(0)
+		return m.questionConfirmHighlighted()
 	default:
 		return nil
 	}
-}
-
-func (m *model) answerSelectedQuestion(optionIdx int) tea.Cmd {
-	if m.selectedIdx < 0 || m.selectedIdx >= len(m.questions) {
-		return nil
-	}
-	q := m.questions[m.selectedIdx]
-	if len(q.Questions) == 0 {
-		return nil
-	}
-	item := q.Questions[0]
-	label := strings.TrimSpace(item.Question)
-	if len(item.Options) > 0 {
-		if optionIdx < 0 || optionIdx >= len(item.Options) {
-			return nil
-		}
-		label = item.Options[optionIdx].Label
-	}
-	answers := map[string][]string{item.ID: {label}}
-	m.busy = true
-	return m.answerQuestionCmd(q.ID, answers)
 }
 
 func (m *model) focusSessionAt(i int) tea.Cmd {

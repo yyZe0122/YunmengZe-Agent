@@ -245,6 +245,10 @@ func (f *fakeGateway) AnswerQuestion(_ context.Context, id, _ string, answers ma
 	return gatewayclient.UserQuestion{ID: id, State: "answered", Answers: answers}, nil
 }
 
+func (f *fakeGateway) DismissQuestion(_ context.Context, id, _ string) (gatewayclient.UserQuestion, error) {
+	return gatewayclient.UserQuestion{ID: id, State: "unavailable"}, nil
+}
+
 func (f *fakeGateway) ListMemory(context.Context, string, string, string, int) ([]gatewayclient.MemoryEntry, error) {
 	return nil, nil
 }

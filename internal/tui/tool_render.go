@@ -157,6 +157,8 @@ func formatToolResultTitle(toolCallID, toolName string) string {
 func toolCallPreview(name, arguments string) string {
 	args := parseToolArgs(arguments)
 	switch {
+	case name == "ask_user":
+		return askUserPreview(args)
 	case name == "task":
 		if p := stringField(args, "prompt", "objective", "description"); p != "" {
 			return "prompt " + truncate(p, 72)
@@ -187,6 +189,29 @@ func toolCallPreview(name, arguments string) string {
 		}
 		return ""
 	}
+}
+
+func askUserPreview(args map[string]any) string {
+	raw, ok := args["questions"]
+	if !ok {
+		return ""
+	}
+	items, ok := raw.([]any)
+	if !ok || len(items) == 0 {
+		return ""
+	}
+	first, _ := items[0].(map[string]any)
+	q := strings.TrimSpace(fmt.Sprint(first["question"]))
+	if q == "" || q == "<nil>" {
+		q = strings.TrimSpace(fmt.Sprint(first["header"]))
+	}
+	if len(items) == 1 {
+		return truncate(q, 72)
+	}
+	if q == "" || q == "<nil>" {
+		return fmt.Sprintf("%d questions", len(items))
+	}
+	return fmt.Sprintf("%d questions · %s", len(items), truncate(q, 48))
 }
 
 func fsToolPreview(name string, args map[string]any) string {

@@ -169,7 +169,7 @@ func (m model) applyQuestionPoll(msg questionPollDoneMsg) (tea.Model, tea.Cmd) {
 	} else if msg.openList && prev == 0 && m.list == listNone && m.pendingPermCount == 0 {
 		m.openList(listQuestions)
 		m.autoOpenedQList = true
-		m.statusMsg = fmt.Sprintf("%d question(s) · 1–9 pick option · Enter first option · Esc", len(m.questions))
+		m.statusMsg = fmt.Sprintf("%d question(s) · 1–9 · Enter · Type your own · Esc Esc dismiss", len(m.questions))
 	} else if m.list == listQuestions && m.selectedIdx >= len(m.questions) && len(m.questions) > 0 {
 		m.selectedIdx = len(m.questions) - 1
 	}
