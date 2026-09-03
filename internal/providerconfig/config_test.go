@@ -362,6 +362,13 @@ func TestEnsureConfigWritesDefaultWhenEmpty(t *testing.T) {
 	if selected != "deepseek1/deepseek-chat" || len(models) == 0 {
 		t.Fatalf("selected=%q models=%v", selected, models)
 	}
+	rawCfg, err := os.ReadFile(result.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(rawCfg), `"subagent"`) || !strings.Contains(string(rawCfg), `"compact"`) {
+		t.Fatalf("default template missing models.subagent/compact: %s", rawCfg)
+	}
 	agents := filepath.Join(root, AgentsFilename)
 	raw, err := os.ReadFile(agents)
 	if err != nil {
@@ -815,5 +822,27 @@ func TestLoadModelRolesAndValidation(t *testing.T) {
 	write(`{"compact": "not-a-ref"}`)
 	if _, err := Load(root); err == nil {
 		t.Fatal("expected bad ref format rejection")
+	}
+}
+
+func TestAppendWorkspaceAllowCreatesLocal(t *testing.T) {
+	root := t.TempDir()
+	writeConfig(t, filepath.Join(root, Filename), "deepseek/deepseek-chat", "https://api.deepseek.com")
+	path, err := AppendWorkspaceAllow(root, "/tmp/extra-root")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filepath.Base(path) != LocalFilename {
+		t.Fatalf("path = %s", path)
+	}
+	chat, err := LoadChat(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if chat.Workspace == nil || len(chat.Workspace.Allow) != 1 || chat.Workspace.Allow[0] != "/tmp/extra-root" {
+		t.Fatalf("allow = %#v", chat.Workspace)
+	}
+	if _, err := AppendWorkspaceAllow(root, "/"); err == nil {
+		t.Fatal("filesystem root must be rejected")
 	}
 }

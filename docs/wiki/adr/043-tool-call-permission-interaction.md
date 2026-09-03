@@ -4,6 +4,7 @@
 - 日期：2026-08-06
 - 更新：2026-08-13（H4：pending 只读 suggested_decision；不自动 decide）
 - 更新：2026-08-28（Phase W：`web_search` / `web_extract` 与 `http_get` 同闸，similar = host）
+- 更新：2026-09-02（TUI 授权卡；extra-root 四档；Wait 30m）
 
 ## 背景
 
@@ -65,7 +66,8 @@ agent loop → Broker.Execute
 - Gateway：
   - `GET /v1/permissions?session_id=&limit=`
   - `POST /v1/permissions/{id}/decide` body：`{ "decision": "allow_once"|"allow_similar"|"allow_permanent"|"deny", "actor": "…", "confirm": false }`
-- TUI：`/perm` 列表；`/perm once|similar|permanent|deny <id-prefix>`；热键 1–4
+- TUI：授权卡（完整 tool/path/command）；`/perm once|similar|permanent|deny <id-prefix>`；热键 1–4；Enter 确认高亮档；Esc Esc（3s）= deny。Wait 30m。
+- Extra-root：交互 TUI 下 `fs_*` / `process_*` / `git_*` 绝对路径越界挂 `/perm`。once = 本次 call（`PathGuard.AddOnceRoot(tool_call_id)`，不抬进程天花板）；similar = `sessions.metadata.extra_roots` + `AddSessionRoot`；permanent = 写入 `agent.local.json` `chat.workspace.allow` 且 `AddRoot` 内存立刻生效（不经 ADR-048 `chat.*` 热加载）。CLI/cron 立刻 deny。`/` 等 volume root 拒绝。
 - H4：List pending 可带只读 `suggested_decision` / `suggested_reason`（once/similar 或 deny 提示）；**不**自动 decide、**不**建议 permanent。路径：双方皆空才只比 tool+capability；一侧空不匹配；非空须 `filepath.Clean` 后相等或带分隔符的目录前缀（`/tmp/foo` 不匹配 `/tmp/foobar`）。有 `session_id` 时只查同会话。
 - Agent（未预授）：chat plan **嵌入** process/git/`http_get`/`web_search`/`web_extract` 的 once + session CapabilityScope，**不**预发这些 grant（`issueChatGrants` 跳过）。`AllowedTools` **按名 unique**（ADR-052）：双 scope 仍给 `/perm` decide 选 once vs session，但模型只看见每个工具一次。host 类工具 similar 把请求 host 写入 grant。Plan / cron 不广告 `http_get` / `web_search` / `web_extract`。
 

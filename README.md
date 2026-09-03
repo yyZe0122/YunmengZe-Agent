@@ -115,7 +115,7 @@ flowchart LR
 | Unadvertised or invalid tool call | observation JSON, continue |
 | Parent context cancelled, or DB cannot persist | cancel / fail the turn |
 
-While a turn is running, **Enter steers the next step** (does not cancel in-flight tools). Esc or `/new` cancels the turn. The model can pause on `ask_user`; CLI and cron never wait.
+While a turn is running, **Enter steers the next step** (does not cancel in-flight tools). Esc or `/new` cancels the turn. The model can pause on `ask_user` (question card: numbered options, Type your own answer, multi-question ←→). CLI and cron never wait. Permission/question cards steal Enter (no steer) until decided or Esc Esc dismiss.
 
 Packing is a single `ContextView` (prefix + summary + tail + ephemeral todos). Details: [ADR-051](docs/wiki/adr/051-coding-loop-contextview.md) · [ADR-052](docs/wiki/adr/052-coding-loop-harness.md).
 
@@ -129,7 +129,7 @@ Packing is a single `ContextView` (prefix + summary + tail + ephemeral todos). D
 | **Ctrl+P** / **L** / **S** / **T** | Command · model · session palettes; todo pills |
 | Plain text | Submit. **While a turn is running, Enter steers** |
 | `/new` | Leave to ready; cancels a running turn |
-| `/perm` | once · similar · permanent · deny |
+| `/perm` | Permission card: once · similar · permanent · deny. Extra-root absolute paths use the same four tiers. Esc Esc (3s) dismisses. |
 | `/undo` · **Esc Esc** | Rewind last agent file write |
 | `/edit` · `/editundo` | Hide last turn into the editor; `/editundo` rewinds that turn’s files first |
 | **Shift+PgUp** / **Shift+PgDn** | Older / newer session |
@@ -137,7 +137,7 @@ Packing is a single `ContextView` (prefix + summary + tail + ephemeral todos). D
 | `/cron` · `/memory` · `/journey` | Jobs, facts, memory+skill timeline |
 | **e** / **E** / **c** | Expand last fold · expand all · collapse |
 | Drag-select | Copy transcript text |
-| **Esc** | Close overlay; running turn → cancel |
+| **Esc** | Close overlay; permission/question cards need Esc Esc (3s) to dismiss; running turn → cancel |
 | `/quit` | Exit TUI (`/q` `/exit`; daemon stays up) |
 
 `/help` lists the rest. Slash priority: built-in → `chat.commands` → skill id.
@@ -162,6 +162,10 @@ Put the API key in `~/.yunmengze/env` or the process environment, then reference
 ```json
 {
   "model": "deepseek1/deepseek-chat",
+  "models": {
+    "subagent": "deepseek1/deepseek-chat",
+    "compact": "deepseek1/deepseek-chat"
+  },
   "provider": {
     "deepseek1": {
       "type": "openai-compatible",
@@ -181,7 +185,7 @@ Put the API key in `~/.yunmengze/env` or the process environment, then reference
 
 - Selection is `providerId/modelId…` (first `/` only; the model segment may contain `/`).
 - `maxTokens` = output cap (omit → do not send `max_tokens` except Anthropic); `contextWindow` = packing / UI window. Omit both to fill the window from [models.dev](https://models.dev) (`internal/modelcatalog`; miss → 1M / packing 128k). OpenCode `limit.{context,output}` is accepted.
-- Optional role map and web search (changing `models.*` or `chat.*` needs `ymz restart`):
+- Optional role map (`models.subagent` / `compact` / `web`) and web search (changing `models.*` or `chat.*` needs `ymz restart`). Omit a role → that work uses the top-level `model`. First-start `EnsureConfig` seeds `subagent` + `compact` pointing at main:
 
 ```json
 {

@@ -81,7 +81,7 @@ flowchart LR
 | 未广告或非法 tool call | 观察 JSON，继续 |
 | 父 ctx 取消，或 DB 无法落盘 | 取消 / 失败本 turn |
 
-运行中 **回车 = steer 下一步**（不取消正在执行的工具）。Esc 或 `/new` 取消本轮。模型可停在 `ask_user`；CLI 和 cron 永不等待。
+运行中 **回车 = steer 下一步**（不取消正在执行的工具）。Esc 或 `/new` 取消本轮。模型可停在 `ask_user`（问题卡：编号选项、Type your own answer、多题 ←→）。CLI 和 cron 永不等待。提问/授权卡开着时 Enter 不 steer，Esc Esc（3s）撤销。
 
 装配是一次 `ContextView`（Prefix + Summary + Tail + 每轮 todos）。细节：[ADR-051](docs/wiki/adr/051-coding-loop-contextview.md) · [ADR-052](docs/wiki/adr/052-coding-loop-harness.md)。
 
@@ -95,7 +95,7 @@ flowchart LR
 | **Ctrl+P** / **L** / **S** / **T** | 命令盘 · 模型盘 · 会话盘 · todos pills |
 | 普通文字 | 提交。**运行中回车 = steer** |
 | `/new` | 离焦到 ready；运行中则取消本轮 |
-| `/perm` | once · similar · permanent · deny |
+| `/perm` | 授权卡：once · similar · permanent · deny。工作区外绝对路径同一四档。Esc Esc（3s）撤销。 |
 | `/undo` · **Esc Esc** | 撤回上次 agent 写文件 |
 | `/edit` · `/editundo` | 隐藏上一轮并填入编辑器；`/editundo` 先撤回该轮文件 |
 | **Shift+PgUp** / **Shift+PgDn** | 更旧 / 更新会话 |
@@ -103,7 +103,7 @@ flowchart LR
 | `/cron` · `/memory` · `/journey` | 定时任务、记忆、记忆+技能时间线 |
 | **e** / **E** / **c** | 展开上一折 · 全开 · 收起 |
 | 划选 | 复制 transcript |
-| **Esc** | 关 overlay；运行中则取消 turn |
+| **Esc** | 关 overlay；提问/授权卡需 Esc Esc（3s）撤销；运行中则取消 turn |
 | `/quit` | 退出 TUI（`/q` `/exit`；daemon 仍在） |
 
 其余见 `/help`。斜杠优先级：内置 → `chat.commands` → skill id。
@@ -129,7 +129,7 @@ API key 放 `~/.yunmengze/env` 或进程环境，JSON 里写 `{env:VAR}`。也�
 
 - 选型：`providerId/modelId…`（只切第一道 `/`；模型段可以再含 `/`）。
 - `maxTokens` = 输出帽（省略则除 Anthropic 外不发 `max_tokens`）；`contextWindow` = 装配 / UI 窗。都省略时从 [models.dev](https://models.dev) 填窗（未命中 → 1M / packing 128k）。也接受 OpenCode 的 `limit.{context,output}`。
-- 可选角色映射与网页检索（改 `models.*` 或 `chat.*` 需 `ymz restart`）：`models.subagent` / `compact` / `web`；配了 `models.vision` / `speech` 才广告看图 / 转写 / 抽帧。不要设 `models.main` 或 `models.video`。[ADR-045](docs/wiki/adr/045-model-roles.md) · [ADR-055](docs/wiki/adr/055-auxiliary-media-boundary.md)。`chat.web.search` 默认 `ddg`。
+- 可选角色映射与网页检索（改 `models.*` 或 `chat.*` 需 `ymz restart`）：`models.subagent` / `compact` / `web`。省略某角色 → 该路径用顶层 `model`。首次 `EnsureConfig` 会写入指向 main 的 `subagent` + `compact`。配了 `models.vision` / `speech` 才广告看图 / 转写 / 抽帧。不要设 `models.main` 或 `models.video`。[ADR-045](docs/wiki/adr/045-model-roles.md) · [ADR-055](docs/wiki/adr/055-auxiliary-media-boundary.md)。`chat.web.search` 默认 `ddg`。
 - 用户规则：`~/.yunmengze/AGENTS.md`；项目 `.yunmengze/AGENTS.md` 存在则追加。只是指令，不扩授权。
 - `ymz config import-opencode` 把 OpenCode 配置映到 `agent.local.json`。
 

@@ -81,6 +81,6 @@ HTTP 当前限制审批域名，不等同于完整 SSRF 防护。后续还需要
 - Plan、Policy、Grant、Audit、Timeout 和 Artifact 形成统一强制链路。
 - Skill 目录与进程内 Scheduler 不参与执行授权；删除它们不会削弱 Broker 边界。
 - Session chat 预授权（ADR-038）仍走本链路，仅改变 Grant 如何签发，不改变执行校验。
-- PathGuard 为共享可扩展根（ADR-046）：session workspace `AddRoot`；与 grant Paths 对齐；`allow_all` 关闭根限制时仍做路径解析。
+- PathGuard 为共享可扩展根（ADR-046）：session workspace `AddRoot`；extra-root similar = session map、once = call map；与 grant Paths 对齐；`allow_all` 关闭根限制时仍做路径解析。
 - 只读并行不放宽 Policy/Grant；仅重叠无副作用 IO。
 - 编码循环观察合同见 ADR-052；Broker 仍是唯一副作用入口。

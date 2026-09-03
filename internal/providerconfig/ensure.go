@@ -114,6 +114,10 @@ const defaultAgentsMarkdown = `# Agent rules
 // Keys use {env:…}; no literal secrets.
 const defaultConfigTemplate = `{
   "model": "deepseek1/deepseek-chat",
+  "models": {
+    "subagent": "deepseek1/deepseek-chat",
+    "compact": "deepseek1/deepseek-chat"
+  },
   "provider": {
     "deepseek1": {
       "type": "openai-compatible",

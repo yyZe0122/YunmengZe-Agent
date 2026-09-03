@@ -47,7 +47,7 @@ Debounce ~500ms; OnChange coalesced (one in flight; dirty re-run). Panic in OnCh
 
 | Area | Action |
 | --- | --- |
-| `chat.*` | restart |
+| `chat.*` | restart（例外：交互 extra-root `/perm` permanent 定点写入 `agent.local.json` `chat.workspace.allow` 并内存补丁 ChatConfig + PathGuard，不经本 ADR 热加载） |
 | MCP registration | restart |
 | `models.*` (`subagent` / `compact` / `web` / `vision` / `speech`; ADR-045) | restart |
 | Process env already set when using `{env:VAR}` | change process env + restart (or use literal / `{file:}`) |

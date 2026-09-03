@@ -13,7 +13,7 @@ Configuration is loaded **only** from the OS config directory (`paths.Layout.Con
 | user (all OS) | `~/.yunmengze` (`%USERPROFILE%\.yunmengze` on Windows); override with `YMZ_HOME` |
 | system | Linux `/etc/yunmengze` · Windows `ProgramData\YunmengZe\config` · macOS system path from `paths` |
 
-On first start, if ConfigDir has no file, the daemon writes a default template with `{env:…}` placeholders (no secrets) and may seed an empty `env` template. It does **not** copy project/cwd configs. Installers do the same without overwriting existing files.
+On first start, if ConfigDir has no file, the daemon writes a default template with `{env:…}` placeholders (no secrets), top-level `models.subagent` / `models.compact` pointing at the same ref as `model`, and may seed an empty `env` template. It does **not** copy project/cwd configs. Installers do the same without overwriting existing files.
 
 ### Import from OpenCode
 

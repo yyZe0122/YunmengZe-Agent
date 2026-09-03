@@ -88,16 +88,16 @@ Provider wire formats: [`provider-protocols.md`](provider-protocols.md). VS Code
 | 040 | MCP via Tool Broker | stdio + remote Streamable HTTP / legacy SSE; no Module Runtime |
 | 041 | Context packing / pressure | Token budget pack, compaction triggers, anti-thrash, `/compact` |
 | 042 | Chat-native jobs | Timed session chat submit; lease from 017; TUI `/cron` primary |
-| 043 | Tool-call permission interaction | TUI Agent `/perm`; Tab Auto session stance; `permission.allow`; SSE `permission.*` |
+| 043 | Tool-call permission interaction | TUI Agent `/perm` cards; extra-root once/session/permanent; Tab Auto session stance; SSE `permission.*` |
 | 044 | In-process memory boundary | Layered L0–L3 memory; freeze inject; FTS; `/memory` `/memory archived` `/journey`; injectscan (H6); H1-lite curator; H5-lite `default_ttl` + soft-archive; no Module Runtime |
 | 045 | Model roles | Optional `models.subagent` / `compact` / `web` / `vision` / `speech`; Prefix lists extra configured roles; O4 session prefer + H7 job pin resolve |
-| 046 | Session workspace + permission tiers | Client cwd session root; once/similar/permanent/deny |
+| 046 | Session workspace + permission tiers | Client cwd session root; extra-root `/perm` (once call / similar session / permanent config) |
 | 047 | Structured logging / debug chain | slog JSON stage boundaries; `ymz logs`; tests vs real-machine |
 | 048 | Provider config hot-reload | Main stack only; no late-bind chat; models.dev window fill |
 | 050 | In-process self-improvement | H3 skill draft+apply; H4 habit hint; H5-skill last-used/archive; ≠ Evolution |
 | 051 | Coding-loop ContextView | Single `Build`; retire `History`; todo / L3 / checkpoint boundaries |
-| 052 | Coding-loop harness | Observation contract; turn/step/next-step inbox; steer / ask_user（R1–R5 已落地） |
-| 053 | Charm v2 TUI | bubbletea/lipgloss/glamour v2 + 清宣纸 chrome；无 UV 整页 / lazy list；no mouse grab |
+| 052 | Coding-loop harness | Observation contract; turn/step/next-step inbox; steer / ask_user cards（R1–R5 已落地） |
+| 053 | Charm v2 TUI | bubbletea/lipgloss/glamour v2 + 清宣纸 chrome；提问/授权卡；无 UV 整页 / lazy list；no mouse grab |
 | 054 | VS Code terminal launcher | `extensions/vscode`; TUI-only; no Marketplace this phase |
 | 055 | Auxiliary media boundary | Tool-internal Complete / Whisper; no multimodal main loop |
 

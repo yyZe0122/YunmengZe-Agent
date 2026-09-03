@@ -24,7 +24,7 @@ Daemon is the only lifecycle owner. Components must not close the shared `*sql.D
 
 | Table | Role | ADR | Since |
 | --- | --- | --- | --- |
-| `sessions` | Session + `metadata`（O4 prefer；`hidden_task_ids` retract 软藏，`agent_run_records` 仍保留） | [038](adr/038-session-chat-boundary.md) / [045](adr/045-model-roles.md) / [051](adr/051-coding-loop-contextview.md) | 001 |
+| `sessions` | Session + `metadata`（O4 prefer；`hidden_task_ids` retract 软藏；`extra_roots` 会话 extra-root `/perm` similar） | [038](adr/038-session-chat-boundary.md) / [045](adr/045-model-roles.md) / [046](adr/046-session-workspace-and-permission-tiers.md) / [051](adr/051-coding-loop-contextview.md) | 001 |
 | `tasks` | Dual-track `execution_mode` | [038](adr/038-session-chat-boundary.md) | 001 + 014 |
 | `plans` / `plan_steps` | Plan hash + steps (grant chain) | [011](adr/011-approval-capability-binding.md) | 001 + 006 |
 | `approvals` / `capability_grants` | Approval → scoped grant | [011](adr/011-approval-capability-binding.md) | 001 |

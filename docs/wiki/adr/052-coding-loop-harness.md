@@ -3,6 +3,7 @@
 - 状态：Accepted（**R1–R5 已落地**）
 - 日期：2026-08-17
 - 修订：ADR-004 / 008 / 012 / 018 / 038 / 039 / 041 / 043 / 051 后果段
+- 更新：2026-09-02（问题卡向导 / 自定义回答 / dismiss / Wait 30m）
 
 ## 背景
 
@@ -67,7 +68,7 @@ Inbox **只有 next-step**。没有 next-turn 队列：空闲回车走现有 `Su
 
 - 新 builtin `ask_user`（R0，plan+agent 都广告）。交互 TUI 挂起等答；CLI/cron 立刻 `{error:unavailable}`。
 - `user_questions` 表（migration 027）+ `internal/userquestion` waiter，与 `/perm` 分开。
-- `GET /v1/questions` · `POST /v1/questions/{id}/answer`。TUI 问题卡：perm 优先；1–9 选选项。SSE：`question.pending` / `question.answered`。
+- `GET /v1/questions` · `POST /v1/questions/{id}/answer` · `POST /v1/questions/{id}/dismiss`。TUI 问题卡：perm 优先；多题向导；每题末项 Type your own answer；1–9 / Space / Enter；Esc Esc（3s）撤销整组。自定义回答在有 options 时也接受。Wait 30m。SSE：`question.pending` / `question.answered`。
 
 ### R5（已落地）
 

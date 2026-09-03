@@ -3,6 +3,7 @@
 - 状态：Accepted
 - 日期：2026-08-20
 - 更新：2026-08-27（Shift+PgUp/Dn 切会话；`/edit` · `/editundo`）
+- 更新：2026-09-02（提问/授权卡；Esc Esc dismiss）
 
 ## 背景
 
@@ -32,7 +33,8 @@ TUI 已对齐 Crush **契约**（slash、perm SSE、steer、折叠、T8 live MD�
 - header 高 2（1 行 + 底细线）：`ymz · 版本 · 会话名 · sse`。`0.0.0-dev` 显示 `dev`。毛笔只在 landing
 - editor 印旁常驻当前模型；status 在输入框下方
 - Tab / Shift+Tab：**agent → plan → auto**（编辑器焦点；Shift+Tab 反向）
-- 权限：once / similar / permanent / deny（ADR-043）
+- 权限卡 / 提问卡：完整正文 + 编号选项；提问末项 Type your own answer；多题 ← →；Esc Esc（3s）撤销。卡片开着时 Enter 不 steer、Tab 不切 mode。
+- 权限：once / similar / permanent / deny（ADR-043）；Enter 确认高亮档
 - 运行中 Enter = steer（ADR-052）；空闲回车提交新一轮；steer 409 回退 submit
 - Ctrl+C 清输入；`/quit` 才退出
 

@@ -43,6 +43,7 @@ Optional top-level map:
 Rules:
 
 - Omit `models` or a key → that role uses main
+- First-start `EnsureConfig` seeds `models.subagent` and `models.compact` to the same ref as `model` (still optional to delete; omit ≡ main)
 - Empty string value → treat as unset (fallback main)
 - Values must be `provider/model` present in the catalog
 - Allowed keys: `subagent`, `compact`, `web`, `vision`, `speech` (no `models.main`; unknown keys fail load). `validateModelsMap` error text comes from `AllowedModelRoles`. `models.video` is never a key (reuses vision).

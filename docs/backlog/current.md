@@ -1,6 +1,6 @@
 # YunmengZe Agent 当前状态
 
-更新：2026-08-28（**Phase S/W/M 已落地**。下一优先 = VS Code V4；O5–O6 / 飞书等用户再提）
+更新：2026-09-02（提问/授权卡 + extra-root `/perm`。下一优先 = VS Code V4；O5–O6 / 飞书等用户再提）
 
 **本文件是唯一活着的优化/backlog 文档。** 只写未完成与暂缓项；已落地细节见 ADR（`docs/wiki/adr/`）、[`docs/wiki/database.md`](../wiki/database.md)、changelog 与 git。目录：[`docs/README.md`](../README.md)。
 
@@ -60,6 +60,7 @@
 | **TUI-ink** | 清宣纸 chrome + 盲文毛笔 landing（ADR-053） | **v0.4.0** |
 | **IDE-launcher** | VS Code 终端启动器 V0–V3（ADR-054） | **v0.4.0** |
 | **QG retract** | `/edit` · `/editundo`；`fs_remove`；`edit_revisions.kind`（028） | **v0.4.0** |
+| **TUI cards** | 提问/授权真卡片；自定义回答；Esc Esc dismiss；extra-root 四档 | **unreleased** |
 
 同包大文件拆分已落地（`tui/cmds_*`+`update_*`、`kernel/repository_*`、`tools/fs_*`、`cmd/ymzd/wire_*`）。再拆触发：新 slash / 新聚合 SQL / `ymzd` 接线难 review → 同包再拆。
 

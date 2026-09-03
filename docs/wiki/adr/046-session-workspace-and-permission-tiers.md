@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (implemented 2026-08-10)
+Accepted (implemented 2026-08-10; extra-root `/perm` 2026-09-02)
 
 ## Context
 
@@ -14,9 +14,10 @@ Auto-started `ymzd` used `DataDir` as cwd, so tools saw DataDir instead of the d
 
 1. Client (TUI/CLI) sends absolute `workspace` on task submit (= `os.Getwd()`).
 2. Daemon stores it in `sessions.metadata.workspace` when ensuring the session.
-3. Chat plan Paths / grants use **session workspace** (plus configured `chat.workspace.allow`).
-4. Shared `PathGuard` starts with config ceiling; `AddRoot(session workspace)` on chat auth.
+3. Chat plan Paths / grants use **session workspace** (plus configured `chat.workspace.allow` and session `metadata.extra_roots`).
+4. Shared `PathGuard` starts with config ceiling; `AddRoot(session workspace)` on chat auth. Extra-root `/perm` does **not** always `AddRoot`: once is call-scoped, similar is session-scoped, only permanent raises the process ceiling.
 5. `chat.workspace.allow_all=true` disables path-root containment (local single-user only; audited).
+6. Interactive extra-root `/perm`: once this call (`AddOnceRoot`); similar this session (`metadata.extra_roots` + `AddSessionRoot`); permanent writes `agent.local.json` `chat.workspace.allow` and patches in-memory ChatConfig (no `ymz restart`).
 
 Config (optional; defaults preserve client_cwd behavior when roots empty):
 
