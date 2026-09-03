@@ -126,7 +126,7 @@ type webSearchHit struct {
 	Snippet string `json:"snippet"`
 }
 
-func (t *webSearchTool) Authorization(raw json.RawMessage) (Authorization, error) {
+func (t *webSearchTool) Authorization(_ context.Context, raw json.RawMessage) (Authorization, error) {
 	input, err := t.parse(raw)
 	if err != nil {
 		return Authorization{}, err
@@ -401,7 +401,7 @@ type webExtractInput struct {
 	URL string `json:"url"`
 }
 
-func (t *webExtractTool) Authorization(raw json.RawMessage) (Authorization, error) {
+func (t *webExtractTool) Authorization(_ context.Context, raw json.RawMessage) (Authorization, error) {
 	_, parsed, err := t.parse(raw)
 	if err != nil {
 		return Authorization{}, err

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -17,8 +18,12 @@ import (
 	"github.com/yyZe0122/yunmengze-agent/internal/audit"
 	"github.com/yyZe0122/yunmengze-agent/internal/events"
 	"github.com/yyZe0122/yunmengze-agent/internal/kernel"
+	"github.com/yyZe0122/yunmengze-agent/internal/platform/pathsecurity"
 	"github.com/yyZe0122/yunmengze-agent/pkg/eventapi"
 )
+
+// ExtraRootExpander applies interactive extra-root after /perm (PathGuard + grants + optional config).
+type ExtraRootExpander func(ctx context.Context, sessionID, taskID, extraRoot string, sessionPersist, configPersist bool, callID string) error
 
 // Service decides pending tool permissions and issues scoped grants (ADR-043).
 type Service struct {
@@ -29,6 +34,7 @@ type Service struct {
 	audit     *audit.Store
 	events    *events.Store // optional; C1 permission SSE
 	now       func() time.Time
+	expand    ExtraRootExpander
 }
 
 type Config struct {
@@ -38,6 +44,7 @@ type Config struct {
 	Waiter    *Waiter
 	Events    *events.Store // optional
 	Now       func() time.Time
+	Expand    ExtraRootExpander
 }
 
 func New(config Config) (*Service, error) {
@@ -57,7 +64,14 @@ func New(config Config) (*Service, error) {
 	return &Service{
 		db: config.DB, store: config.Store, approvals: config.Approvals,
 		waiter: config.Waiter, audit: auditStore, events: config.Events, now: config.Now,
+		expand: config.Expand,
 	}, nil
+}
+
+func (s *Service) SetExpand(expand ExtraRootExpander) {
+	if s != nil {
+		s.expand = expand
+	}
 }
 
 // EmitPending publishes permission.pending for Gateway SSE (best-effort).
@@ -123,7 +137,30 @@ func (s *Service) Store() *Store {
 
 // ListPending returns pending permission requests.
 func (s *Service) ListPending(ctx context.Context, sessionID string, limit int) ([]Request, error) {
-	return s.store.ListPending(ctx, sessionID, limit)
+	items, err := s.store.ListPending(ctx, sessionID, limit)
+	if err != nil {
+		return nil, err
+	}
+	for i := range items {
+		items[i].ExtraRoot = s.pendingExtraRoot(ctx, items[i])
+	}
+	return items, nil
+}
+
+func (s *Service) pendingExtraRoot(ctx context.Context, req Request) bool {
+	if s == nil || strings.TrimSpace(req.PlanID) == "" || strings.TrimSpace(req.Path) == "" {
+		return false
+	}
+	plan, err := s.loadPlanDocument(ctx, req.PlanID)
+	if err != nil {
+		return false
+	}
+	scope, err := findPlanScope(plan, kernel.StepID(req.StepID), req.Capability, req.ToolName, DecisionAllowOnce, req.Path, req.NetworkDomain)
+	if err != nil {
+		return false
+	}
+	extra, _, err := extraRootDecision(scope, req)
+	return extra && err == nil
 }
 
 // HabitHint is a read-only suggestion from prior decides (H4). Never auto-applied.
@@ -246,7 +283,28 @@ func (s *Service) DecideWithOptions(ctx context.Context, permissionID, decision,
 	if err != nil {
 		return Request{}, err
 	}
-	scope = narrowScopeForSimilar(scope, req)
+	extra, extraRoot, extraErr := extraRootDecision(scope, req)
+	if extraErr != nil {
+		return Request{}, extraErr
+	}
+	if extra {
+		if err := pathsecurity.ValidExtraRoot(extraRoot); err != nil {
+			return Request{}, fmt.Errorf("%w: %v", ErrInvalidDecide, err)
+		}
+		if decision == DecisionAllowOnce && strings.TrimSpace(req.ToolCallID) == "" {
+			return Request{}, fmt.Errorf("%w: extra-root once requires tool_call_id", ErrInvalidDecide)
+		}
+		if (decision == DecisionAllowSimilar || decision == DecisionAllowPermanent) && strings.TrimSpace(req.SessionID) == "" {
+			return Request{}, fmt.Errorf("%w: extra-root similar/permanent requires session_id", ErrInvalidDecide)
+		}
+		scope.Paths = []string{extraRoot}
+		if decision == DecisionAllowOnce {
+			scope.OneTime = true
+			scope.MaxCalls = 1
+		}
+	} else {
+		scope = narrowScopeForSimilar(scope, req)
+	}
 
 	approvalID, err := s.lookupApprovalID(ctx, plan, req.PlanHash)
 	if err != nil {
@@ -271,6 +329,13 @@ func (s *Service) DecideWithOptions(ctx context.Context, permissionID, decision,
 	})
 	if err != nil && !errors.Is(err, approval.ErrAlreadyExists) {
 		return Request{}, fmt.Errorf("issue permission grant: %w", err)
+	}
+	if extra && s.expand != nil {
+		sessionPersist := decision == DecisionAllowSimilar || decision == DecisionAllowPermanent
+		configPersist := decision == DecisionAllowPermanent
+		if err := s.expand(ctx, req.SessionID, req.TaskID, extraRoot, sessionPersist, configPersist, req.ToolCallID); err != nil {
+			return Request{}, fmt.Errorf("expand extra root: %w", err)
+		}
 	}
 	if decision == DecisionAllowPermanent && strings.TrimSpace(opts.TrustPath) != "" {
 		if err := AppendTrustEntry(opts.TrustPath, TrustEntry{
@@ -311,6 +376,10 @@ func (s *Service) DecideWithOptions(ctx context.Context, permissionID, decision,
 // narrowScopeForSimilar keeps plan capability but prefers the request path's parent
 // when it still falls under the plan paths (session-pattern, ADR-046).
 func narrowScopeForSimilar(scope approval.CapabilityScope, req Request) approval.CapabilityScope {
+	if extra, root, err := extraRootDecision(scope, req); extra && err == nil {
+		scope.Paths = []string{root}
+		return scope
+	}
 	if req.Capability == "process_exec" || req.Capability == "process_shell" {
 		scope = applyProcessSimilarPrefix(scope, req)
 	}
@@ -380,6 +449,52 @@ func applyProcessSimilarPrefix(scope approval.CapabilityScope, req Request) appr
 	}
 	scope.Arguments = nil
 	return scope
+}
+
+func extraRootDecision(scope approval.CapabilityScope, req Request) (bool, string, error) {
+	path := strings.TrimSpace(req.Path)
+	if path == "" || len(scope.Paths) == 0 {
+		return false, "", nil
+	}
+	name := strings.TrimSpace(req.Capability)
+	if name == "" {
+		name = strings.TrimSpace(req.ToolName)
+	}
+	if !(strings.HasPrefix(name, "fs_") || strings.HasPrefix(name, "git_") || name == "process_exec" || name == "process_shell") {
+		return false, "", nil
+	}
+	for _, root := range scope.Paths {
+		root = strings.TrimSpace(root)
+		if root == "" {
+			continue
+		}
+		if path == root || strings.HasPrefix(path, strings.TrimRight(root, "/")+"/") {
+			return false, "", nil
+		}
+	}
+	root, err := extraRootFromPath(path)
+	if err != nil {
+		return false, "", fmt.Errorf("%w: %v", ErrInvalidDecide, err)
+	}
+	return true, root, nil
+}
+
+func extraRootFromPath(path string) (string, error) {
+	path = filepath.Clean(strings.TrimSpace(path))
+	if info, err := os.Stat(path); err == nil && info.IsDir() {
+		if err := pathsecurity.ValidExtraRoot(path); err != nil {
+			return "", err
+		}
+		return path, nil
+	}
+	parent := filepath.Dir(path)
+	if err := pathsecurity.ValidExtraRoot(parent); err == nil {
+		return parent, nil
+	}
+	if err := pathsecurity.ValidExtraRoot(path); err != nil {
+		return "", err
+	}
+	return path, nil
 }
 
 func firstPath(paths []string) string {

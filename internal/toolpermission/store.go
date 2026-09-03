@@ -57,6 +57,8 @@ type Request struct {
 	CreatedAt     string          `json:"created_at"`
 	DecidedAt     string          `json:"decided_at,omitempty"`
 	ExpiresAt     string          `json:"expires_at,omitempty"`
+	// ExtraRoot is set on CreatePending for interactive extra-root /perm (not persisted).
+	ExtraRoot bool `json:"extra_root,omitempty"`
 }
 
 // Store persists permission requests on core.db.

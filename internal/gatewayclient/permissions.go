@@ -10,22 +10,26 @@ import (
 
 // Permission is a pending or decided tool-call permission (ADR-043).
 type Permission struct {
-	ID                string `json:"permission_id"`
-	SessionID         string `json:"session_id,omitempty"`
-	TaskID            string `json:"task_id"`
-	RunID             string `json:"run_id"`
-	ToolCallID        string `json:"tool_call_id"`
-	ToolName          string `json:"tool_name"`
-	Capability        string `json:"capability,omitempty"`
-	Path              string `json:"path,omitempty"`
-	Risk              string `json:"risk,omitempty"`
-	State             string `json:"state"`
-	GrantID           string `json:"grant_id,omitempty"`
-	Decision          string `json:"decision,omitempty"`
-	CreatedAt         string `json:"created_at"`
-	DecidedAt         string `json:"decided_at,omitempty"`
-	SuggestedDecision string `json:"suggested_decision,omitempty"`
-	SuggestedReason   string `json:"suggested_reason,omitempty"`
+	ID                string   `json:"permission_id"`
+	SessionID         string   `json:"session_id,omitempty"`
+	TaskID            string   `json:"task_id"`
+	RunID             string   `json:"run_id"`
+	ToolCallID        string   `json:"tool_call_id"`
+	ToolName          string   `json:"tool_name"`
+	Capability        string   `json:"capability,omitempty"`
+	Path              string   `json:"path,omitempty"`
+	Command           string   `json:"command,omitempty"`
+	CommandArgs       []string `json:"command_args,omitempty"`
+	NetworkDomain     string   `json:"network_domain,omitempty"`
+	Risk              string   `json:"risk,omitempty"`
+	State             string   `json:"state"`
+	GrantID           string   `json:"grant_id,omitempty"`
+	Decision          string   `json:"decision,omitempty"`
+	CreatedAt         string   `json:"created_at"`
+	DecidedAt         string   `json:"decided_at,omitempty"`
+	SuggestedDecision string   `json:"suggested_decision,omitempty"`
+	SuggestedReason   string   `json:"suggested_reason,omitempty"`
+	ExtraRoot         bool     `json:"extra_root,omitempty"`
 }
 
 type permissionListResponse struct {
@@ -86,6 +90,16 @@ func (c *Client) AnswerQuestion(ctx context.Context, id, actor string, answers m
 	path := "/v1/questions/" + url.PathEscape(strings.TrimSpace(id)) + "/answer"
 	if err := c.inner.DoJSON(ctx, http.MethodPost, path, body, &result); err != nil {
 		return UserQuestion{}, fmt.Errorf("answer question: %w", err)
+	}
+	return result, nil
+}
+
+func (c *Client) DismissQuestion(ctx context.Context, id, actor string) (UserQuestion, error) {
+	var result UserQuestion
+	body := map[string]any{"actor": strings.TrimSpace(actor)}
+	path := "/v1/questions/" + url.PathEscape(strings.TrimSpace(id)) + "/dismiss"
+	if err := c.inner.DoJSON(ctx, http.MethodPost, path, body, &result); err != nil {
+		return UserQuestion{}, fmt.Errorf("dismiss question: %w", err)
 	}
 	return result, nil
 }

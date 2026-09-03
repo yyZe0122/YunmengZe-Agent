@@ -83,7 +83,7 @@ func (t *memorySearchTool) Definition() toolapi.Definition {
 	}
 }
 
-func (t *memorySearchTool) Authorization(json.RawMessage) (Authorization, error) {
+func (t *memorySearchTool) Authorization(context.Context, json.RawMessage) (Authorization, error) {
 	return Authorization{Capability: "memory_search"}, nil
 }
 
@@ -152,7 +152,7 @@ func (t *memoryWriteTool) Definition() toolapi.Definition {
 	}
 }
 
-func (t *memoryWriteTool) Authorization(raw json.RawMessage) (Authorization, error) {
+func (t *memoryWriteTool) Authorization(_ context.Context, raw json.RawMessage) (Authorization, error) {
 	var input memoryWriteInput
 	if len(raw) > 0 && string(raw) != "null" {
 		if err := decodeStrict(raw, &input); err != nil {
@@ -260,7 +260,7 @@ func (t *memoryPromoteTool) Definition() toolapi.Definition {
 	}
 }
 
-func (t *memoryPromoteTool) Authorization(raw json.RawMessage) (Authorization, error) {
+func (t *memoryPromoteTool) Authorization(_ context.Context, raw json.RawMessage) (Authorization, error) {
 	var input struct {
 		EntryID string `json:"entry_id"`
 	}
@@ -315,7 +315,7 @@ func (t *sessionSearchTool) Definition() toolapi.Definition {
 	}
 }
 
-func (t *sessionSearchTool) Authorization(json.RawMessage) (Authorization, error) {
+func (t *sessionSearchTool) Authorization(context.Context, json.RawMessage) (Authorization, error) {
 	return Authorization{Capability: "session_search"}, nil
 }
 

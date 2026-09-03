@@ -84,4 +84,4 @@ func (w *Waiter) cleanup(permissionID string) {
 }
 
 // WaitTimeout is the default max wait for interactive permission.
-const WaitTimeout = 15 * time.Minute
+const WaitTimeout = 30 * time.Minute

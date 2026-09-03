@@ -23,7 +23,7 @@ func (t *fileTool) read(ctx context.Context, raw json.RawMessage) (json.RawMessa
 	if err := decodeStrict(raw, &input); err != nil {
 		return nil, err
 	}
-	path, err := t.guard.Resolve(input.Path)
+	path, err := t.guard.ResolveContext(ctx, input.Path)
 	if err != nil {
 		return nil, err
 	}
@@ -111,7 +111,7 @@ func (t *fileTool) list(ctx context.Context, raw json.RawMessage) (json.RawMessa
 	if err := decodeStrict(raw, &input); err != nil {
 		return nil, err
 	}
-	path, err := t.guard.Resolve(input.Path)
+	path, err := t.guard.ResolveContext(ctx, input.Path)
 	if err != nil {
 		return nil, err
 	}
@@ -147,7 +147,7 @@ func (t *fileTool) stat(ctx context.Context, raw json.RawMessage) (json.RawMessa
 	if err := decodeStrict(raw, &input); err != nil {
 		return nil, err
 	}
-	path, err := t.guard.Resolve(input.Path)
+	path, err := t.guard.ResolveContext(ctx, input.Path)
 	if err != nil {
 		return nil, err
 	}

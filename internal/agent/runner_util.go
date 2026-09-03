@@ -132,7 +132,7 @@ func toolResultContent(response toolapi.Response) (string, error) {
 }
 
 func toolDeniedContent(call providerapi.ToolCall, err error) string {
-	return toolObservationJSON("tool_denied", call, err, "Do not retry the same arguments. Fix the tool input: prefer absolute paths under configured workspace roots; relative paths are resolved against the workspace root; keep duration within the approved grant; use only allowed tools and paths.")
+	return toolObservationJSON("tool_denied", call, err, "Do not retry the same arguments. Interactive TUI: call fs_* / process_* / git_* with an absolute path to prompt /perm for an extra root. Relative paths resolve against the workspace root. Keep duration within the approved grant.")
 }
 
 func toolFailedContent(call providerapi.ToolCall, err error) string {

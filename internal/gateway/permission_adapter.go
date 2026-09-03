@@ -51,7 +51,9 @@ func viewFromRequest(r toolpermission.Request) ToolPermissionView {
 	return ToolPermissionView{
 		ID: r.ID, SessionID: r.SessionID, TaskID: r.TaskID, RunID: r.RunID,
 		ToolCallID: r.ToolCallID, ToolName: r.ToolName, Capability: r.Capability,
-		Path: r.Path, Risk: r.Risk, State: r.State, GrantID: r.GrantID,
+		Path: r.Path, Command: r.Command, CommandArgs: r.CommandArgs, NetworkDomain: r.NetworkDomain,
+		Risk: r.Risk, State: r.State, GrantID: r.GrantID,
 		Decision: r.Decision, CreatedAt: r.CreatedAt, DecidedAt: r.DecidedAt,
+		ExtraRoot: r.ExtraRoot,
 	}
 }

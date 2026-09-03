@@ -207,6 +207,7 @@ func wireChat(
 			return out, err
 		}
 		out.chatService = chatService
+		permService.SetExpand(chatService.ExpandSessionRoot)
 		slog.Info("chat workspace configured", "component", "daemon", "operation", "chat_config", "result", "succeeded",
 			"ceiling_roots", chatRoots, "allow_all", out.chatCfg.WorkspaceAllowAll(),
 			"agent_write_ceiling", writeCeiling, "agent_git", allowGit, "agent_process", allowProcess,

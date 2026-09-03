@@ -20,7 +20,7 @@ func (t *fileTool) write(ctx context.Context, raw json.RawMessage) (json.RawMess
 	if err := decodeStrict(raw, &input); err != nil {
 		return nil, err
 	}
-	path, err := t.guard.Resolve(input.Path)
+	path, err := t.guard.ResolveContext(ctx, input.Path)
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +73,7 @@ func (t *fileTool) patch(ctx context.Context, raw json.RawMessage) (json.RawMess
 	if input.Old == "" {
 		return nil, errors.New("patch old text is required")
 	}
-	path, err := t.guard.Resolve(input.Path)
+	path, err := t.guard.ResolveContext(ctx, input.Path)
 	if err != nil {
 		return nil, err
 	}
@@ -128,7 +128,7 @@ func (t *fileTool) mkdir(ctx context.Context, raw json.RawMessage) (json.RawMess
 	if err := decodeStrict(raw, &input); err != nil {
 		return nil, err
 	}
-	path, err := t.guard.Resolve(input.Path)
+	path, err := t.guard.ResolveContext(ctx, input.Path)
 	if err != nil {
 		return nil, err
 	}
@@ -156,7 +156,7 @@ func (t *fileTool) remove(ctx context.Context, raw json.RawMessage) (json.RawMes
 	if err := decodeStrict(raw, &input); err != nil {
 		return nil, err
 	}
-	path, err := t.guard.Resolve(input.Path)
+	path, err := t.guard.ResolveContext(ctx, input.Path)
 	if err != nil {
 		return nil, err
 	}

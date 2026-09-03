@@ -122,7 +122,7 @@ func (t *mcpTool) Definition() toolapi.Definition {
 	}
 }
 
-func (t *mcpTool) Authorization(json.RawMessage) (Authorization, error) {
+func (t *mcpTool) Authorization(context.Context, json.RawMessage) (Authorization, error) {
 	return Authorization{Capability: t.localName}, nil
 }
 

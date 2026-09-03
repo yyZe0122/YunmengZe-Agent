@@ -82,7 +82,7 @@ func TestFSGlobAndGrep(t *testing.T) {
 	}
 
 	// Escape outside root must fail authorization path resolve.
-	if _, err := globTool.Authorization(json.RawMessage(`{"pattern":"*","path":".."}`)); err == nil {
+	if _, err := globTool.Authorization(context.Background(), json.RawMessage(`{"pattern":"*","path":".."}`)); err == nil {
 		t.Fatal("expected escape to fail authorization")
 	}
 }

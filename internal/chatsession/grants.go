@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"github.com/yyZe0122/yunmengze-agent/internal/approval"
 	"github.com/yyZe0122/yunmengze-agent/internal/audit"
 	"github.com/yyZe0122/yunmengze-agent/internal/kernel"
+	"github.com/yyZe0122/yunmengze-agent/internal/platform/pathsecurity"
 	"github.com/yyZe0122/yunmengze-agent/internal/policy"
 	"github.com/yyZe0122/yunmengze-agent/internal/providerconfig"
 )
@@ -31,26 +33,155 @@ func (s *Service) resolveGrantRoots(ctx context.Context, task kernel.Task) []str
 			workspace = s.roots[0]
 		}
 		roots := s.chatCfg.GrantRootsForSession(workspace)
+		extra := sessExtraRoots(ctx, s, task)
+		roots = mergeExtraRoots(roots, extra)
 		if len(roots) > 0 {
-			if s.pathGuard != nil && workspace != "" {
-				_ = s.pathGuard.AddRoot(workspace)
-			}
+			s.bindPathRoots(string(task.SessionID), workspace, extra)
 			return roots
 		}
 	}
 	if workspace != "" {
-		if s.pathGuard != nil {
-			_ = s.pathGuard.AddRoot(workspace)
-		}
 		out := []string{workspace}
 		for _, r := range s.roots {
 			if r != workspace {
 				out = append(out, r)
 			}
 		}
+		extra := sessExtraRoots(ctx, s, task)
+		out = mergeExtraRoots(out, extra)
+		s.bindPathRoots(string(task.SessionID), workspace, extra)
 		return out
 	}
-	return append([]string(nil), s.roots...)
+	extra := sessExtraRoots(ctx, s, task)
+	out := mergeExtraRoots(append([]string(nil), s.roots...), extra)
+	s.bindPathRoots(string(task.SessionID), "", extra)
+	return out
+}
+
+func (s *Service) bindPathRoots(sessionID, workspace string, extra []string) {
+	if s == nil || s.pathGuard == nil {
+		return
+	}
+	workspace = strings.TrimSpace(workspace)
+	if workspace != "" {
+		_ = s.pathGuard.AddRoot(workspace)
+	}
+	for _, r := range s.roots {
+		r = strings.TrimSpace(r)
+		if r != "" && r != workspace {
+			_ = s.pathGuard.AddRoot(r)
+		}
+	}
+	for _, root := range extra {
+		_ = s.pathGuard.AddSessionRoot(sessionID, root)
+	}
+}
+
+func sessExtraRoots(ctx context.Context, s *Service, task kernel.Task) []string {
+	if s == nil || s.repository == nil {
+		return nil
+	}
+	sess, err := s.repository.GetSession(ctx, task.SessionID)
+	if err != nil {
+		return nil
+	}
+	return append([]string(nil), sess.ExtraRoots...)
+}
+
+func mergeExtraRoots(roots, extra []string) []string {
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(roots)+len(extra))
+	add := func(root string) {
+		root = strings.TrimSpace(root)
+		if root == "" {
+			return
+		}
+		if _, ok := seen[root]; ok {
+			return
+		}
+		seen[root] = struct{}{}
+		out = append(out, root)
+	}
+	for _, r := range roots {
+		add(r)
+	}
+	for _, r := range extra {
+		add(r)
+	}
+	return out
+}
+
+// ExpandSessionRoot adds an extra filesystem root after interactive /perm.
+// callID is the tool_call_id for allow_once (process ceiling stays unchanged).
+// sessionPersist writes sessions.metadata.extra_roots and widens this task's grants.
+// configPersist merges the root into agent.local.json chat.workspace.allow.
+func (s *Service) ExpandSessionRoot(ctx context.Context, sessionID, taskID, extraRoot string, sessionPersist, configPersist bool, callID string) error {
+	if s == nil {
+		return errors.New("chat session service is nil")
+	}
+	extraRoot = strings.TrimSpace(extraRoot)
+	if err := pathsecurity.ValidExtraRoot(extraRoot); err != nil {
+		return err
+	}
+	extraRoot = filepath.Clean(extraRoot)
+	if s.pathGuard != nil {
+		switch {
+		case configPersist:
+			if err := s.pathGuard.AddRoot(extraRoot); err != nil {
+				return err
+			}
+		case sessionPersist:
+			if err := s.pathGuard.AddSessionRoot(sessionID, extraRoot); err != nil {
+				return err
+			}
+		default:
+			if err := s.pathGuard.AddOnceRoot(callID, extraRoot); err != nil {
+				return err
+			}
+		}
+	}
+	if sessionPersist {
+		if s.repository != nil && strings.TrimSpace(sessionID) != "" {
+			sess, err := s.repository.GetSession(ctx, kernel.SessionID(sessionID))
+			if err != nil {
+				return err
+			}
+			next := mergeExtraRoots(sess.ExtraRoots, []string{extraRoot})
+			if err := s.repository.SetSessionExtraRoots(ctx, sess.ID, next); err != nil {
+				return err
+			}
+		}
+		if s.approvals != nil && strings.TrimSpace(taskID) != "" {
+			if err := s.approvals.AppendGrantPath(ctx, kernel.TaskID(taskID), extraRoot); err != nil {
+				return err
+			}
+		}
+	}
+	if configPersist {
+		s.appendChatAllow(extraRoot)
+		if strings.TrimSpace(s.configDir) != "" {
+			if _, err := providerconfig.AppendWorkspaceAllow(s.configDir, extraRoot); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (s *Service) appendChatAllow(root string) {
+	if s == nil || s.chatCfg == nil {
+		return
+	}
+	if s.chatCfg.Workspace == nil {
+		s.chatCfg.Workspace = &providerconfig.ChatWorkspaceConfig{}
+	}
+	root = strings.TrimSpace(root)
+	for _, existing := range s.chatCfg.Workspace.Allow {
+		if strings.TrimSpace(existing) == root {
+			return
+		}
+	}
+	s.chatCfg.Workspace.Allow = append(s.chatCfg.Workspace.Allow, root)
 }
 
 type grantPosture struct {

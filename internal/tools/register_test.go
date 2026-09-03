@@ -24,7 +24,7 @@ func (t *namedTool) Definition() toolapi.Definition {
 	}
 }
 
-func (t *namedTool) Authorization(json.RawMessage) (Authorization, error) {
+func (t *namedTool) Authorization(context.Context, json.RawMessage) (Authorization, error) {
 	return Authorization{Capability: t.name}, nil
 }
 

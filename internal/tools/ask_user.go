@@ -45,16 +45,17 @@ type askUserTool struct {
 func (t *askUserTool) Definition() toolapi.Definition {
 	return toolapi.Definition{
 		Name: "ask_user",
-		Description: "Ask the user one or more multiple-choice questions and wait for answers. " +
+		Description: "Ask the user one or more questions and wait for answers. " +
 			"Use when a decision is required (approach, tradeoff, missing preference). " +
-			"Interactive TUI answers via a question card; CLI/cron return unavailable.",
+			"Each item may include options; the TUI always adds a Type your own answer choice — do not add Other/catch-all. " +
+			"Set multi_select when more than one option may apply. Interactive TUI answers via a question card; CLI/cron return unavailable.",
 		Risk:                 string(policy.RiskR0),
-		DefaultTimeoutMillis: 15 * 60 * 1000,
+		DefaultTimeoutMillis: 30 * 60 * 1000,
 		InputSchema:          json.RawMessage(`{"type":"object","additionalProperties":false,"required":["questions"],"properties":{"questions":{"type":"array","minItems":1,"maxItems":8,"items":{"type":"object","additionalProperties":false,"required":["id","question"],"properties":{"id":{"type":"string"},"question":{"type":"string"},"header":{"type":"string"},"multi_select":{"type":"boolean"},"options":{"type":"array","maxItems":12,"items":{"type":"object","additionalProperties":false,"required":["label"],"properties":{"label":{"type":"string"},"description":{"type":"string"}}}}}}}}}`),
 	}
 }
 
-func (t *askUserTool) Authorization(json.RawMessage) (Authorization, error) {
+func (t *askUserTool) Authorization(context.Context, json.RawMessage) (Authorization, error) {
 	return Authorization{Capability: "ask_user"}, nil
 }
 

@@ -51,7 +51,7 @@ func (t *skillDraftTool) Definition() toolapi.Definition {
 	}
 }
 
-func (t *skillDraftTool) Authorization(raw json.RawMessage) (Authorization, error) {
+func (t *skillDraftTool) Authorization(_ context.Context, raw json.RawMessage) (Authorization, error) {
 	var input skillDraftInput
 	if err := decodeStrict(raw, &input); err != nil {
 		return Authorization{}, err

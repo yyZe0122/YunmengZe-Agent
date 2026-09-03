@@ -76,4 +76,4 @@ func (w *Waiter) cleanup(questionID string) {
 	delete(w.wait, questionID)
 }
 
-const WaitTimeout = 15 * time.Minute
+const WaitTimeout = 30 * time.Minute

@@ -43,7 +43,7 @@ func TestWebSearchDDG(t *testing.T) {
 	if !strings.Contains(string(out), "https://go.dev") {
 		t.Fatalf("out = %s", out)
 	}
-	auth, err := tool.Authorization(json.RawMessage(`{"query":"go"}`))
+	auth, err := tool.Authorization(context.Background(), json.RawMessage(`{"query":"go"}`))
 	if err != nil || auth.NetworkDomain != ddgSearchHost {
 		t.Fatalf("auth = %+v err=%v", auth, err)
 	}

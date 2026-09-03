@@ -58,13 +58,13 @@ const processShellBin = "/bin/sh"
 
 func (t *processShellTool) Definition() toolapi.Definition {
 	return toolapi.Definition{
-		Name: "process_shell", Description: "Run tests or an approved /bin/sh -c script (not for find/grep). Same grant gate as process_exec (chat.permission.allow / chat.tools.process, or Tab Auto). Prefer process_exec argv when you do not need a shell. Non-zero exit is a result (exit_code/stdout/stderr), not a crash — read it and fix. Command must match an issued grant or /perm similar prefix. Plan and cron never receive this grant.",
+		Name: "process_shell", Description: "Run tests or an approved /bin/sh -c script (not for find/grep). Interactive TUI: call this tool; the user approves via /perm (once/similar/permanent/deny). Do not tell the user to edit agent.json. Prefer process_exec argv when you do not need a shell. Non-zero exit is a result (exit_code/stdout/stderr), not a crash — read it and fix. Plan and cron never receive this grant.",
 		Risk: string(policy.RiskR2), DefaultTimeoutMillis: 30000,
 		InputSchema: json.RawMessage(`{"type":"object","additionalProperties":false,"required":["command","directory"],"properties":{"command":{"type":"string","description":"Script passed to /bin/sh -c"},"directory":{"type":"string"},"environment":{"type":"object","additionalProperties":{"type":"string"}}}}`),
 	}
 }
 
-func (t *processShellTool) Authorization(raw json.RawMessage) (Authorization, error) {
+func (t *processShellTool) Authorization(ctx context.Context, raw json.RawMessage) (Authorization, error) {
 	var input processShellInput
 	if err := decodeStrict(raw, &input); err != nil {
 		return Authorization{}, err
@@ -73,12 +73,12 @@ func (t *processShellTool) Authorization(raw json.RawMessage) (Authorization, er
 	if script == "" {
 		return Authorization{}, errors.New("process shell command is required")
 	}
-	directory, err := t.guard.Resolve(input.Directory)
+	directory, extra, err := t.guard.ResolveForAuth(ctx, input.Directory)
 	if err != nil {
 		return Authorization{}, err
 	}
 	return Authorization{
-		Capability: "process_shell", Path: directory,
+		Capability: "process_shell", Path: directory, ExtraRoot: extra,
 		Command: processShellBin, Arguments: []string{"-c", script},
 	}, nil
 }
@@ -92,7 +92,7 @@ func (t *processShellTool) Execute(ctx context.Context, raw json.RawMessage) (js
 	if script == "" {
 		return nil, errors.New("process shell command is required")
 	}
-	directory, err := t.guard.Resolve(input.Directory)
+	directory, err := t.guard.ResolveContext(ctx, input.Directory)
 	if err != nil {
 		return nil, err
 	}
@@ -106,13 +106,13 @@ func (t *processShellTool) Execute(ctx context.Context, raw json.RawMessage) (js
 
 func (t *processTool) Definition() toolapi.Definition {
 	return toolapi.Definition{
-		Name: "process_exec", Description: "Run tests or an approved command as argv (not a shell). Not for find/grep (use fs_glob/fs_grep). Do not reimplement a configured mcp_* tool. directory must be absolute under an approved grant. command/args must match an issued grant or a /perm similar prefix (e.g. go test covers go test ./pkg). Non-zero exit is a result (exit_code/stdout/stderr), not a crash — read it and fix.",
+		Name: "process_exec", Description: "Run tests or an approved command as argv (not a shell). Not for find/grep (use fs_glob/fs_grep). Do not reimplement a configured mcp_* tool. Interactive TUI: call this tool; the user approves via /perm. Do not tell the user to edit agent.json. directory should be absolute. Non-zero exit is a result (exit_code/stdout/stderr), not a crash — read it and fix.",
 		Risk: string(policy.RiskR2), DefaultTimeoutMillis: 30000,
 		InputSchema: json.RawMessage(`{"type":"object","additionalProperties":false,"required":["command","directory"],"properties":{"command":{"type":"string"},"arguments":{"type":"array","items":{"type":"string"}},"directory":{"type":"string"},"environment":{"type":"object","additionalProperties":{"type":"string"}}}}`),
 	}
 }
 
-func (t *processTool) Authorization(raw json.RawMessage) (Authorization, error) {
+func (t *processTool) Authorization(ctx context.Context, raw json.RawMessage) (Authorization, error) {
 	var input processInput
 	if err := decodeStrict(raw, &input); err != nil {
 		return Authorization{}, err
@@ -121,11 +121,11 @@ func (t *processTool) Authorization(raw json.RawMessage) (Authorization, error) 
 	if input.Command == "" {
 		return Authorization{}, errors.New("process command is required")
 	}
-	directory, err := t.guard.Resolve(input.Directory)
+	directory, extra, err := t.guard.ResolveForAuth(ctx, input.Directory)
 	if err != nil {
 		return Authorization{}, err
 	}
-	return Authorization{Capability: "process_exec", Path: directory, Command: input.Command, Arguments: append([]string(nil), input.Arguments...)}, nil
+	return Authorization{Capability: "process_exec", Path: directory, ExtraRoot: extra, Command: input.Command, Arguments: append([]string(nil), input.Arguments...)}, nil
 }
 
 func (t *processTool) Execute(ctx context.Context, raw json.RawMessage) (json.RawMessage, error) {
@@ -137,7 +137,7 @@ func (t *processTool) Execute(ctx context.Context, raw json.RawMessage) (json.Ra
 	if input.Command == "" {
 		return nil, errors.New("process command is required")
 	}
-	directory, err := t.guard.Resolve(input.Directory)
+	directory, err := t.guard.ResolveContext(ctx, input.Directory)
 	if err != nil {
 		return nil, err
 	}

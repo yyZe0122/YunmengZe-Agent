@@ -133,7 +133,7 @@ func (t *skillsListTool) Definition() toolapi.Definition {
 	}
 }
 
-func (t *skillsListTool) Authorization(json.RawMessage) (Authorization, error) {
+func (t *skillsListTool) Authorization(context.Context, json.RawMessage) (Authorization, error) {
 	return Authorization{Capability: "skills_list"}, nil
 }
 
@@ -210,7 +210,7 @@ func (t *skillViewTool) Definition() toolapi.Definition {
 	}
 }
 
-func (t *skillViewTool) Authorization(raw json.RawMessage) (Authorization, error) {
+func (t *skillViewTool) Authorization(_ context.Context, raw json.RawMessage) (Authorization, error) {
 	var input skillViewInput
 	if err := decodeStrict(raw, &input); err != nil {
 		return Authorization{}, err

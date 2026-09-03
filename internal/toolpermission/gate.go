@@ -39,6 +39,7 @@ func (g *Gate) CreatePending(ctx context.Context, req tools.PermissionPending) (
 		Capability: req.Capability, Path: req.Path, Command: req.Command,
 		CommandArgs: req.CommandArgs, NetworkDomain: req.NetworkDomain, Risk: req.Risk,
 		State: StatePending, CreatedAt: now.Format(time.RFC3339Nano), ExpiresAt: expires,
+		ExtraRoot: req.ExtraRoot,
 	}
 	err := g.service.store.Insert(ctx, row)
 	if err != nil {

@@ -40,16 +40,16 @@ func (t *gitTool) Definition() toolapi.Definition {
 	}
 }
 
-func (t *gitTool) Authorization(raw json.RawMessage) (Authorization, error) {
-	repository, arguments, err := t.parse(raw)
+func (t *gitTool) Authorization(ctx context.Context, raw json.RawMessage) (Authorization, error) {
+	repository, arguments, extra, err := t.parse(ctx, raw, true)
 	if err != nil {
 		return Authorization{}, err
 	}
-	return Authorization{Capability: t.name, Path: repository, Command: "git", Arguments: arguments}, nil
+	return Authorization{Capability: t.name, Path: repository, ExtraRoot: extra, Command: "git", Arguments: arguments}, nil
 }
 
 func (t *gitTool) Execute(ctx context.Context, raw json.RawMessage) (json.RawMessage, error) {
-	repository, arguments, err := t.parse(raw)
+	repository, arguments, _, err := t.parse(ctx, raw, false)
 	if err != nil {
 		return nil, err
 	}
@@ -59,7 +59,7 @@ func (t *gitTool) Execute(ctx context.Context, raw json.RawMessage) (json.RawMes
 	return encodeProcessResult(result, runErr)
 }
 
-func (t *gitTool) parse(raw json.RawMessage) (string, []string, error) {
+func (t *gitTool) parse(ctx context.Context, raw json.RawMessage, allowOutside bool) (string, []string, bool, error) {
 	var common struct {
 		Repository string   `json:"repository"`
 		Paths      []string `json:"paths,omitempty"`
@@ -67,14 +67,21 @@ func (t *gitTool) parse(raw json.RawMessage) (string, []string, error) {
 		Message    string   `json:"message,omitempty"`
 	}
 	if err := decodeStrict(raw, &common); err != nil {
-		return "", nil, err
+		return "", nil, false, err
 	}
-	repository, err := t.guard.Resolve(common.Repository)
+	var repository string
+	var extra bool
+	var err error
+	if allowOutside {
+		repository, extra, err = t.guard.ResolveForAuth(ctx, common.Repository)
+	} else {
+		repository, err = t.guard.ResolveContext(ctx, common.Repository)
+	}
 	if err != nil {
-		return "", nil, err
+		return "", nil, false, err
 	}
 	if err := validateGitPaths(common.Paths); err != nil {
-		return "", nil, err
+		return "", nil, extra, err
 	}
 	arguments := []string{"-C", repository}
 	switch t.name {
@@ -91,20 +98,20 @@ func (t *gitTool) parse(raw json.RawMessage) (string, []string, error) {
 		}
 	case "git_add":
 		if len(common.Paths) == 0 {
-			return "", nil, errors.New("git.add requires at least one relative path")
+			return "", nil, extra, errors.New("git.add requires at least one relative path")
 		}
 		arguments = append(arguments, "add", "--")
 		arguments = append(arguments, common.Paths...)
 	case "git_commit":
 		message := strings.TrimSpace(common.Message)
 		if message == "" {
-			return "", nil, errors.New("git.commit message is required")
+			return "", nil, extra, errors.New("git.commit message is required")
 		}
 		arguments = append(arguments, "commit", "-m", message)
 	default:
-		return "", nil, ErrUnknownTool
+		return "", nil, extra, ErrUnknownTool
 	}
-	return repository, arguments, nil
+	return repository, arguments, extra, nil
 }
 
 func validateGitPaths(paths []string) error {

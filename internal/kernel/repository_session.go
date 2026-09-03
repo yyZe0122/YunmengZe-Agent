@@ -44,7 +44,7 @@ func (r *Repository) CreateSessionWithWorkspace(ctx context.Context, id SessionI
 		session.State,
 		formatTime(session.CreatedAt),
 		formatTime(session.UpdatedAt),
-		sessionMetadataEncode(workspace, "", normalized, nil),
+		sessionMetadataEncode(workspace, "", normalized, nil, nil),
 		session.Version,
 	)
 	if err != nil {
@@ -92,7 +92,7 @@ func (r *Repository) EnsureSessionWorkspace(ctx context.Context, id SessionID, w
 	_, err = r.db.ExecContext(ctx, `
 		UPDATE sessions SET metadata = ?, updated_at = ?
 		WHERE session_id = ?`,
-		sessionMetadataEncode(workspace, session.PreferredModel, session.PermissionStance, session.HiddenTaskIDs), formatTime(time.Now().UTC()), id,
+		sessionMetadataEncode(workspace, session.PreferredModel, session.PermissionStance, session.HiddenTaskIDs, session.ExtraRoots), formatTime(time.Now().UTC()), id,
 	)
 	if err != nil {
 		return fmt.Errorf("set session workspace: %w", err)
@@ -186,10 +186,11 @@ func scanSession(row scanner) (Session, error) {
 	session.PreferredModel = preferredModelFromMetadata(metadata)
 	session.PermissionStance = permissionStanceFromMetadata(metadata)
 	session.HiddenTaskIDs = hiddenTaskIDsFromMetadata(metadata)
+	session.ExtraRoots = extraRootsFromMetadata(metadata)
 	return session, nil
 }
 
-func sessionMetadataEncode(workspace, preferredModel, permissionStance string, hidden []string) string {
+func sessionMetadataEncode(workspace, preferredModel, permissionStance string, hidden, extraRoots []string) string {
 	workspace = strings.TrimSpace(workspace)
 	preferredModel = strings.TrimSpace(preferredModel)
 	permissionStance = strings.TrimSpace(permissionStance)
@@ -208,6 +209,9 @@ func sessionMetadataEncode(workspace, preferredModel, permissionStance string, h
 	}
 	if ids := normalizeHiddenTaskIDs(hidden); len(ids) > 0 {
 		meta["hidden_task_ids"] = ids
+	}
+	if roots := normalizeHiddenTaskIDs(extraRoots); len(roots) > 0 {
+		meta["extra_roots"] = roots
 	}
 	if len(meta) == 0 {
 		return "{}"
@@ -236,7 +240,15 @@ func permissionStanceFromMetadata(raw string) string {
 	return normalized
 }
 
+func extraRootsFromMetadata(raw string) []string {
+	return metaStringSlice(raw, "extra_roots")
+}
+
 func hiddenTaskIDsFromMetadata(raw string) []string {
+	return metaStringSlice(raw, "hidden_task_ids")
+}
+
+func metaStringSlice(raw, key string) []string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" || raw == "{}" {
 		return nil
@@ -245,7 +257,7 @@ func hiddenTaskIDsFromMetadata(raw string) []string {
 	if err := json.Unmarshal([]byte(raw), &meta); err != nil {
 		return nil
 	}
-	v, ok := meta["hidden_task_ids"]
+	v, ok := meta[key]
 	if !ok || v == nil {
 		return nil
 	}
@@ -329,7 +341,7 @@ func (r *Repository) SetSessionPreferredModel(ctx context.Context, id SessionID,
 	_, err = r.db.ExecContext(ctx, `
 		UPDATE sessions SET metadata = ?, updated_at = ?
 		WHERE session_id = ?`,
-		sessionMetadataEncode(session.Workspace, model, session.PermissionStance, session.HiddenTaskIDs), formatTime(time.Now().UTC()), id,
+		sessionMetadataEncode(session.Workspace, model, session.PermissionStance, session.HiddenTaskIDs, session.ExtraRoots), formatTime(time.Now().UTC()), id,
 	)
 	if err != nil {
 		return fmt.Errorf("set session preferred model: %w", err)
@@ -352,7 +364,7 @@ func (r *Repository) SetSessionPermissionStance(ctx context.Context, id SessionI
 	_, err = r.db.ExecContext(ctx, `
 		UPDATE sessions SET metadata = ?, updated_at = ?
 		WHERE session_id = ?`,
-		sessionMetadataEncode(session.Workspace, session.PreferredModel, normalized, session.HiddenTaskIDs), formatTime(time.Now().UTC()), id,
+		sessionMetadataEncode(session.Workspace, session.PreferredModel, normalized, session.HiddenTaskIDs, session.ExtraRoots), formatTime(time.Now().UTC()), id,
 	)
 	if err != nil {
 		return fmt.Errorf("set session permission stance: %w", err)
@@ -371,10 +383,29 @@ func (r *Repository) SetSessionHiddenTaskIDs(ctx context.Context, id SessionID, 
 	_, err = r.db.ExecContext(ctx, `
 		UPDATE sessions SET metadata = ?, updated_at = ?
 		WHERE session_id = ?`,
-		sessionMetadataEncode(session.Workspace, session.PreferredModel, session.PermissionStance, hidden), formatTime(time.Now().UTC()), id,
+		sessionMetadataEncode(session.Workspace, session.PreferredModel, session.PermissionStance, hidden, session.ExtraRoots), formatTime(time.Now().UTC()), id,
 	)
 	if err != nil {
 		return fmt.Errorf("set session hidden tasks: %w", err)
+	}
+	return nil
+}
+
+func (r *Repository) SetSessionExtraRoots(ctx context.Context, id SessionID, extra []string) error {
+	if ctx == nil {
+		return errors.New("set session extra roots context is required")
+	}
+	session, err := r.GetSession(ctx, id)
+	if err != nil {
+		return err
+	}
+	_, err = r.db.ExecContext(ctx, `
+		UPDATE sessions SET metadata = ?, updated_at = ?
+		WHERE session_id = ?`,
+		sessionMetadataEncode(session.Workspace, session.PreferredModel, session.PermissionStance, session.HiddenTaskIDs, extra), formatTime(time.Now().UTC()), id,
+	)
+	if err != nil {
+		return fmt.Errorf("set session extra roots: %w", err)
 	}
 	return nil
 }

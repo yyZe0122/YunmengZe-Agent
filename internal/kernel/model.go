@@ -59,6 +59,9 @@ type Session struct {
 	PermissionStance string
 	// HiddenTaskIDs are retracted turns (soft-hide). Transcript and packing skip these tasks.
 	HiddenTaskIDs []string
+	// ExtraRoots are session-approved extra filesystem roots (allow_similar extra-root).
+	// Not written to agent.json; next task grants include these paths.
+	ExtraRoots []string
 }
 
 const (

@@ -52,16 +52,16 @@ func (t *fileTool) Definition() toolapi.Definition {
 	}
 }
 
-func (t *fileTool) Authorization(raw json.RawMessage) (Authorization, error) {
+func (t *fileTool) Authorization(ctx context.Context, raw json.RawMessage) (Authorization, error) {
 	path, err := t.authorizationPath(raw)
 	if err != nil {
 		return Authorization{}, err
 	}
-	resolved, err := t.guard.Resolve(path)
+	resolved, extra, err := t.guard.ResolveForAuth(ctx, path)
 	if err != nil {
 		return Authorization{}, err
 	}
-	return Authorization{Capability: t.name, Path: resolved}, nil
+	return Authorization{Capability: t.name, Path: resolved, ExtraRoot: extra}, nil
 }
 
 func (t *fileTool) authorizationPath(raw json.RawMessage) (string, error) {
@@ -146,10 +146,10 @@ func (t *fileTool) Execute(ctx context.Context, raw json.RawMessage) (json.RawMe
 }
 
 func fileDescription(name string) string {
-	const pathHint = " Prefer absolute paths under configured roots; relative paths resolve against the workspace root."
+	const pathHint = " Prefer absolute paths. Relative paths resolve against the workspace root. In interactive TUI, an absolute path outside the workspace prompts /perm (once / this session / write chat.workspace.allow / deny) — do not tell the user to edit agent.json."
 	return map[string]string{
 		"fs_read":   "Read a text file with 1-based line numbers. Default ~2000 lines; use offset/limit. Returns sha256. Prefer over whole-file dumps." + pathHint,
-		"fs_list":   "List a directory inside configured filesystem roots." + pathHint,
+		"fs_list":   "List a directory. Interactive TUI may prompt to approve an extra absolute root." + pathHint,
 		"fs_stat":   "Read file metadata inside configured filesystem roots." + pathHint,
 		"fs_glob":   "Match files under a directory. ** is recursive (depth-capped). Prefer over shell find." + pathHint,
 		"fs_grep":   "Search file contents under a path (literal or simple regex). Prefer over process_exec grep." + pathHint,

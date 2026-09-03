@@ -51,3 +51,82 @@ func TestAnswerDeliversToWaiter(t *testing.T) {
 		t.Fatal("waiter did not unblock")
 	}
 }
+
+func TestAnswerAcceptsCustomLabel(t *testing.T) {
+	ctx := context.Background()
+	db, err := coresqlite.Open(ctx, t.TempDir()+"/core.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	store, err := NewStore(db.SQL())
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc, err := New(Config{Store: store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req, err := svc.CreatePending(ctx, Request{
+		SessionID: "s1", Questions: []Item{
+			{ID: "q1", Question: "Ship it?", Options: []Option{{Label: "yes"}, {Label: "no"}}},
+			{ID: "q2", Question: "Notes?", MultiSelect: true, Options: []Option{{Label: "Go"}, {Label: "Rust"}}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := svc.Answer(ctx, req.ID, "user", map[string][]string{
+		"q1": {"ship Friday"},
+		"q2": {"Go", "Rust"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Answers["q1"][0] != "ship Friday" || len(got.Answers["q2"]) != 2 {
+		t.Fatalf("answers = %#v", got.Answers)
+	}
+}
+
+func TestDismissUnblocksWaiter(t *testing.T) {
+	ctx := context.Background()
+	db, err := coresqlite.Open(ctx, t.TempDir()+"/core.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	store, err := NewStore(db.SQL())
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc, err := New(Config{Store: store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req, err := svc.CreatePending(ctx, Request{
+		SessionID: "s1", Questions: []Item{{ID: "q1", Question: "Ship?"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan Decision, 1)
+	go func() {
+		d, err := svc.Waiter().Wait(ctx, req.ID)
+		if err != nil {
+			t.Errorf("wait: %v", err)
+			return
+		}
+		done <- d
+	}()
+	if _, err := svc.Dismiss(ctx, req.ID, "local-user"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case d := <-done:
+		if d.State != StateUnavailable {
+			t.Fatalf("state = %s", d.State)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("waiter did not unblock")
+	}
+}

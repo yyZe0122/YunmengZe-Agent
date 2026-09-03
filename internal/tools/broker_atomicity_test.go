@@ -28,7 +28,7 @@ func (t *atomicityTestTool) Definition() toolapi.Definition {
 	}
 }
 
-func (t *atomicityTestTool) Authorization(json.RawMessage) (Authorization, error) {
+func (t *atomicityTestTool) Authorization(context.Context, json.RawMessage) (Authorization, error) {
 	return Authorization{Capability: "test_write"}, nil
 }
 

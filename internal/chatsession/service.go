@@ -35,6 +35,8 @@ import (
 // PathGuardRoot expands the tool filesystem ceiling for a session workspace (ADR-046).
 type PathGuardRoot interface {
 	AddRoot(root string) error
+	AddSessionRoot(sessionID, root string) error
+	AddOnceRoot(callID, root string) error
 }
 
 const (
@@ -48,7 +50,7 @@ const (
 		"For multi-step work, keep session todos via todo_write (at most one in_progress). " +
 		"After compaction, recover paths and errors with session_search instead of relying on memory. " +
 		"For specialized workflows, call skills_list then skill_view before improvising. " +
-		"When a user decision is required, call ask_user instead of guessing. " +
+		"When a user decision is required, call ask_user instead of guessing (the TUI always offers Type your own answer). " +
 		"Use web_search for queries, web_extract for page text, and http_get for raw HTTP(S) (not process_shell). " +
 		"If advertised, use vision_analyze for images, audio_transcribe for speech, and video_analyze for video frames. " +
 		"Prefer configured mcp_* tools over process_exec/process_shell or writing a script that reimplements them."
@@ -60,7 +62,9 @@ const (
 	chatToolProtocolPlan = "Read-only analysis: inspect the workspace, ask questions, discuss approaches. " +
 		"Do not modify files, create directories, or apply patches. " +
 		"If the user asks for edits, explain the plan and suggest switching to agent (build) mode."
-	chatToolProtocolAgentInteractive = "If those tools are not granted, wait for the user to approve via /perm or switch Tab to Auto; do not write a script to stand in for tests. " +
+	chatToolProtocolAgentInteractive = "Call process_exec/process_shell/git and fs_* directly; the TUI will prompt /perm (once / similar / permanent / deny). " +
+		"For a path outside the workspace, call fs_* (or process/git) with an absolute path — do not tell the user to edit agent.json. " +
+		"If those tools are not granted, wait for /perm or switch Tab to Auto; do not write a script to stand in for tests. " +
 		"Do not invent plan steps."
 	chatToolProtocolAgentHeadless = "If those tools are not granted, say the user must set chat.permission.allow or chat.tools.process; do not write a script to stand in for tests. " +
 		"Do not invent plan steps."

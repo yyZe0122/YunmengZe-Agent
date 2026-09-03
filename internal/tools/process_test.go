@@ -25,7 +25,7 @@ func TestProcessShellAuthorizationAndEcho(t *testing.T) {
 	if tool.Definition().Name != "process_shell" {
 		t.Fatalf("name=%s", tool.Definition().Name)
 	}
-	auth, err := tool.Authorization(mustJSON(t, map[string]any{"command": "echo hi", "directory": root}))
+	auth, err := tool.Authorization(context.Background(), mustJSON(t, map[string]any{"command": "echo hi", "directory": root}))
 	if err != nil {
 		t.Fatal(err)
 	}

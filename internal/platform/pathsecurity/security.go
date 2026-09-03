@@ -113,3 +113,21 @@ func ContainsResolved(root, target string) bool {
 	}
 	return Contains(resolvedRoot, resolvedTarget)
 }
+
+// ValidExtraRoot rejects empty, relative, and filesystem-volume roots.
+func ValidExtraRoot(root string) error {
+	root = strings.TrimSpace(root)
+	if root == "" {
+		return errors.New("extra root cannot be empty")
+	}
+	if !filepath.IsAbs(root) {
+		return fmt.Errorf("extra root must be absolute: %s", root)
+	}
+	clean := filepath.Clean(root)
+	vol := filepath.VolumeName(clean)
+	sep := string(filepath.Separator)
+	if clean == sep || clean == vol+sep || clean == vol+"/" {
+		return fmt.Errorf("extra root cannot be the filesystem root: %s", root)
+	}
+	return nil
+}

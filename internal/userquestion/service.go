@@ -118,7 +118,18 @@ func (s *Service) Answer(ctx context.Context, id, actor string, answers map[stri
 	return req, nil
 }
 
+func (s *Service) Dismiss(ctx context.Context, id, actor string) (Request, error) {
+	if strings.TrimSpace(actor) == "" {
+		actor = "local-user"
+	}
+	return s.markUnavailable(ctx, id, actor, "user dismissed")
+}
+
 func (s *Service) MarkUnavailable(ctx context.Context, id, reason string) (Request, error) {
+	return s.markUnavailable(ctx, id, "system", reason)
+}
+
+func (s *Service) markUnavailable(ctx context.Context, id, actor, reason string) (Request, error) {
 	if s == nil {
 		return Request{}, errors.New("userquestion service is nil")
 	}
@@ -134,12 +145,15 @@ func (s *Service) MarkUnavailable(ctx context.Context, id, reason string) (Reque
 	if reason != "" {
 		answers["_error"] = []string{reason}
 	}
-	if err := s.store.MarkDecided(ctx, id, StateUnavailable, "system", decidedAt, answers); err != nil {
+	if strings.TrimSpace(actor) == "" {
+		actor = "system"
+	}
+	if err := s.store.MarkDecided(ctx, id, StateUnavailable, actor, decidedAt, answers); err != nil {
 		return Request{}, err
 	}
 	req.State = StateUnavailable
 	req.Answers = answers
-	req.DecidedBy = "system"
+	req.DecidedBy = actor
 	req.DecidedAt = decidedAt
 	s.waiter.Notify(Decision{QuestionID: id, State: StateUnavailable, Answers: answers})
 	s.emit(ctx, "question.answered", req)
@@ -195,16 +209,9 @@ func validateAnswers(items []Item, answers map[string][]string) error {
 		if !item.MultiSelect && len(chosen) > 1 {
 			return fmt.Errorf("%w: question %q is single-select", ErrInvalid, id)
 		}
-		if len(item.Options) == 0 {
-			continue
-		}
-		allowed := make(map[string]struct{}, len(item.Options))
-		for _, opt := range item.Options {
-			allowed[opt.Label] = struct{}{}
-		}
 		for _, label := range chosen {
-			if _, ok := allowed[label]; !ok {
-				return fmt.Errorf("%w: %q is not an option for %q", ErrInvalid, label, id)
+			if strings.TrimSpace(label) == "" {
+				return fmt.Errorf("%w: answers for %q are empty", ErrInvalid, id)
 			}
 		}
 	}

@@ -36,6 +36,17 @@ func (a UserQuestionAdapter) Answer(ctx context.Context, id, actor string, answe
 	return questionView(item), nil
 }
 
+func (a UserQuestionAdapter) Dismiss(ctx context.Context, id, actor string) (UserQuestionView, error) {
+	if a.Service == nil {
+		return UserQuestionView{}, userquestion.ErrNotFound
+	}
+	item, err := a.Service.Dismiss(ctx, id, actor)
+	if err != nil {
+		return UserQuestionView{}, err
+	}
+	return questionView(item), nil
+}
+
 func questionView(item userquestion.Request) UserQuestionView {
 	qs := make([]UserQuestionItem, 0, len(item.Questions))
 	for _, q := range item.Questions {

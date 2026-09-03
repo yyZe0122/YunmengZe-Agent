@@ -161,7 +161,7 @@ type taskInput struct {
 	Tools  []string `json:"tools,omitempty"`
 }
 
-func (t *taskTool) Authorization(raw json.RawMessage) (Authorization, error) {
+func (t *taskTool) Authorization(_ context.Context, raw json.RawMessage) (Authorization, error) {
 	var input taskInput
 	if err := decodeStrict(raw, &input); err != nil {
 		return Authorization{}, err

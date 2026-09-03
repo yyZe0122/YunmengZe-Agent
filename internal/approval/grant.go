@@ -138,6 +138,81 @@ func (r *Repository) IssueGrant(ctx context.Context, input GrantInput) (Capabili
 	return grant, nil
 }
 
+// AppendGrantPath adds extraRoot to every non-revoked path-scoped grant for the task
+// so the current turn can keep using existing fs_*/git_*/process grants after extra-root /perm.
+func (r *Repository) AppendGrantPath(ctx context.Context, taskID kernel.TaskID, extraRoot string) error {
+	if ctx == nil {
+		return errors.New("grant context is required")
+	}
+	if r == nil || r.db == nil {
+		return errors.New("approval repository is unavailable")
+	}
+	extraRoot = strings.TrimSpace(extraRoot)
+	if extraRoot == "" {
+		return errors.New("extra root is required")
+	}
+	if strings.TrimSpace(string(taskID)) == "" {
+		return errors.New("task id is required")
+	}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin append grant path: %w", err)
+	}
+	defer tx.Rollback()
+	rows, err := tx.QueryContext(ctx, `
+		SELECT grant_id, paths_json FROM capability_grants
+		WHERE task_id = ? AND revoked_at IS NULL`, taskID)
+	if err != nil {
+		return fmt.Errorf("list task grants: %w", err)
+	}
+	defer rows.Close()
+	type row struct {
+		id    string
+		paths []string
+	}
+	var updates []row
+	for rows.Next() {
+		var id, pathsJSON string
+		if err := rows.Scan(&id, &pathsJSON); err != nil {
+			return err
+		}
+		var paths []string
+		if err := json.Unmarshal([]byte(pathsJSON), &paths); err != nil {
+			return fmt.Errorf("decode grant paths: %w", err)
+		}
+		if len(paths) == 0 {
+			continue
+		}
+		found := false
+		for _, p := range paths {
+			if strings.TrimSpace(p) == extraRoot {
+				found = true
+				break
+			}
+		}
+		if found {
+			continue
+		}
+		updates = append(updates, row{id: id, paths: append(paths, extraRoot)})
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	for _, u := range updates {
+		encoded, err := json.Marshal(u.paths)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE capability_grants SET paths_json = ?, updated_at = ? WHERE grant_id = ?`,
+			string(encoded), now, u.id); err != nil {
+			return fmt.Errorf("append grant path: %w", err)
+		}
+	}
+	return tx.Commit()
+}
+
 type GrantRequest struct {
 	GrantID       GrantID
 	TaskID        kernel.TaskID
@@ -396,6 +471,9 @@ func planContainsScope(plan PlanDocument, stepID kernel.StepID, scope Capability
 			if hostCapabilityNarrowing(candidate, scope) {
 				return true
 			}
+			if extraRootGrant(candidate, scope) {
+				return true
+			}
 		}
 	}
 	return false
@@ -423,6 +501,44 @@ func hostCapabilityNarrowing(planScope, grantScope CapabilityScope) bool {
 	}
 	if planScope.OneTime != grantScope.OneTime || planScope.MaxCalls != grantScope.MaxCalls ||
 		planScope.MaxDurationMillis != grantScope.MaxDurationMillis {
+		return false
+	}
+	return true
+}
+
+// extraRootGrant allows a human-approved /perm grant whose only difference from a
+// path-scoped plan capability is replacing Paths with a single extra absolute root.
+func extraRootGrant(planScope, grantScope CapabilityScope) bool {
+	if planScope.Capability != grantScope.Capability {
+		return false
+	}
+	if len(planScope.Paths) == 0 || len(grantScope.Paths) != 1 {
+		return false
+	}
+	extra := strings.TrimSpace(grantScope.Paths[0])
+	if extra == "" {
+		return false
+	}
+	for _, p := range planScope.Paths {
+		if strings.TrimSpace(p) == extra {
+			return false
+		}
+	}
+	if planScope.MaxDurationMillis != grantScope.MaxDurationMillis {
+		return false
+	}
+	if planScope.OneTime != grantScope.OneTime || planScope.MaxCalls != grantScope.MaxCalls {
+		if !(grantScope.OneTime && grantScope.MaxCalls == 1 && !planScope.OneTime) {
+			return false
+		}
+	}
+	if planScope.Command != grantScope.Command {
+		return false
+	}
+	if !slices.Equal(planScope.Arguments, grantScope.Arguments) {
+		return false
+	}
+	if !slices.Equal(planScope.NetworkDomains, grantScope.NetworkDomains) {
 		return false
 	}
 	return true

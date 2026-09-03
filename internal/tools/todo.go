@@ -74,7 +74,7 @@ func (t *todoListTool) Definition() toolapi.Definition {
 	}
 }
 
-func (t *todoListTool) Authorization(json.RawMessage) (Authorization, error) {
+func (t *todoListTool) Authorization(context.Context, json.RawMessage) (Authorization, error) {
 	return Authorization{Capability: "todo_list"}, nil
 }
 
@@ -126,7 +126,7 @@ func (t *todoWriteTool) Definition() toolapi.Definition {
 	}
 }
 
-func (t *todoWriteTool) Authorization(json.RawMessage) (Authorization, error) {
+func (t *todoWriteTool) Authorization(context.Context, json.RawMessage) (Authorization, error) {
 	return Authorization{Capability: "todo_write"}, nil
 }
 

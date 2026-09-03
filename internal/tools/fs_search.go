@@ -44,7 +44,7 @@ func (t *fileTool) glob(ctx context.Context, raw json.RawMessage) (json.RawMessa
 	if base == "" {
 		base = "."
 	}
-	root, err := t.guard.Resolve(base)
+	root, err := t.guard.ResolveContext(ctx, base)
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +79,7 @@ func (t *fileTool) glob(ctx context.Context, raw json.RawMessage) (json.RawMessa
 			if err := ctx.Err(); err != nil {
 				return nil, err
 			}
-			resolved, resErr := t.guard.Resolve(match)
+			resolved, resErr := t.guard.ResolveContext(ctx, match)
 			if resErr != nil {
 				continue
 			}
@@ -145,7 +145,7 @@ func (t *fileTool) globRecursive(ctx context.Context, root, pattern string, limi
 		if rel == "." || !matcher(rel) {
 			return nil
 		}
-		resolved, resErr := t.guard.Resolve(path)
+		resolved, resErr := t.guard.ResolveContext(ctx, path)
 		if resErr != nil {
 			return nil
 		}
@@ -233,7 +233,7 @@ func (t *fileTool) grep(ctx context.Context, raw json.RawMessage) (json.RawMessa
 	if base == "" {
 		base = "."
 	}
-	root, err := t.guard.Resolve(base)
+	root, err := t.guard.ResolveContext(ctx, base)
 	if err != nil {
 		return nil, err
 	}
@@ -396,7 +396,7 @@ func (t *fileTool) collectGrepFiles(ctx context.Context, root, fileGlob string, 
 				return nil
 			}
 		}
-		resolved, resErr := t.guard.Resolve(path)
+		resolved, resErr := t.guard.ResolveContext(ctx, path)
 		if resErr != nil {
 			return nil
 		}

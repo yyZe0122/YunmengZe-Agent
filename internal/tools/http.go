@@ -45,7 +45,7 @@ type httpGetInput struct {
 	MaxBytes int64  `json:"max_bytes,omitempty"`
 }
 
-func (t *httpGetTool) Authorization(raw json.RawMessage) (Authorization, error) {
+func (t *httpGetTool) Authorization(_ context.Context, raw json.RawMessage) (Authorization, error) {
 	input, parsed, err := t.parse(raw)
 	if err != nil {
 		return Authorization{}, err

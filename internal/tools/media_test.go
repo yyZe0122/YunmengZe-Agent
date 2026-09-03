@@ -59,7 +59,7 @@ func TestVisionAnalyzePath(t *testing.T) {
 	if stub.prompt != "what" || len(stub.images) != 1 {
 		t.Fatalf("stub = %+v", stub)
 	}
-	auth, err := tool.Authorization(args)
+	auth, err := tool.Authorization(context.Background(), args)
 	if err != nil || auth.Path == "" || auth.NetworkDomain != "" {
 		t.Fatalf("auth = %+v err=%v", auth, err)
 	}
@@ -72,7 +72,7 @@ func TestVisionAnalyzeURLNeedsHost(t *testing.T) {
 	}
 	tool := newVisionAnalyzeTool(guard, &stubVision{text: "ok"})
 	args, _ := json.Marshal(map[string]string{"url": "https://example.com/a.png"})
-	auth, err := tool.Authorization(args)
+	auth, err := tool.Authorization(context.Background(), args)
 	if err != nil || auth.NetworkDomain != "example.com" {
 		t.Fatalf("auth = %+v err=%v", auth, err)
 	}

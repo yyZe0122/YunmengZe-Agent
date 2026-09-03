@@ -60,6 +60,7 @@ type PermissionPending struct {
 	CommandArgs   []string
 	NetworkDomain string
 	Risk          string
+	ExtraRoot     bool
 }
 
 // PermissionDecision is the outcome after user decide.
@@ -75,11 +76,14 @@ type Authorization struct {
 	Command       string
 	Arguments     []string
 	NetworkDomain string
+	// ExtraRoot is set when Authorization accepted a path outside PathGuard roots
+	// so interactive TUI can /perm-expand instead of denying at Resolve.
+	ExtraRoot bool
 }
 
 type Tool interface {
 	Definition() toolapi.Definition
-	Authorization(json.RawMessage) (Authorization, error)
+	Authorization(context.Context, json.RawMessage) (Authorization, error)
 	Execute(context.Context, json.RawMessage) (json.RawMessage, error)
 }
 
@@ -260,7 +264,7 @@ func (b *Broker) Execute(ctx context.Context, request toolapi.Request) (toolapi.
 		b.recordDenied(request, actor, err)
 		return toolapi.Response{}, err
 	}
-	authorization, err := tool.Authorization(request.Arguments)
+	authorization, err := tool.Authorization(ctx, request.Arguments)
 	if err != nil {
 		err = fmt.Errorf("%w: invalid %s arguments: %v", ErrToolDenied, request.Tool, err)
 		b.recordDenied(request, actor, err)
@@ -371,6 +375,9 @@ func (b *Broker) authorize(ctx context.Context, tx *sql.Tx, request toolapi.Requ
 		return "", fmt.Errorf("%w: %s", ErrToolDenied, result.Reason)
 	}
 	candidates := grantCandidates(request)
+	if scope.ExtraRoot && !b.canWaitPermission(ctx, request) {
+		return "", fmt.Errorf("%w: extra filesystem root is not granted", ErrToolDenied)
+	}
 	if result.RequiresApproval && len(candidates) == 0 {
 		// Interactive TUI: leave authorize to wait path outside the TX.
 		// Job/cron and nested retries never hang (ADR-043).
@@ -380,6 +387,9 @@ func (b *Broker) authorize(ctx context.Context, tx *sql.Tx, request toolapi.Requ
 		return "", fmt.Errorf("%w: capability grant is required for %s", ErrToolDenied, definition.Risk)
 	}
 	if len(candidates) == 0 {
+		if scope.ExtraRoot && b.canWaitPermission(ctx, request) {
+			return "", errPermissionWait
+		}
 		return "", nil
 	}
 	var lastErr error
@@ -398,10 +408,16 @@ func (b *Broker) authorize(ctx context.Context, tx *sql.Tx, request toolapi.Requ
 		lastErr = err
 	}
 	// No matching grant: interactive TUI may wait for /perm (once).
-	if result.RequiresApproval && b.canWaitPermission(ctx, request) {
+	// Extra-root / once-then-retry: PathGuard may already contain the path while
+	// grants do not — still wait instead of denying R0.
+	if b.canWaitPermission(ctx, request) && (result.RequiresApproval || scope.ExtraRoot || grantPathDenied(lastErr)) {
 		return "", errPermissionWait
 	}
 	return "", fmt.Errorf("%w: no candidate capability grant matched: %v", ErrToolDenied, lastErr)
+}
+
+func grantPathDenied(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "path is outside grant")
 }
 
 // errPermissionWait is an internal signal from authorize to Execute (not exported).
@@ -505,7 +521,7 @@ func (b *Broker) executeAfterPermission(
 		ToolCallID: request.CallID, ToolName: request.Tool, Arguments: request.Arguments,
 		Capability: capName, Path: authorization.Path, Command: authorization.Command,
 		CommandArgs: authorization.Arguments, NetworkDomain: authorization.NetworkDomain,
-		Risk: definition.Risk,
+		Risk: definition.Risk, ExtraRoot: authorization.ExtraRoot,
 	})
 	if err != nil {
 		err = fmt.Errorf("%w: create permission: %v", ErrToolDenied, err)
@@ -522,7 +538,7 @@ func (b *Broker) executeAfterPermission(
 		Details: map[string]any{"tool": request.Tool, "tool_call_id": request.CallID, "run_id": request.RunID},
 	})
 
-	waitCtx, cancel := context.WithTimeout(ctx, 15*time.Minute)
+	waitCtx, cancel := context.WithTimeout(ctx, 30*time.Minute)
 	defer cancel()
 	decision, err := gate.Wait(waitCtx, permID)
 	if err != nil {

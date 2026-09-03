@@ -56,6 +56,34 @@ func TestPlanContainsHTTPGetDomainNarrowing(t *testing.T) {
 	}
 }
 
+func TestPlanContainsExtraRootGrant(t *testing.T) {
+	plan := PlanDocument{Steps: []StepScope{{
+		StepID: "s1",
+		Capabilities: []CapabilityScope{{
+			Capability: "fs_read", Paths: []string{"/tmp/ws"},
+			MaxDurationMillis: 5000, MaxCalls: 8,
+		}},
+	}}}
+	extra := CapabilityScope{
+		Capability: "fs_read", Paths: []string{"/other/dir"},
+		MaxDurationMillis: 5000, MaxCalls: 8,
+	}
+	if !planContainsScope(plan, "s1", extra) {
+		t.Fatal("path-scoped fs_read should allow extra-root grant")
+	}
+	wide := extra
+	wide.Paths = []string{"/a", "/b"}
+	if planContainsScope(plan, "s1", wide) {
+		t.Fatal("must not widen to multiple extra roots")
+	}
+	once := extra
+	once.OneTime = true
+	once.MaxCalls = 1
+	if !planContainsScope(plan, "s1", once) {
+		t.Fatal("session fs_read plan should allow one-time extra-root grant")
+	}
+}
+
 func TestCommandArgsMatchSchemeA(t *testing.T) {
 	tests := []struct {
 		name      string

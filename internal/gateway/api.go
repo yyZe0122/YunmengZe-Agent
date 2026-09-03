@@ -211,7 +211,7 @@ type APIConfig struct {
 	SessionRetract SessionRetractor
 	// SessionSteer is optional; when set, exposes POST /v1/sessions/{id}/steer (ADR-052 R3).
 	SessionSteer SessionSteerer
-	// UserQuestions is optional; when set, exposes GET /v1/questions and POST /v1/questions/{id}/answer (ADR-052 R4).
+	// UserQuestions is optional; when set, exposes GET /v1/questions and POST /v1/questions/{id}/answer|dismiss (ADR-052 R4).
 	UserQuestions UserQuestionService
 	// ToolPermissions is optional; when set, exposes GET /v1/permissions and POST /v1/permissions/{id}/decide (ADR-043).
 	ToolPermissions ToolPermissionService
@@ -253,6 +253,7 @@ type SkillUsageView struct {
 type UserQuestionService interface {
 	ListPending(ctx context.Context, sessionID string, limit int) ([]UserQuestionView, error)
 	Answer(ctx context.Context, id, actor string, answers map[string][]string) (UserQuestionView, error)
+	Dismiss(ctx context.Context, id, actor string) (UserQuestionView, error)
 }
 
 type UserQuestionOption struct {
@@ -291,22 +292,26 @@ type ToolPermissionService interface {
 
 // ToolPermissionView is the JSON shape for permission rows.
 type ToolPermissionView struct {
-	ID                string `json:"permission_id"`
-	SessionID         string `json:"session_id,omitempty"`
-	TaskID            string `json:"task_id"`
-	RunID             string `json:"run_id"`
-	ToolCallID        string `json:"tool_call_id"`
-	ToolName          string `json:"tool_name"`
-	Capability        string `json:"capability,omitempty"`
-	Path              string `json:"path,omitempty"`
-	Risk              string `json:"risk,omitempty"`
-	State             string `json:"state"`
-	GrantID           string `json:"grant_id,omitempty"`
-	Decision          string `json:"decision,omitempty"`
-	CreatedAt         string `json:"created_at"`
-	DecidedAt         string `json:"decided_at,omitempty"`
-	SuggestedDecision string `json:"suggested_decision,omitempty"`
-	SuggestedReason   string `json:"suggested_reason,omitempty"`
+	ID                string   `json:"permission_id"`
+	SessionID         string   `json:"session_id,omitempty"`
+	TaskID            string   `json:"task_id"`
+	RunID             string   `json:"run_id"`
+	ToolCallID        string   `json:"tool_call_id"`
+	ToolName          string   `json:"tool_name"`
+	Capability        string   `json:"capability,omitempty"`
+	Path              string   `json:"path,omitempty"`
+	Command           string   `json:"command,omitempty"`
+	CommandArgs       []string `json:"command_args,omitempty"`
+	NetworkDomain     string   `json:"network_domain,omitempty"`
+	Risk              string   `json:"risk,omitempty"`
+	State             string   `json:"state"`
+	GrantID           string   `json:"grant_id,omitempty"`
+	Decision          string   `json:"decision,omitempty"`
+	CreatedAt         string   `json:"created_at"`
+	DecidedAt         string   `json:"decided_at,omitempty"`
+	SuggestedDecision string   `json:"suggested_decision,omitempty"`
+	SuggestedReason   string   `json:"suggested_reason,omitempty"`
+	ExtraRoot         bool     `json:"extra_root,omitempty"`
 }
 
 type API struct {
@@ -399,6 +404,8 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		a.handleQuestions(w, r)
 	case strings.HasSuffix(r.URL.Path, "/answer") && strings.HasPrefix(r.URL.Path, "/v1/questions/"):
 		a.handleQuestionAnswer(w, r)
+	case strings.HasSuffix(r.URL.Path, "/dismiss") && strings.HasPrefix(r.URL.Path, "/v1/questions/"):
+		a.handleQuestionDismiss(w, r)
 	case r.URL.Path == "/v1/health":
 		a.handleHealth(w, r)
 	case r.URL.Path == "/v1/config/model":

@@ -103,13 +103,13 @@ type visionInput struct {
 	Prompt string `json:"prompt,omitempty"`
 }
 
-func (t *visionAnalyzeTool) Authorization(raw json.RawMessage) (Authorization, error) {
+func (t *visionAnalyzeTool) Authorization(ctx context.Context, raw json.RawMessage) (Authorization, error) {
 	input, err := parseVisionInput(raw)
 	if err != nil {
 		return Authorization{}, err
 	}
 	if input.Path != "" {
-		resolved, err := t.guard.Resolve(input.Path)
+		resolved, err := t.guard.ResolveContext(ctx, input.Path)
 		if err != nil {
 			return Authorization{}, err
 		}
@@ -135,7 +135,7 @@ func (t *visionAnalyzeTool) Execute(ctx context.Context, raw json.RawMessage) (j
 	var mime string
 	source := "path"
 	if input.Path != "" {
-		resolved, err := t.guard.Resolve(input.Path)
+		resolved, err := t.guard.ResolveContext(ctx, input.Path)
 		if err != nil {
 			return nil, err
 		}
@@ -200,12 +200,12 @@ func (t *audioTranscribeTool) Definition() toolapi.Definition {
 	}
 }
 
-func (t *audioTranscribeTool) Authorization(raw json.RawMessage) (Authorization, error) {
+func (t *audioTranscribeTool) Authorization(ctx context.Context, raw json.RawMessage) (Authorization, error) {
 	path, err := parsePathOnly(raw)
 	if err != nil {
 		return Authorization{}, err
 	}
-	resolved, err := t.guard.Resolve(path)
+	resolved, err := t.guard.ResolveContext(ctx, path)
 	if err != nil {
 		return Authorization{}, err
 	}
@@ -217,7 +217,7 @@ func (t *audioTranscribeTool) Execute(ctx context.Context, raw json.RawMessage) 
 	if err != nil {
 		return nil, err
 	}
-	resolved, err := t.guard.Resolve(path)
+	resolved, err := t.guard.ResolveContext(ctx, path)
 	if err != nil {
 		return nil, err
 	}
@@ -269,12 +269,12 @@ type videoInput struct {
 	Prompt string `json:"prompt,omitempty"`
 }
 
-func (t *videoAnalyzeTool) Authorization(raw json.RawMessage) (Authorization, error) {
+func (t *videoAnalyzeTool) Authorization(ctx context.Context, raw json.RawMessage) (Authorization, error) {
 	var input videoInput
 	if err := decodeStrict(raw, &input); err != nil {
 		return Authorization{}, err
 	}
-	resolved, err := t.guard.Resolve(strings.TrimSpace(input.Path))
+	resolved, err := t.guard.ResolveContext(ctx, strings.TrimSpace(input.Path))
 	if err != nil {
 		return Authorization{}, err
 	}
@@ -286,7 +286,7 @@ func (t *videoAnalyzeTool) Execute(ctx context.Context, raw json.RawMessage) (js
 	if err := decodeStrict(raw, &input); err != nil {
 		return nil, err
 	}
-	resolved, err := t.guard.Resolve(strings.TrimSpace(input.Path))
+	resolved, err := t.guard.ResolveContext(ctx, strings.TrimSpace(input.Path))
 	if err != nil {
 		return nil, err
 	}

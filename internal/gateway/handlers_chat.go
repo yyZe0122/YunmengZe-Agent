@@ -416,6 +416,37 @@ func (a *API) handleQuestionAnswer(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, item)
 }
 
+func (a *API) handleQuestionDismiss(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodPost) {
+		return
+	}
+	if a.userQuestions == nil {
+		writeError(w, http.StatusServiceUnavailable, "unavailable", "user questions are unavailable")
+		return
+	}
+	basePath := strings.TrimSuffix(r.URL.Path, "/dismiss")
+	id, ok := pathID(w, basePath, "/v1/questions/")
+	if !ok {
+		return
+	}
+	var request struct {
+		Actor string `json:"actor"`
+	}
+	if err := decodeJSON(w, r, &request); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+	item, err := a.userQuestions.Dismiss(r.Context(), id, request.Actor)
+	if err != nil {
+		if writeApplicationError(w, err) {
+			return
+		}
+		writeInternal(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, item)
+}
+
 func (a *API) handlePermissions(w http.ResponseWriter, r *http.Request) {
 	if !requireMethod(w, r, http.MethodGet) {
 		return
