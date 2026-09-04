@@ -85,7 +85,7 @@ var kindCatalog = []KindSpec{
 		Role:       "subagent",
 		Advertised: true,
 		Ban:        append([]string(nil), leafBans...),
-		Prompt:     "Complete the delegated task. Reply helpfully in the user's language. Prefer absolute paths under the workspace. Do not claim tool success without evidence. You cannot spawn nested task runs, call ask_user, write memory, or draft skills.",
+		Prompt:     "Complete the delegated task. Reply helpfully in the user's language. Prefer absolute paths under the workspace. Do not claim tool success without evidence. You cannot spawn nested task runs, call ask_user, write memory, or draft skills. Reply with a short final conclusion plus paths or evidence. Do not narrate tool calls, thinking, or intermediate steps.",
 	},
 	{
 		Kind:       KindExplore,
@@ -94,7 +94,7 @@ var kindCatalog = []KindSpec{
 		Default:    append([]string(nil), exploreDefaultTools...),
 		Ban:        append([]string(nil), exploreBans...),
 		BanPrefix:  []string{"git_", "mcp_"},
-		Prompt:     "Read-only exploration. Search the workspace and report findings. Do not modify files, run processes, or make network requests. You cannot spawn nested task runs. Reply helpfully in the user's language. Prefer absolute paths under the workspace. Do not claim tool success without evidence.",
+		Prompt:     "Read-only exploration. Search the workspace and report findings. Do not modify files, run processes, or make network requests. You cannot spawn nested task runs. Reply helpfully in the user's language. Prefer absolute paths under the workspace. Do not claim tool success without evidence. Reply with a short final conclusion plus paths or evidence. Do not narrate tool calls, thinking, or intermediate steps.",
 	},
 	{
 		Kind:         KindWeb,
@@ -105,7 +105,7 @@ var kindCatalog = []KindSpec{
 		Ban:          append([]string(nil), webBans...),
 		BanPrefix:    []string{"git_", "mcp_"},
 		RequireAny:   []string{"web_search", "web_extract", "http_get"},
-		Prompt:       "Gather information from the web and report findings. Use web_search, then web_extract or http_get for specific URLs. Do not modify files or run processes. You cannot spawn nested task runs.",
+		Prompt:       "Gather information from the web and report findings. Use web_search, then web_extract or http_get for specific URLs. Do not modify files or run processes. You cannot spawn nested task runs. Reply with a short final conclusion plus URLs or evidence. Do not narrate tool calls, thinking, or intermediate steps.",
 	},
 	{
 		Kind:        KindVision,
@@ -115,7 +115,7 @@ var kindCatalog = []KindSpec{
 		Ban:         append([]string(nil), mediaBans...),
 		BanPrefix:   []string{"git_", "mcp_"},
 		RequireAny:  []string{"vision_analyze"},
-		Prompt:      "Analyze images using vision_analyze and report findings. Do not modify files or run processes. You cannot spawn nested task runs.",
+		Prompt:      "Analyze images using vision_analyze and report findings. Do not modify files or run processes. You cannot spawn nested task runs. Reply with a short final conclusion. Do not narrate tool calls, thinking, or intermediate steps.",
 	},
 	{
 		Kind:        KindSpeech,
@@ -126,7 +126,7 @@ var kindCatalog = []KindSpec{
 		Ban:         append([]string(nil), mediaBans...),
 		BanPrefix:   []string{"git_", "mcp_"},
 		RequireAny:  []string{"audio_transcribe"},
-		Prompt:      "Transcribe audio using audio_transcribe and report the text. Do not modify files or run processes. You cannot spawn nested task runs.",
+		Prompt:      "Transcribe audio using audio_transcribe and report the text. Do not modify files or run processes. You cannot spawn nested task runs. Reply with the transcript or a short conclusion. Do not narrate tool calls, thinking, or intermediate steps.",
 	},
 	{
 		Kind:        KindVideo,
@@ -136,7 +136,7 @@ var kindCatalog = []KindSpec{
 		Ban:         append([]string(nil), mediaBans...),
 		BanPrefix:   []string{"git_", "mcp_"},
 		RequireAny:  []string{"video_analyze"},
-		Prompt:      "Analyze video using video_analyze and report findings. Do not modify files or run processes. You cannot spawn nested task runs.",
+		Prompt:      "Analyze video using video_analyze and report findings. Do not modify files or run processes. You cannot spawn nested task runs. Reply with a short final conclusion. Do not narrate tool calls, thinking, or intermediate steps.",
 	},
 }
 

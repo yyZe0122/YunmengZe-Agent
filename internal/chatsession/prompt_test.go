@@ -57,6 +57,7 @@ func TestChatSystemPromptIncludesVersionAndRoles(t *testing.T) {
 			"/model switches global main only",
 			"skills_list",
 			"session_search",
+			"previous task_id",
 		} {
 			if !strings.Contains(got, want) {
 				t.Fatalf("prompt missing %q:\n%s", want, got)

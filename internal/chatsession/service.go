@@ -53,7 +53,8 @@ const (
 		"When a user decision is required, call ask_user instead of guessing (the TUI always offers Type your own answer). " +
 		"Use web_search for queries, web_extract for page text, and http_get for raw HTTP(S) (not process_shell). " +
 		"If advertised, use vision_analyze for images, audio_transcribe for speech, and video_analyze for video frames. " +
-		"Prefer configured mcp_* tools over process_exec/process_shell or writing a script that reimplements them."
+		"Prefer configured mcp_* tools over process_exec/process_shell or writing a script that reimplements them. " +
+		"To continue the same sub-agent, pass its previous task_id unchanged; omit task_id to start a new one. Do not invent a task_id."
 	chatToolProtocolAgent = "You may read and write files under the workspace. " +
 		"Edit with fs_patch and expected_sha256. Use fs_write only to create a new file. " +
 		"Delete a regular file with fs_remove (not shell rm) so /undo can restore it. " +
