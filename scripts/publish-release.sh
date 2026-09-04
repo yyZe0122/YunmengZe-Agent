@@ -525,9 +525,9 @@ fi
 apply_release_notes
 
 upload_vscode_vsix() {
-  local vsix owner pkg_ec
+  local vsix owner pkg_ec names
   vsix="extensions/vscode/ymz-vscode_${VER_NUM}.vsix"
-  log "package VS Code VSIX (${TAG})"
+  log "package VS Code VSIX (${TAG}) — required on every tag"
   if [[ "$DRY_RUN" -eq 1 ]]; then
     log "would run: scripts/package-vscode.sh ${TAG} && gh release upload ${TAG} ${vsix}"
     return 0
@@ -543,30 +543,19 @@ upload_vscode_vsix() {
   fi
   set -e
   if [[ "$pkg_ec" -ne 0 ]]; then
-    log "WARN: VS Code VSIX skipped (need Node 18+ as user ${owner}; Go assets already uploaded). See docs/wiki/vscode.md"
-    return 0
+    die "VS Code VSIX package failed (exit ${pkg_ec}; need Node 18+ as user ${owner}). Go assets may already be on the Release. Fix Node, then: ./scripts/publish-release.sh ${TAG} --upload-only --skip-check --skip-snapshot"
   fi
   if [[ ! -f "$vsix" && -f "dist/vscode/ymz-vscode_${VER_NUM}.vsix" ]]; then
     vsix="dist/vscode/ymz-vscode_${VER_NUM}.vsix"
   fi
-  if [[ ! -f "$vsix" ]]; then
-    log "WARN: ${vsix} missing after package; skip upload"
-    return 0
-  fi
-  GH_BIN=""
-  if command -v gh >/dev/null 2>&1; then
-    GH_BIN=$(command -v gh)
-  elif [[ -x /usr/local/bin/gh ]]; then
-    GH_BIN=/usr/local/bin/gh
-  elif [[ -x /home/yyze/.local/bin/gh ]]; then
-    GH_BIN=/home/yyze/.local/bin/gh
-  fi
-  if [[ -z "$GH_BIN" ]]; then
-    log "WARN: gh not found; VSIX at ${vsix} not uploaded. Manual: gh release upload ${TAG} ${vsix}"
-    return 0
-  fi
+  [[ -f "$vsix" ]] || die "missing ${vsix} after package-vscode.sh"
+  GH_BIN=$(find_gh) || die "gh not found; cannot upload required ${vsix}"
   log "upload ${vsix} to ${TAG}"
   GITHUB_TOKEN="${GITHUB_TOKEN}" GH_TOKEN="${GITHUB_TOKEN}" "$GH_BIN" release upload "$TAG" "$vsix" --repo "$GITHUB_REPOSITORY" --clobber
+  names=$("$GH_BIN" release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' 2>/dev/null || true)
+  echo "$names" | grep -q "ymz-vscode_${VER_NUM}.vsix" \
+    || die "GitHub Release ${TAG} missing asset ymz-vscode_${VER_NUM}.vsix"
+  log "GitHub Release includes ymz-vscode_${VER_NUM}.vsix"
 }
 
 upload_vscode_vsix
@@ -587,7 +576,7 @@ cat <<EOF
     ymz_${VER_NUM}_windows_amd64.zip
     ymz_${VER_NUM}_windows_arm64.zip
     checksums.txt
-    ymz-vscode_${VER_NUM}.vsix   # skipped if Node missing; docs/wiki/vscode.md
+    ymz-vscode_${VER_NUM}.vsix   # required; missing VSIX fails the publish
 
   Body: ${NOTES}
   Install (recommended):

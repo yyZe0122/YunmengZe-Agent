@@ -15,6 +15,7 @@ This page is the **only** release runbook.
 | **Clean tree** | The publish script **refuses a dirty working tree**. Batch-commit first. It will not squash a multi-feature dump. |
 | **No mega-commit** | **Never** `--commit-paths all` for a mixed dirty tree. That flag is **removed**. |
 | **Changelog first** | `docs/history/changelog/vX.Y.Z.md` must exist **before** the publish command. Tag name = file name (`v0.4.0` → `v0.4.0.md`). That file **is** the GitHub Release body (`goreleaser --release-notes`). Empty stub / git log **fails**. |
+| **VSIX required** | Every tag **must** attach `ymz-vscode_{version}.vsix` (Node 18+; fail-closed). Missing Node / missing file / failed upload **fails the publish**. |
 | **No secrets** | Never commit `agent.local.json`, `*.db`, `env` with real keys, `bin/`, `dist/`, tokens. |
 
 ### Do not / 禁止
@@ -77,7 +78,7 @@ cd /home/yyze/projects/AutoZeAgent
 #   --message "docs(changelog): vX.Y.Z"
 ```
 
-Replace `vX.Y.Z` (e.g. `v0.4.0`). The script **refuses** a missing or stub changelog. It runs `make check`, creates an annotated tag, pushes `main` + tag, then **local** `goreleaser release`. After Go assets upload it runs `gh release edit --notes-file docs/history/changelog/vX.Y.Z.md` (that markdown **is** the GitHub Release body), then packages `ymz-vscode_{version}.vsix`. Missing Node **warns and skips** the VSIX; binaries still publish. Details: [`wiki/vscode.md`](wiki/vscode.md).
+Replace `vX.Y.Z` (e.g. `v0.4.0`). The script **refuses** a missing or stub changelog. It runs `make check`, creates an annotated tag, pushes `main` + tag, then **local** `goreleaser release`. After Go assets upload it runs `gh release edit --notes-file docs/history/changelog/vX.Y.Z.md` (that markdown **is** the GitHub Release body), then packages and **must** upload `ymz-vscode_{version}.vsix`. Missing Node / missing VSIX / failed `gh release upload` **fails the publish** (Go archives may already be on the Release; re-run `--upload-only` after fixing Node). Details: [`wiki/vscode.md`](wiki/vscode.md).
 
 ### Pre-flight checklist
 
@@ -88,8 +89,9 @@ Replace `vX.Y.Z` (e.g. `v0.4.0`). The script **refuses** a missing or stub chang
 | 3 | Reset `docs/history/changelog/unreleased.md` to an empty post-tag stub when promoting notes into `vX.Y.Z.md`. |
 | 4 | No secrets in tree. |
 | 5 | `make check` green (script runs it unless `--skip-check`). |
-| 6 | `gh auth login` or valid `GITHUB_TOKEN` + `PACKAGE_GITHUB_TOKEN`. |
-| 7 | As **root**, clean tree: `./scripts/publish-release.sh vX.Y.Z --yes`. |
+| 6 | Node 18+ available as the repo owner (root publish `su`s to that user to pack VSIX). Missing VSIX **fails**. |
+| 7 | `gh auth login` or valid `GITHUB_TOKEN` + `PACKAGE_GITHUB_TOKEN`. |
+| 8 | As **root**, clean tree: `./scripts/publish-release.sh vX.Y.Z --yes`. |
 
 ### After publish
 
@@ -150,7 +152,7 @@ GoReleaser builds **one archive per OS/arch**. Each archive contains **two binar
 | `ymz_{version}_{os}_{arch}.tar.gz` | `ymz_0.3.0_linux_amd64.tar.gz` |
 | `ymz_{version}_windows_{arch}.zip` | `ymz_0.3.0_windows_amd64.zip` |
 | `checksums.txt` | SHA-256 of all archives (fixed name) |
-| `ymz-vscode_{version}.vsix` | VS Code / Cursor terminal launcher (optional; skipped if Node missing) |
+| `ymz-vscode_{version}.vsix` | VS Code / Cursor terminal launcher — **required** on every tag |
 
 - `{version}` = tag **without** leading `v` (GoReleaser `.Version`).
 - Prefer `YMZ_VERSION=vX.Y.Z` when the release is **Pre-release** (GitHub `latest` may skip it).

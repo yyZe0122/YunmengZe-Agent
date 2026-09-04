@@ -49,7 +49,7 @@ code --install-extension extensions/vscode/ymz-vscode_0.0.1.vsix
 
 GitHub Actions [`.github/workflows/release.yml`](../../.github/workflows/release.yml) 同样在 goreleaser 之后打包装上。
 
-本机无 Node：该步 **警告并跳过**，Go 二进制发版仍成功。不要另写 `scripts/release-*.sh`。
+每个 tag **必须**挂上 VSIX。`package-vscode.sh` 失败、找不到 `ymz-vscode_{version}.vsix`、或 `gh release upload` 失败 → **整次发版失败**（需要 Node 18+；root 发版会 `su` 到仓库属主跑打包）。Go 二进制可能已经上传；修好 Node 后 `--upload-only`。不要另写 `scripts/release-*.sh`。
 
 ## 不做（本相）
 
