@@ -13,7 +13,9 @@ Configuration is loaded **only** from the OS config directory (`paths.Layout.Con
 | user (all OS) | `~/.yunmengze` (`%USERPROFILE%\.yunmengze` on Windows); override with `YMZ_HOME` |
 | system | Linux `/etc/yunmengze` · Windows `ProgramData\YunmengZe\config` · macOS system path from `paths` |
 
-On first start, if ConfigDir has no file, the daemon writes a default template with `{env:…}` placeholders (no secrets), top-level `models.subagent` / `models.compact` pointing at the same ref as `model`, and may seed an empty `env` template. It does **not** copy project/cwd configs. Installers do the same without overwriting existing files.
+On first start, if ConfigDir has no file, the daemon writes a default template with `{env:…}` placeholders (no secrets), top-level `models.subagent` / `models.compact` pointing at the same ref as `model`, and may seed an empty `env` template plus `AGENTS.md`. It does **not** copy project/cwd configs and does **not** write a `chat` / `mcp` block (runtime defaults apply). Installers do the same without overwriting existing files.
+
+`agent.local.json` **replaces** `agent.json` (not a merge). Project directories are not searched for JSON. User-facing field table: [README · Configure](../../README.md#configure). JSON Schema: [`configs/agent.schema.json`](../../configs/agent.schema.json).
 
 ### Import from OpenCode
 
@@ -21,17 +23,44 @@ On first start, if ConfigDir has no file, the daemon writes a default template w
 ymz config import-opencode [path] [--mode user|system] [--dry-run] [--output path]
 ```
 
-Maps OpenCode `opencode.json` / `opencode.jsonc` into `agent.local.json` under ConfigDir:
+Default path (when omitted): `~/.config/opencode/opencode.json` then `~/.opencode/opencode.json` (and `.jsonc`). Writes `<config-dir>/agent.local.json` (`0600`). YunmengZe does **not** merge OpenCode global + project files — pass the file you want.
 
 | Mapped | Notes |
 | --- | --- |
 | `model`, `provider.*` | Nested catalog; `npm` → `type` heuristic; options `baseURL` / `apiKey` / `headers` kept |
+| `models.subagent` / `compact` / `web` / `vision` / `speech` | YMZ role map (provider/model strings). `models.main` and unknown keys dropped with warnings |
 | Local stdio MCP | `command` string or argv array → `mcp.servers` (`type` stdio/local) |
 | Remote MCP | `type` remote/sse/http or `url` → `mcp.servers` with `url` (+ `headers`); oauth block not imported |
 | OC `command` map | → `chat.commands` (template / prompt / message + description) |
 | `compaction` | Top-level OC `compaction.auto` / `enabled` → `chat.compaction.enabled` |
 
-**Dropped with warnings:** plugins, LSP, theme/keybinds/tui, agent/mode maps, permission/tools maps, MCP oauth blocks, and other unknown top-level fields. Prefer re-running `ymz config validate` after import. Implementation: `internal/opencodeimport`.
+**Dropped with warnings:** plugins, LSP, theme/keybinds/tui, agent/mode maps, top-level `permission`/`tools`, `small_model` (use `models.compact`), `instructions`, MCP oauth, and other unknown top-level fields.
+
+**Hand-fill after import:** `chat.workspace`, `chat.tools` / `chat.permission.allow`, extra role refs. Then `ymz config validate` and `ymz restart`. Implementation: `internal/opencodeimport`.
+
+### Chat fields (`chat.*`)
+
+Omit the whole `chat` object to keep defaults. Changing any `chat.*` key needs `ymz restart` (exception: interactive extra-root `/perm` permanent writes `chat.workspace.allow` in-memory).
+
+| Field | Default | Notes |
+| --- | --- | --- |
+| `workspace.default` | `client_cwd` | `client_cwd` \| `daemon_cwd` \| absolute path. Session root = client launch cwd on submit |
+| `workspace.allow` | `[]` | Extra absolute roots on the path ceiling |
+| `workspace.allow_all` | `false` | Disables path-root containment (local single-user only) |
+| `allow_write` | `true` | Agent write ceiling. Plan is always read-only |
+| `tools.git` / `tools.process` | `false` | OR with `permission.allow`. Plan / cron never get these |
+| `permission.mode` | — | Load-only `preauth`\|`ask`; ignored at runtime. Wait is TUI interactive |
+| `permission.allow` | `[]` | Remember `process` and/or `git` so Agent does not prompt |
+| `compaction.enabled` | `true` | Session head summarization |
+| `max_iterations` | `0` | `0` = no hard step cap; `1`–`256` = last step is text-only soft landing |
+| `memory.enabled` | `true` | In-process layered memory |
+| `memory.max_inject_runes` | `2000` | Frozen system inject cap |
+| `memory.session_search` | `true` | Transcript FTS tool |
+| `memory.default_ttl` | off | Go duration for session/detail writes that omit `expires_at` |
+| `memory.curator` | on when memory on | Post-turn LLM facts; `max_facts` 3; `timeout_ms` 15000; uses `models.compact` |
+| `skills.unused_ttl` | off | Go duration; unused-but-once-used skills are soft-archived |
+| `commands` | none | Slash templates; `$ARGUMENTS`; instruction only — no grants |
+| `web.search` | `ddg` | `ddg` \| `searxng` \| `tavily`. searxng needs `searxng_url`; tavily needs `tavily_key` |
 
 ### MCP servers (`mcp.servers`)
 
@@ -42,7 +71,7 @@ Maps OpenCode `opencode.json` / `opencode.jsonc` into `agent.local.json` under C
 | Legacy SSE | `type: "sse"`, `url` | HTTP+SSE (2024-11-05) |
 | Auto remote | `type: "remote"` or only `url` | Try streamable, fallback legacy SSE |
 
-Header/env values support `{env:VAR}` / `{file:…}`. Gateway MCP status never returns URL or headers. MCP is **not** hot-reloaded (restart daemon).
+Header/env values support `{env:VAR}` / `{file:…}`. Gateway MCP status never returns URL or headers. MCP is **not** hot-reloaded (restart daemon). Schema: `mcp` in [`configs/agent.schema.json`](../../configs/agent.schema.json). Example: [`configs/agent.json.example`](../../configs/agent.json.example).
 
 ### Chat slash templates (`chat.commands`, O3)
 
@@ -169,8 +198,8 @@ Same model segment on two suppliers is fine; selection disambiguates. Templates 
 - Prefer catalog keys equal to the upstream model id (including `/` when the gateway requires it). Optional `id` overrides the wire name while keeping a short selection key.
 - Mistyped keys of the form `providerID/modelID` when the selection model segment is bare are still accepted as a convenience; wire id remains the bare segment (or `id`).
 - Empty `models` under a provider allows any model id (pass-through; API may still reject unknown ids).
-- TUI `/model` lists `providerId/modelId…` refs and only changes top-level **global** `model` (`PUT /v1/config/model`).
-- Session **preference** (optional): `PATCH /v1/sessions/{id}` with `preferred_model` stores `metadata.model` (O4). TUI `/model prefer [ref]` sets preference without switching global main. Chat runs resolve **job pin (H7) → prefer → main** via `internal/modelresolve` (invalid prefer falls back to main; invalid job pin fails start).
+- TUI `/model` lists `providerId/modelId…` refs and sets **this session** (`PATCH` / submit `preferred_model`). `/model main provider/model` changes top-level **global** `model` (`PUT /v1/config/model`). TUI has no clear-prefer command (empty string only via `PATCH`).
+- Session **preference** (O4): `PATCH /v1/sessions/{id}` `{preferred_model}` stores `metadata.model`. Ready-page pick is a **sticky** TUI draft (`/new` does not clear it; every new session from ready is written via `POST /v1/tasks` `{preferred_model}` before `StartChat`; not persisted across TUI restart). Chat runs resolve **job pin (H7) → prefer → main** via `internal/modelresolve` (invalid prefer falls back to main; invalid job pin fails start).
 - **`ready`:** true only when config load succeeded **and** agent/chat was bound at daemon start. Otherwise `error` explains (fix config, or `ymz restart` if chat never started). Secrets never appear in `error`.
 
 ### Hot-reload (ADR-048)

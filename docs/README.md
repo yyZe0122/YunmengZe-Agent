@@ -10,7 +10,9 @@ Catalog for YunmengZe Agent docs. Start here.
 
 Ops (not a box): [`release.md`](release.md) — only publish runbook.
 
-User install/run: [`README.md`](../README.md) · [`README.zh.md`](../README.zh.md). Agent constraints: [`AGENTS.md`](../AGENTS.md). PR norms: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
+User install/run: [`README.md`](../README.md) · [`README.zh.md`](../README.zh.md). Config fields + OpenCode import: [README · Configure](../README.md#configure) and [`wiki/provider-protocols.md`](wiki/provider-protocols.md). Agent constraints: [`AGENTS.md`](../AGENTS.md). PR norms: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
+
+There is **no** separate docs site. Product docs stay in GitHub markdown (README + this catalog).
 
 ## Wiki
 

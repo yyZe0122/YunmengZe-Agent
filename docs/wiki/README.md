@@ -2,7 +2,7 @@
 
 Numbered ADRs plus the `core.db` map. Catalog: [`docs/README.md`](../README.md).
 
-Living status / backlog (only): [`backlog/current.md`](../backlog/current.md). **当前线 v0.5.0**（models.dev 填窗 + Phase S/W/M）。**下一优先 VS Code V4**。O5–O6 / H2 / 飞书 M* / Marketplace 等用户再提。  
+Living status / backlog (only): [`backlog/current.md`](../backlog/current.md). **当前线 v0.6.0**（本会话 `/model` + 提问/授权卡 + extra-root `/perm` + `task_id` 续跑）。**下一优先 VS Code V4**。O5–O6 / H2 / 飞书 M* / Marketplace 等用户再提。  
 Agent/contributor entry: [`AGENTS.md`](../../AGENTS.md).  
 Database map: [`database.md`](database.md).
 
@@ -48,7 +48,7 @@ Also: O3 `chat.commands` (ADR-038 / [provider-protocols](provider-protocols.md))
 
 Also useful: [003](adr/003-policy-invariants.md) policy, [011](adr/011-approval-capability-binding.md) grants (domain), [013](adr/013-provider-planner-boundary.md) provider boundary (**interactive Planner superseded**), [017](adr/017-scheduler-module-boundary.md) in-process scheduler (+ [042](adr/042-chat-native-jobs.md) product semantics), [034](adr/034-file-based-skills-boundary.md) skills, [035](adr/035-standard-protocol-tool-boundary.md) protocol tools.
 
-Provider wire formats: [`provider-protocols.md`](provider-protocols.md). VS Code VSIX: [`vscode.md`](vscode.md).
+Provider / `chat.*` / OpenCode import: [`provider-protocols.md`](provider-protocols.md) (user table: [README · Configure](../../README.md#configure)). VS Code VSIX: [`vscode.md`](vscode.md).
 
 ## Index (by number)
 

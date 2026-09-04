@@ -4,6 +4,7 @@
 - 日期：2026-08-20
 - 更新：2026-08-27（Shift+PgUp/Dn 切会话；`/edit` · `/editundo`）
 - 更新：2026-09-02（提问/授权卡；Esc Esc dismiss）
+- 更新：2026-09-04（`/model` 本会话；Ctrl+L 模型盘 Enter 写 prefer；`/model main` 才改全局）
 
 ## 背景
 
@@ -47,7 +48,7 @@ TUI 已对齐 Crush **契约**（slash、perm SSE、steer、折叠、T8 live MD�
 | 键 | 行为 |
 | --- | --- |
 | Ctrl+P | 命令盘 |
-| Ctrl+L | 模型盘 |
+| Ctrl+L | 模型盘：Enter = **本会话** prefer（ready 页为 sticky draft，`/new` 不清；每个新建会话经 `POST /v1/tasks` `{preferred_model}` 写入）。全局默认走 `/model main provider/model`。TUI 无 clear prefer |
 | Ctrl+S | 会话盘 |
 | Ctrl+T | pills 展开/收起 |
 | Shift+PgUp / Shift+PgDn | 更旧 / 更新会话 |

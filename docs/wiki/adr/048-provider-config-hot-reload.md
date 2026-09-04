@@ -34,7 +34,7 @@ Debounce ~500ms; OnChange coalesced (one in flight; dirty re-run). Panic in OnCh
 4. Else `providers.NewConfigured` → `agent.SetProvider` / `SetModel` / `SetContextWindow` + chat window
 5. Failure: keep previous client (in-flight runs); set `loadError`; `ready=false` on GET `/v1/config/model`
 
-`/model` (`WriteSelectedModel`) sets a short suppress window so the watcher does not double-apply.
+`/model main` (`WriteSelectedModel`) sets a short suppress window so the watcher does not double-apply. Bare TUI `/model` does not write config.
 
 ### Ready semantics
 
