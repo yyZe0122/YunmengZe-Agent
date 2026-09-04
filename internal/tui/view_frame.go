@@ -128,7 +128,7 @@ func (m model) renderInputBox(width int) string {
 }
 
 func (m model) displayModel() string {
-	name := strings.TrimSpace(m.modelName)
+	name := m.effectiveModel(m.modelName)
 	if name == "" {
 		return "—"
 	}

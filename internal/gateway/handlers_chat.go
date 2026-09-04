@@ -29,6 +29,8 @@ type taskSubmissionRequest struct {
 	Workspace string `json:"workspace,omitempty"`
 	// PermissionStance is the Tab posture written onto the session (agent|auto|plan).
 	PermissionStance string `json:"permission_stance,omitempty"`
+	// PreferredModel is an optional session model preference written before chat start (O4).
+	PreferredModel string `json:"preferred_model,omitempty"`
 	// Interactive is true for TUI turns that can answer /perm. CLI/cron omit it.
 	// Local capability flag, not authentication.
 	Interactive bool `json:"interactive,omitempty"`
@@ -266,6 +268,7 @@ func (a *API) submitTask(w http.ResponseWriter, r *http.Request) {
 		Title: request.Title, Objective: request.Objective, SkillIDs: request.SkillIDs,
 		ExecutionMode: request.ExecutionMode, Workspace: strings.TrimSpace(request.Workspace),
 		PermissionStance: strings.TrimSpace(request.PermissionStance),
+		PreferredModel:   strings.TrimSpace(request.PreferredModel),
 		Interactive:      request.Interactive,
 		EnsureSession:    true, AllowExisting: allowExisting,
 	})

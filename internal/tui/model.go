@@ -91,11 +91,17 @@ type model struct {
 	helpOpen  bool
 	sseState  string
 	modelName string
-	models    []string
-	cwd       string
-	dataDir   string
-	busy      bool
-	lastEscAt time.Time
+	// sessionModel is the focused session's preferred model (empty = use global main).
+	sessionModel string
+	// draftModel is a sticky TUI-local pick on the ready page. /new does not clear it;
+	// every new session created from ready writes it as preferred_model until the user
+	// picks again. Not persisted across TUI restarts. TUI has no clear-prefer command.
+	draftModel string
+	models     []string
+	cwd        string
+	dataDir    string
+	busy       bool
+	lastEscAt  time.Time
 
 	// Floating picker (sessions/models/jobs/skills). Slash completer is separate.
 	list        listKind
@@ -231,6 +237,7 @@ type commandDoneMsg struct {
 	help          bool
 	toggleTheme   bool
 	modelName     string
+	sessionModel  string
 	models        []string
 	contextWindow int64
 	jobs          []schedulerapi.Job

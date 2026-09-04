@@ -99,9 +99,35 @@ func filterArgCompletions(cmd, arg string, models, permIDs []string) []slashComm
 		}
 		return out
 	case "/model":
+		fields := strings.Fields(arg)
+		if len(fields) == 0 || (len(fields) == 1 && fields[0] != "main" && !strings.HasSuffix(arg, " ")) {
+			if argLower == "" || strings.HasPrefix("main", argLower) {
+				out = append(out, slashCommand{Name: "main", Desc: "global daemon main"})
+			}
+			for _, name := range models {
+				if argLower == "" || strings.Contains(strings.ToLower(name), argLower) {
+					out = append(out, slashCommand{Name: name, Desc: "this session"})
+				}
+			}
+			return out
+		}
+		prefix := argLower
+		if len(fields) >= 1 && fields[0] == "main" {
+			if len(fields) >= 2 {
+				prefix = strings.ToLower(strings.Join(fields[1:], " "))
+			} else {
+				prefix = ""
+			}
+			for _, name := range models {
+				if prefix == "" || strings.Contains(strings.ToLower(name), prefix) {
+					out = append(out, slashCommand{Name: "main " + name, Desc: "global daemon main"})
+				}
+			}
+			return out
+		}
 		for _, name := range models {
-			if argLower == "" || strings.Contains(strings.ToLower(name), argLower) {
-				out = append(out, slashCommand{Name: name, Desc: "model"})
+			if prefix == "" || strings.Contains(strings.ToLower(name), prefix) {
+				out = append(out, slashCommand{Name: name, Desc: "this session"})
 			}
 		}
 		return out

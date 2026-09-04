@@ -21,7 +21,7 @@ var slashCommands = []slashCommand{
 	{Name: "/cancel", Desc: "cancel task", Help: "/cancel [reason]  cancel current task (/stop)"},
 	{Name: "/stop", Desc: "cancel task", Help: "/stop [reason]  alias for /cancel"},
 	{Name: "/retry", Desc: "resubmit last user message", Help: "/retry  resubmit last user message on focused session"},
-	{Name: "/model", Desc: "list or switch global model", Help: "/model [provider/model]  global main; /model prefer [ref] session prefer (next run)"},
+	{Name: "/model", Desc: "this session model", Help: "/model [provider/model]  this session; /model main provider/model  global default"},
 	{Name: "/skills", Desc: "select skills for next submit", Help: "/skills  toggle; /skills apply|reject <id>; /skills archived"},
 	{Name: "/theme", Desc: "toggle day/night theme", Help: "/theme  toggle day ↔ night theme"},
 	{Name: "/cron", Desc: "list or create scheduled jobs", Help: "/cron [every objective]  list jobs, or create on current session (Tab mode)"},

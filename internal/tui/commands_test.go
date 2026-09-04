@@ -70,6 +70,12 @@ func TestHelpTextListsCommands(t *testing.T) {
 	if !strings.Contains(text, "leave session") || !strings.Contains(text, "cancels a running turn") {
 		t.Fatal("help should describe /new as leave + cancel")
 	}
+	if strings.Contains(text, "/model prefer") {
+		t.Fatal("help should not advertise removed /model prefer")
+	}
+	if !strings.Contains(text, "/model main") {
+		t.Fatal("help should describe /model main as global")
+	}
 }
 
 func TestPaintKeywordsHighlightsSlash(t *testing.T) {

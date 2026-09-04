@@ -94,7 +94,7 @@ func chatIdentityBlock(plan bool, configuredRoles []string) string {
 		}
 		text += " Also configured: " + strings.Join(named, ", ") + "."
 	}
-	return text + " /model switches global main only; other roles need operator config plus ymz restart."
+	return text + " /model sets this session; /model main switches the global default; other roles need operator config plus ymz restart."
 }
 
 func extraConfiguredRoles(roles []string) []string {

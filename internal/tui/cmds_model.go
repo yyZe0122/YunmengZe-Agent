@@ -108,11 +108,18 @@ func (m model) statusCommandCmd() tea.Cmd {
 			ver = version.Version
 		}
 		fmt.Fprintf(&b, "health ok=%v version=%s model=%s draft=%s", health.OK, ver, modelCfg.Model, m.draftMode)
-		if m.sessionID != "" && m.sessionID != "…" {
+		sid := strings.TrimSpace(string(m.sessionID))
+		ready := sid == "" || sid == "…"
+		if !ready {
 			fmt.Fprintf(&b, " session=%s", shortID(string(m.sessionID)))
-			if pref := m.sessionPreferredModel(ctx); pref != "" {
-				fmt.Fprintf(&b, " prefer=%s", pref)
+		}
+		global := strings.TrimSpace(modelCfg.Model)
+		if ready {
+			if draft := strings.TrimSpace(m.draftModel); draft != "" && draft != global {
+				fmt.Fprintf(&b, " draft_model=%s", draft)
 			}
+		} else if pref := strings.TrimSpace(m.sessionModel); pref != "" && pref != global {
+			fmt.Fprintf(&b, " session_model=%s", pref)
 		}
 		if m.task != nil {
 			fmt.Fprintf(&b, " task=%s state=%s", shortID(string(m.task.ID)), m.task.State)
@@ -126,11 +133,10 @@ func (m model) statusCommandCmd() tea.Cmd {
 				b.WriteString(" compacted")
 			}
 		}
-		sessionID := strings.TrimSpace(string(m.sessionID))
-		if sessionID == "…" {
-			sessionID = ""
+		if ready {
+			sid = ""
 		}
-		if perms, err := m.gateway.ListPermissions(ctx, sessionID, 20); err == nil {
+		if perms, err := m.gateway.ListPermissions(ctx, sid, 20); err == nil {
 			fmt.Fprintf(&b, " perms=%d", len(perms))
 		}
 		if n := len(m.selectedSkillIDs); n > 0 {
@@ -148,113 +154,117 @@ func (m model) modelCommandCmd(arg string) tea.Cmd {
 		if err != nil {
 			return commandDoneMsg{err: err}
 		}
-		pref := m.sessionPreferredModel(ctx)
 		arg = strings.TrimSpace(arg)
-		if !cfg.Ready && strings.TrimSpace(cfg.Error) != "" {
-			if arg == "" {
-				return commandDoneMsg{err: fmt.Errorf("model not ready: %s", cfg.Error)}
-			}
-			// Switching while not ready still goes to SetModelConfig for a concrete error.
+		if !cfg.Ready && strings.TrimSpace(cfg.Error) != "" && arg == "" {
+			return commandDoneMsg{err: fmt.Errorf("model not ready: %s", cfg.Error)}
 		}
 		if arg == "" {
-			status := "select a model (global main; providerID/modelID…)"
-			if pref != "" {
-				status = fmt.Sprintf("global=%s · session prefer=%s · /model switches GLOBAL main", cfg.Model, pref)
-			}
-			if !cfg.Ready && cfg.Error != "" {
-				status = "model not ready: " + cfg.Error
-			}
-			return commandDoneMsg{
-				openList:      listModels,
-				modelName:     cfg.Model,
-				models:        cfg.Models,
-				contextWindow: cfg.ContextWindow,
-				status:        status,
-			}
+			return m.modelPickerMsg(cfg)
 		}
-		// Session prefer (no global switch): /model prefer provider/model  or  /model session provider/model
 		fields := strings.Fields(arg)
 		if len(fields) >= 1 && (fields[0] == "prefer" || fields[0] == "session") {
-			ref := ""
-			if len(fields) >= 2 {
-				ref = strings.Join(fields[1:], " ")
+			return commandDoneMsg{err: fmt.Errorf("usage: /model [provider/model]  or  /model main provider/model")}
+		}
+		if len(fields) >= 1 && fields[0] == "main" {
+			ref := strings.TrimSpace(strings.Join(fields[1:], " "))
+			if ref == "" {
+				return commandDoneMsg{err: fmt.Errorf("usage: /model main provider/model")}
 			}
-			return m.setSessionModelPrefCmd(ctx, ref, cfg)
+			return m.setGlobalMainMsg(ctx, ref, cfg)
 		}
 		if !strings.Contains(arg, "/") {
-			return commandDoneMsg{err: fmt.Errorf("model must use provider/model format (or /model prefer provider/model for session preference)")}
+			return commandDoneMsg{err: fmt.Errorf("model must use provider/model format (or /model main provider/model for global)")}
 		}
-		if arg == cfg.Model && cfg.Ready {
-			status := fmt.Sprintf("already using global %s", cfg.Model)
-			if pref != "" && pref != cfg.Model {
-				status += fmt.Sprintf(" (session prefer=%s)", pref)
-			}
-			return commandDoneMsg{
-				status:        status,
-				modelName:     cfg.Model,
-				models:        cfg.Models,
-				contextWindow: cfg.ContextWindow,
-				closeList:     true,
-			}
-		}
-		updated, err := m.gateway.SetModelConfig(ctx, arg)
-		if err != nil {
-			return commandDoneMsg{err: err}
-		}
-		status := fmt.Sprintf("global model=%s", updated.Model)
-		if pref != "" && pref != updated.Model {
-			status += fmt.Sprintf(" (session prefer=%s still stored)", pref)
-		}
-		// Also record as session preference when a session is focused (O4).
-		if sid := strings.TrimSpace(string(m.sessionID)); sid != "" && sid != "…" {
-			if sess, err := m.gateway.SetSessionPreferredModel(ctx, m.sessionID, updated.Model); err == nil && sess.PreferredModel != "" {
-				status = fmt.Sprintf("global model=%s · session prefer=%s", updated.Model, sess.PreferredModel)
-			}
-		}
+		return m.setSessionModelMsg(ctx, arg, cfg)
+	}
+}
+
+func (m model) modelPickerMsg(cfg gatewayclient.ModelConfig) commandDoneMsg {
+	status := "select a model for this session"
+	if sid := strings.TrimSpace(string(m.sessionID)); sid == "" || sid == "…" {
+		status = "select a model for the next session · /model main provider/model for global"
+	} else if pref := strings.TrimSpace(m.sessionModel); pref != "" {
+		status = fmt.Sprintf("session=%s · global=%s · Enter sets this session", pref, cfg.Model)
+	} else {
+		status = fmt.Sprintf("using global %s · Enter sets this session", cfg.Model)
+	}
+	if !cfg.Ready && cfg.Error != "" {
+		status = "model not ready: " + cfg.Error
+	}
+	return commandDoneMsg{
+		openList:      listModels,
+		modelName:     cfg.Model,
+		models:        cfg.Models,
+		contextWindow: cfg.ContextWindow,
+		status:        status,
+	}
+}
+
+func (m model) setGlobalMainMsg(ctx context.Context, ref string, cfg gatewayclient.ModelConfig) tea.Msg {
+	if !strings.Contains(ref, "/") {
+		return commandDoneMsg{err: fmt.Errorf("model must use provider/model format")}
+	}
+	if ref == cfg.Model && cfg.Ready {
 		return commandDoneMsg{
-			status:        status,
-			modelName:     updated.Model,
-			models:        updated.Models,
-			contextWindow: updated.ContextWindow,
+			status:        fmt.Sprintf("already using global %s", cfg.Model),
+			modelName:     cfg.Model,
+			models:        cfg.Models,
+			contextWindow: cfg.ContextWindow,
 			closeList:     true,
 		}
 	}
-}
-
-func (m model) sessionPreferredModel(ctx context.Context) string {
-	sid := strings.TrimSpace(string(m.sessionID))
-	if sid == "" || sid == "…" {
-		return ""
-	}
-	sess, err := m.gateway.GetSession(ctx, m.sessionID)
+	updated, err := m.gateway.SetModelConfig(ctx, ref)
 	if err != nil {
-		return ""
+		return commandDoneMsg{err: err}
 	}
-	return strings.TrimSpace(sess.PreferredModel)
+	return commandDoneMsg{
+		status:        fmt.Sprintf("global model=%s", updated.Model),
+		modelName:     updated.Model,
+		models:        updated.Models,
+		contextWindow: updated.ContextWindow,
+		closeList:     true,
+	}
 }
 
-func (m model) setSessionModelPrefCmd(ctx context.Context, ref string, cfg gatewayclient.ModelConfig) tea.Msg {
+func (m model) setSessionModelMsg(ctx context.Context, ref string, cfg gatewayclient.ModelConfig) tea.Msg {
 	sid := strings.TrimSpace(string(m.sessionID))
 	if sid == "" || sid == "…" {
-		return commandDoneMsg{err: fmt.Errorf("focus a session first, then /model prefer provider/model")}
-	}
-	ref = strings.TrimSpace(ref)
-	if ref != "" && !strings.Contains(ref, "/") {
-		return commandDoneMsg{err: fmt.Errorf("preferred model must use provider/model format (or empty to clear)")}
+		return commandDoneMsg{
+			status:        fmt.Sprintf("next session model=%s (global still %s)", ref, cfg.Model),
+			modelName:     cfg.Model,
+			sessionModel:  ref,
+			models:        cfg.Models,
+			contextWindow: cfg.ContextWindow,
+			closeList:     true,
+		}
 	}
 	sess, err := m.gateway.SetSessionPreferredModel(ctx, m.sessionID, ref)
 	if err != nil {
 		return commandDoneMsg{err: err}
 	}
-	status := "session preferred model cleared (global still " + cfg.Model + ")"
-	if sess.PreferredModel != "" {
-		status = fmt.Sprintf("session prefer=%s · global still %s (not switched)", sess.PreferredModel, cfg.Model)
+	shown := strings.TrimSpace(sess.PreferredModel)
+	if shown == "" {
+		shown = ref
 	}
 	return commandDoneMsg{
-		status:        status,
+		status:        fmt.Sprintf("session model=%s · global still %s", shown, cfg.Model),
 		modelName:     cfg.Model,
+		sessionModel:  shown,
 		models:        cfg.Models,
 		contextWindow: cfg.ContextWindow,
 		closeList:     true,
 	}
+}
+
+func (m model) effectiveModel(global string) string {
+	if sid := strings.TrimSpace(string(m.sessionID)); sid != "" && sid != "…" {
+		if pref := strings.TrimSpace(m.sessionModel); pref != "" {
+			return pref
+		}
+		return strings.TrimSpace(global)
+	}
+	if draft := strings.TrimSpace(m.draftModel); draft != "" {
+		return draft
+	}
+	return strings.TrimSpace(global)
 }

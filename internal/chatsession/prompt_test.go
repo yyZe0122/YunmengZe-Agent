@@ -54,7 +54,7 @@ func TestChatSystemPromptIncludesVersionAndRoles(t *testing.T) {
 		for _, want := range []string{
 			"models.subagent",
 			"models.compact",
-			"/model switches global main only",
+			"/model sets this session",
 			"skills_list",
 			"session_search",
 			"previous task_id",

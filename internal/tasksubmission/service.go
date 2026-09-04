@@ -33,6 +33,7 @@ type Repository interface {
 	CreateSessionWithWorkspace(context.Context, kernel.SessionID, string, string, time.Time) (kernel.Session, error)
 	EnsureSessionWorkspace(context.Context, kernel.SessionID, string) error
 	SetSessionPermissionStance(context.Context, kernel.SessionID, string) error
+	SetSessionPreferredModel(context.Context, kernel.SessionID, string) error
 	GetSession(context.Context, kernel.SessionID) (kernel.Session, error)
 	CreateTaskWithSkillSnapshot(context.Context, kernel.TaskID, kernel.SessionID, string, string, []string, string, kernel.ExecutionMode, time.Time) (kernel.Task, error)
 	GetTask(context.Context, kernel.TaskID) (kernel.Task, error)
@@ -102,6 +103,9 @@ type Request struct {
 	// PermissionStance is the Tab posture written onto the session (agent|auto|plan).
 	// Empty on an existing session leaves the stored stance unchanged.
 	PermissionStance string
+	// PreferredModel is an optional session model preference (provider/model).
+	// Empty leaves the stored preference unchanged. Applied before StartChat so the first turn sees it.
+	PreferredModel string
 	// Interactive is true when a TUI can answer pending /perm.
 	Interactive   bool
 	EnsureSession bool
@@ -175,7 +179,7 @@ func (s *Service) Submit(ctx context.Context, request Request) (Result, error) {
 		}
 	}
 	if request.EnsureSession {
-		if err := s.ensureSession(ctx, request.SessionID, request.Workspace, request.PermissionStance); err != nil {
+		if err := s.ensureSession(ctx, request.SessionID, request.Workspace, request.PermissionStance, request.PreferredModel); err != nil {
 			return Result{}, classifyError(err)
 		}
 	}
@@ -327,9 +331,10 @@ func classifyError(err error) error {
 	}
 }
 
-func (s *Service) ensureSession(ctx context.Context, id kernel.SessionID, workspace, stance string) error {
+func (s *Service) ensureSession(ctx context.Context, id kernel.SessionID, workspace, stance, preferredModel string) error {
 	workspace = strings.TrimSpace(workspace)
 	stance = strings.TrimSpace(stance)
+	preferredModel = strings.TrimSpace(preferredModel)
 	// Empty stance means "leave existing" on update; create still defaults to agent.
 	var normalized string
 	if stance != "" {
@@ -352,7 +357,7 @@ func (s *Service) ensureSession(ctx context.Context, id kernel.SessionID, worksp
 				return err
 			}
 		}
-		return nil
+		return s.applyPreferredModel(ctx, id, preferredModel)
 	}
 	if !errors.Is(err, kernel.ErrNotFound) {
 		return err
@@ -371,8 +376,22 @@ func (s *Service) ensureSession(ctx context.Context, id kernel.SessionID, worksp
 				return setErr
 			}
 		}
+		if err != nil {
+			return err
+		}
+		return s.applyPreferredModel(ctx, id, preferredModel)
 	}
-	return err
+	if err != nil {
+		return err
+	}
+	return s.applyPreferredModel(ctx, id, preferredModel)
+}
+
+func (s *Service) applyPreferredModel(ctx context.Context, id kernel.SessionID, preferredModel string) error {
+	if strings.TrimSpace(preferredModel) == "" {
+		return nil
+	}
+	return s.repository.SetSessionPreferredModel(ctx, id, preferredModel)
 }
 
 func (s *Service) nextSessionID() (kernel.SessionID, error) {

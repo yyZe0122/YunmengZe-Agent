@@ -72,7 +72,7 @@ func (m *model) listTitle() string {
 func (m *model) listHint() string {
 	switch m.list {
 	case listModels:
-		return "↑↓ select · Enter switch · Esc close · PgUp scroll chat"
+		return "↑↓ select · Enter this session · /model main global · Esc"
 	case listJobs:
 		return "↑↓ · Enter details · Esc · /cron <every> <obj> create"
 	case listSessions:
@@ -98,7 +98,7 @@ func (m *model) listLine(i int) string {
 		}
 		name := m.models[i]
 		mark := "  "
-		if name == m.modelName {
+		if name == m.effectiveModel(m.modelName) {
 			mark = "* "
 		}
 		return mark + name
@@ -328,8 +328,9 @@ func (m *model) openList(kind listKind) {
 	m.helpOpen = false
 	switch kind {
 	case listModels:
+		current := m.effectiveModel(m.modelName)
 		for i, name := range m.models {
-			if name == m.modelName {
+			if name == current {
 				m.selectedIdx = i
 				break
 			}
@@ -450,6 +451,7 @@ func (m *model) focusSessionAt(i int) tea.Cmd {
 	}
 	s := m.sessions[i]
 	m.sessionID = s.ID
+	m.sessionModel = strings.TrimSpace(s.PreferredModel)
 	applyPermissionStance(m, s.PermissionStance)
 	if s.LatestTaskID != nil {
 		m.task = &gatewayclient.Task{ID: *s.LatestTaskID}

@@ -23,6 +23,7 @@ type fakeGateway struct {
 	model            gatewayclient.ModelConfig
 	sessionPreferred string
 	sessionExists    bool
+	setModelCalls    []string
 	controlCalls     []gatewayclient.TaskAction
 	controlErr       error
 	permissions      []gatewayclient.Permission
@@ -117,6 +118,7 @@ func (f *fakeGateway) ModelConfig(context.Context) (gatewayclient.ModelConfig, e
 }
 
 func (f *fakeGateway) SetModelConfig(_ context.Context, model string) (gatewayclient.ModelConfig, error) {
+	f.setModelCalls = append(f.setModelCalls, model)
 	f.model.Model = model
 	return f.model, nil
 }
@@ -181,12 +183,12 @@ func (f *fakeGateway) SubmitTask(_ context.Context, req gatewayclient.TaskSubmis
 		return gatewayclient.TaskSubmissionResponse{}, errors.New("not implemented")
 	}
 	sid := gatewayclient.SessionID(req.SessionID)
+	if sid == "" {
+		sid = "session-new"
+	}
 	task := gatewayclient.Task{
 		ID: "task-new", Title: req.Title, Objective: req.Objective,
-		State: gatewayclient.TaskStateRunning,
-	}
-	if sid != "" {
-		task.SessionID = &sid
+		State: gatewayclient.TaskStateRunning, SessionID: &sid,
 	}
 	return gatewayclient.TaskSubmissionResponse{Task: task}, nil
 }

@@ -174,6 +174,12 @@ func (m model) applyCommand(msg commandDoneMsg) (tea.Model, tea.Cmd) {
 		m.modelName = msg.modelName
 		m.contextWindow = msg.contextWindow
 	}
+	if msg.sessionModel != "" {
+		if sid := strings.TrimSpace(string(m.sessionID)); sid == "" || sid == "…" {
+			m.draftModel = msg.sessionModel
+		}
+		m.sessionModel = msg.sessionModel
+	}
 	if msg.models != nil {
 		m.models = msg.models
 	}
@@ -240,6 +246,7 @@ func (m model) applyCommand(msg commandDoneMsg) (tea.Model, tea.Cmd) {
 	}
 	if msg.clearTask {
 		m.sessionID = ""
+		m.sessionModel = ""
 		m.task = nil
 		m.plan = nil
 		m.planID = ""
@@ -273,6 +280,15 @@ func (m model) applyCommand(msg commandDoneMsg) (tea.Model, tea.Cmd) {
 	}
 	if msg.sessions != nil {
 		m.sessions = msg.sessions
+		if sid := strings.TrimSpace(string(m.sessionID)); sid != "" && sid != "…" {
+			for _, s := range m.sessions {
+				if s.ID != m.sessionID {
+					continue
+				}
+				m.sessionModel = strings.TrimSpace(s.PreferredModel)
+				break
+			}
+		}
 	}
 	if msg.closeList {
 		m.closeList()

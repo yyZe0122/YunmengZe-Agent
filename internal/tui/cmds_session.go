@@ -160,6 +160,10 @@ func (m model) newTaskCmd(objective string) tea.Cmd {
 	if sessionID == "…" {
 		sessionID = ""
 	}
+	preferred := strings.TrimSpace(m.sessionModel)
+	if preferred == "" && sessionID == "" {
+		preferred = strings.TrimSpace(m.draftModel)
+	}
 	skillIDs := append([]string(nil), m.selectedSkillIDs...)
 	return func() tea.Msg {
 		if objective == "" {
@@ -174,6 +178,9 @@ func (m model) newTaskCmd(objective string) tea.Cmd {
 		}
 		if sessionID != "" {
 			req.SessionID = sessionID
+		}
+		if preferred != "" {
+			req.PreferredModel = preferred
 		}
 		if len(skillIDs) > 0 {
 			req.SkillIDs = skillIDs
@@ -197,12 +204,16 @@ func (m model) newTaskCmd(objective string) tea.Cmd {
 		if sid != "" {
 			status = fmt.Sprintf("%s · session %s · task %s", label, shortID(string(sid)), shortID(string(submitted.Task.ID)))
 		}
-		return commandDoneMsg{
+		done := commandDoneMsg{
 			status:    status,
 			taskID:    submitted.Task.ID,
 			planID:    "",
 			sessionID: sid,
 		}
+		if pref := strings.TrimSpace(req.PreferredModel); pref != "" {
+			done.sessionModel = pref
+		}
+		return done
 	}
 }
 

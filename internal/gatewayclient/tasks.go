@@ -25,6 +25,8 @@ type TaskSubmissionRequest struct {
 	Workspace string `json:"workspace,omitempty"`
 	// PermissionStance is the Tab posture (agent|auto|plan). Not execution_mode.
 	PermissionStance string `json:"permission_stance,omitempty"`
+	// PreferredModel is an optional session model preference written before chat start (O4).
+	PreferredModel string `json:"preferred_model,omitempty"`
 	// Interactive is true when the client can decide /perm (TUI).
 	Interactive bool `json:"interactive,omitempty"`
 }
