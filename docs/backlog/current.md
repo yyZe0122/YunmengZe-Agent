@@ -1,13 +1,13 @@
 # YunmengZe Agent 当前状态
 
-更新：2026-09-02（提问/授权卡 + extra-root `/perm`。下一优先 = VS Code V4；O5–O6 / 飞书等用户再提）
+更新：2026-09-04（v0.6.0：本会话 `/model` + 卡片 + extra-root `/perm` + `task_id` 续跑。下一优先 = VS Code V4；O5–O6 / 飞书等用户再提）
 
 **本文件是唯一活着的优化/backlog 文档。** 只写未完成与暂缓项；已落地细节见 ADR（`docs/wiki/adr/`）、[`docs/wiki/database.md`](../wiki/database.md)、changelog 与 git。目录：[`docs/README.md`](../README.md)。
 
 ## 现状
 
 生产形态稳定：`ymzd` + CLI·TUI（`ymz`）+ `core.db`。设计知识库：`docs/wiki/`。  
-当前发布线：**v0.5.0** = models.dev 填窗 + Phase S/W/M。v0.4.0 = 清宣纸 TUI（ADR-053）+ VS Code 启动器（ADR-054）+ `/edit` retract + `fs_remove`。v0.3.1 = harness + Tab Auto。
+当前发布线：**v0.6.0** = 本会话 `/model` + 提问/授权卡 + extra-root `/perm` + `task_id` 续跑。v0.5.0 = models.dev 填窗 + Phase S/W/M。v0.4.0 = 清宣纸 TUI（ADR-053）+ VS Code 启动器（ADR-054）+ `/edit` retract + `fs_remove`。
 
 | 对标 | 契约重叠（粗） | 说明 |
 | --- | --- | --- |
@@ -60,7 +60,9 @@
 | **TUI-ink** | 清宣纸 chrome + 盲文毛笔 landing（ADR-053） | **v0.4.0** |
 | **IDE-launcher** | VS Code 终端启动器 V0–V3（ADR-054） | **v0.4.0** |
 | **QG retract** | `/edit` · `/editundo`；`fs_remove`；`edit_revisions.kind`（028） | **v0.4.0** |
-| **TUI cards** | 提问/授权真卡片；自定义回答；Esc Esc dismiss；extra-root 四档 | **unreleased** |
+| **TUI cards** | 提问/授权真卡片；自定义回答；Esc Esc dismiss；extra-root 四档 | **v0.6.0** |
+| **O4 /model** | `/model` 本会话 + sticky ready draft；`/model main` 全局 | **v0.6.0** |
+| **Sub-agent resume** | `task_id` 续跑；父 packing/TUI/`session_search` 排除 child | **v0.6.0** |
 
 同包大文件拆分已落地（`tui/cmds_*`+`update_*`、`kernel/repository_*`、`tools/fs_*`、`cmd/ymzd/wire_*`）。再拆触发：新 slash / 新聚合 SQL / `ymzd` 接线难 review → 同包再拆。
 
