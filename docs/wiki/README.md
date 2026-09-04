@@ -27,7 +27,7 @@ Do **not** restore deleted pieces: Module Runtime/Supervisor, out-of-process Mem
 | 5 | [037](adr/037-cli-daemon-lifecycle.md) | Daemon ensure / stop semantics |
 | 6 | [038](adr/038-session-chat-boundary.md) | OpenCode-style agent build / plan RO chat |
 | 7 | [022](adr/022-application-query-boundaries.md) | Writes via services, reads via corequery |
-| 8 | [039](adr/039-logical-child-runs.md) | Logical child Runs (`task` tool, `parent_run_id`, kind catalog) |
+| 8 | [039](adr/039-logical-child-runs.md) | Logical child Runs (`task` tool, `parent_run_id`, kind catalog, explicit `task_id` resume) |
 | 9 | [040](adr/040-mcp-tool-broker.md) | MCP stdio + remote HTTP/SSE via Tool Broker |
 | 10 | [041](adr/041-context-packing-and-pressure.md) | Provider-view packing, compaction, context API |
 | 11 | [042](adr/042-chat-native-jobs.md) | Chat-native Job/cron (timed chatsession submit; H7 model pin) |
@@ -84,7 +84,7 @@ Provider wire formats: [`provider-protocols.md`](provider-protocols.md). VS Code
 | 036 | Task skill snapshot | Explicit `skill_ids` preload; model `skills_list`/`skill_view`; chatsession injects explicit snapshot |
 | 037 | CLI / daemon lifecycle | |
 | 038 | Session chat boundary | Dual-track agent/plan; Tab Auto stance; `permission.allow`; `AGENTS.md` inject |
-| 039 | Logical child runs | `parent_run_id` + `task` tool (sync); kind catalog; child is always a leaf |
+| 039 | Logical child runs | `parent_run_id` + `task` tool (sync); kind catalog; child is always a leaf; explicit `task_id` resume |
 | 040 | MCP via Tool Broker | stdio + remote Streamable HTTP / legacy SSE; no Module Runtime |
 | 041 | Context packing / pressure | Token budget pack, compaction triggers, anti-thrash, `/compact` |
 | 042 | Chat-native jobs | Timed session chat submit; lease from 017; TUI `/cron` primary |

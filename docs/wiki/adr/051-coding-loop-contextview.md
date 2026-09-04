@@ -2,6 +2,7 @@
 
 - 状态：Accepted
 - 日期：2026-08-14
+- 更新：2026-09-03（Tail 排除 `parent_run_id` child records；主模型只见父 `task` 观察）
 - 更新：2026-08-27（QG：`edit_revisions.kind`；`fs_remove`；retract hide）
 
 ## 背景
@@ -53,7 +54,7 @@ Messages() = Prefix + Summary + Tail + Ephemeral
 
 - 删除 `History` 前缀粘贴。`Prepare` **只**持久化 Prefix + 当前 user。
 - Provider 列表以 Prefix 的 system 开头：`View.Messages()`。
-- 子 agent（`task` 工具）不继承父 Tail。
+- 子 agent（`task` 工具）不继承父 Tail。反之亦然：`SessionTranscript` / `SessionTranscriptTail` 排除 `runs.parent_run_id IS NOT NULL`，主 packing / TUI / compaction 只见父 `task` 工具观察，不见子思考与工具迹。
 - 旧 compaction 行 `through_message_id=''` 回退 keep-2-turns；新行写 `through_message_id` + 真 model。
 
 ### 单 packer

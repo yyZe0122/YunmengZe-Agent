@@ -19,7 +19,7 @@
 - **编码循环** — 工具失败、非零退出以 JSON 观察回灌，turn 继续。运行中回车 steer 下一步。失败不是整轮死亡。
 - **Agent · Plan · Auto** — Tab 循环 **agent**（可写；测试/git 走 `/perm`）→ **plan**（只读）→ **auto**（本 session 预授 process + git）。
 - **模型会自己补窗** — OpenAI / Anthropic / Gemini / OpenAI 兼容。省略 `contextWindow` / `maxTokens` 时从 [models.dev](https://models.dev) 填窗。`ymz config import-opencode` 可映射已有 OpenCode 配置。
-- **类型化子代理** — `task.kind`：`general` / `explore` / `web`；配了 `models.vision` / `models.speech` 才有 vision / speech / video。子永远叶子，授权不扩大。
+- **类型化子代理** — `task.kind`：`general` / `explore` / `web`；配了 `models.vision` / `models.speech` 才有 vision / speech / video。子永远叶子，授权不扩大。传入上次的 `task_id` 续跑同一子代理；省略则新开。主 packing / TUI / `session_search` 只见父 `task` 观察。
 - **网页** — 交互 agent 的 `web_search` / `web_extract`（`/perm`，similar = host）。默认 DuckDuckGo，可选 SearXNG / Tavily（`chat.web`）。plan / cron 不广告。
 - **可选媒体** — 配了 `models.vision` / `models.speech` 才广告 `vision_analyze` · `audio_transcribe` · `video_analyze`。主循环仍是文本。
 - **TUI 为主，IDE 可选** — 清宣纸 chrome、live markdown、可折叠 thinking/工具、终端原生划选复制。`/edit` 撤回一轮；`fs_remove` 可 `/undo`。可选 VS Code / Cursor 终端启动器（VSIX，不上 Marketplace）。CLI 给脚本。

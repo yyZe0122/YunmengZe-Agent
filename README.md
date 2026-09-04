@@ -18,7 +18,7 @@ The open-source **local coding agent** for your terminal. A fail-as-observation 
 - **Coding loop** — tool failures and non-zero exits come back as JSON observations; the turn continues. Steer mid-turn with Enter. Failures are not a dead run.
 - **Agent · Plan · Auto** — Tab cycles **agent** (writes; `/perm` for tests/git) → **plan** (read-only) → **auto** (this session pre-grants process + git).
 - **Your models, filled in** — OpenAI / Anthropic / Gemini / OpenAI-compatible. Omit `contextWindow` / `maxTokens` and the window comes from [models.dev](https://models.dev). `ymz config import-opencode` maps an existing OpenCode config.
-- **Typed sub-agents** — `task` with `kind` `general` / `explore` / `web` (and `vision` / `speech` / `video` when those roles are configured). Children are leaves; grants never expand.
+- **Typed sub-agents** — `task` with `kind` `general` / `explore` / `web` (and `vision` / `speech` / `video` when those roles are configured). Children are leaves; grants never expand. Pass the previous `task_id` to continue the same child; omit to start a new one. Parent packing / TUI / `session_search` see only the `task` observation.
 - **Web** — `web_search` / `web_extract` on interactive agent (`/perm`, similar = host). Default DuckDuckGo; optional SearXNG / Tavily via `chat.web`. Plan and cron never get them.
 - **Media when you opt in** — `vision_analyze` · `audio_transcribe` · `video_analyze` only if `models.vision` / `models.speech` are set. Main loop stays text.
 - **TUI-first, IDE-optional** — xuan-paper chrome, live markdown, foldable thinking/tools, native select-to-copy. `/edit` retracts a turn; `fs_remove` is undoable. Optional VS Code/Cursor terminal launcher (VSIX, not Marketplace). CLI is for scripts.

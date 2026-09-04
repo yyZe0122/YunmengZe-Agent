@@ -3,6 +3,7 @@
 - 状态：Accepted（**R1–R5 已落地**）
 - 日期：2026-08-17
 - 修订：ADR-004 / 008 / 012 / 018 / 038 / 039 / 041 / 043 / 051 后果段
+- 更新：2026-09-03（Inbox `ClaimStep` 按 session+run；子循环不领取父 steer）
 - 更新：2026-09-02（问题卡向导 / 自定义回答 / dismiss / Wait 30m）
 
 ## 背景
@@ -54,13 +55,13 @@ Inbox **只有 next-step**。没有 next-turn 队列：空闲回车走现有 `Su
 ### R2（已落地）
 
 - `Runner.Run` 按 **step** 循环：一次模型请求 + 其工具（或文本停）。
-- 步间 / 文本停后 `Inbox.ClaimStep`：把 next-step user 追加进本 turn（未 `Persisted` 的落 `agent_run_records`），再开下一步。
+- 步间 / 文本停后 `Inbox.ClaimStep(session, runID)`：只领取该 run 的 next-step（子循环不领取父 steer）。未 `Persisted` 的落 `agent_run_records`，再开下一步。
 - `max_iterations`：**省略 / 0 = 不硬顶**；1–256 时最后一步 soft-landing（摘工具 + 文本）。
-- `Inbox` 是进程内 next-step 队列；`Steer` 挂在 `Runner.Inbox()`。Gateway + TUI 回车见 R3。
+- `Inbox` 是进程内 next-step 队列；`Steer(session, runID, …)` 挂在 `Runner.Inbox()`。Gateway + TUI 回车见 R3。
 
 ### R3（已落地）
 
-- `POST /v1/sessions/{id}/steer` `{text}`：先写入 `agent_run_records`（user），再 `Inbox.Enqueue`（`Persisted: true`）。
+- `POST /v1/sessions/{id}/steer` `{text}`：先写入父 chat run 的 `agent_run_records`（user），再 `Inbox.Enqueue`（`Persisted: true`，`RunID` = 父 chat run）。子 `task` 循环不 Claim 这条。
 - 仅当 session 有 `running` task 且 chat run 已创建；空闲 → conflict。
 - TUI：仅当**当前** task 已是 `running`（乐观绘制之前判定）才走 steer；空闲/已结束会话回车提交新一轮 chat。steer 若 409（回合刚好结束）自动改走 submit，status `turn ended · sent as new message`。`/new` / Esc 仍取消并清 inbox。
 

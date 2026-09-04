@@ -32,7 +32,7 @@
 - plan 永远只读；高风险工具仅 agent。TUI Tab **Agent → Plan → Auto**：Agent 未预授则 `/perm`；Auto 为本 session 预授 process+git（切走结束）。记住放行：`chat.permission.allow` 或 `chat.tools.*`（OR）。cron / CLI 永不 wait。见 ADR-038 / 043 / 046。
 - 会话记忆为 in-process MemoryManager（ADR-044），非独立 Memory 进程。
 - **客户端分层（ADR-018/022/054）：** 业务用例只在 daemon；Gateway 仅 HTTP 适配；CLI 与 TUI 经 `gatewayclient` 并列，TUI **不** exec CLI、**不** import tools/providers/agent。VS Code 扩展（本相）只启动 TUI，不走 Gateway HTTP。拖文件 / 原生聊天 = V4 Webview，终端启动器做不到。
-- **子代理：** 逻辑子 Run（`parent_run_id` + `task` 工具，ADR-039）；同步阻塞；grant/工具不得扩大。`task.kind` 目录：广告 `general`/`explore`/`web`；配了 `models.vision|speech` 才广告 vision/speech/video。子永远叶子。**不上** Hermes 并行/后台/`role=orchestrator`。
+- **子代理：** 逻辑子 Run（`parent_run_id` + `task` 工具，ADR-039）；同步阻塞；grant/工具不得扩大。可选显式 `task_id`（= child `run_id`）续跑同一子代理；主 packing/TUI/`session_search` 排除 child records。`task.kind` 目录：广告 `general`/`explore`/`web`；配了 `models.vision|speech` 才广告 vision/speech/video。子永远叶子。**不上** Hermes 并行/后台/`role=orchestrator`。
 - **消息通道（规划）：** 第二客户端 → `tasksubmission` / `taskcontrol`；**不**在 Gateway 内跑 tool/provider/grant。
 - **Go 精神：** 具体类型 + 调用方小接口；composition root 在 `cmd/`；无 DI 容器 / ORM / 通用事件总线。
 
@@ -131,7 +131,7 @@ H2 / O5–O6 / 飞书 M* / Marketplace ── 用户再提（不插队）
 }
 ```
 
-无新表则 **不必** 新 migration（子 Run 仍用 `parent_run_id`）。
+`task_id` resume 用 migration **029**（`runs.child_kind` / `child_tools`）；子 Run 仍挂 `parent_run_id`。
 
 ### Phase IDE-launcher / V4（S/W/M 之后）
 

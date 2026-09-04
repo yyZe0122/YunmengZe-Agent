@@ -28,7 +28,7 @@ Daemon is the only lifecycle owner. Components must not close the shared `*sql.D
 | `tasks` | Dual-track `execution_mode` | [038](adr/038-session-chat-boundary.md) | 001 + 014 |
 | `plans` / `plan_steps` | Plan hash + steps (grant chain) | [011](adr/011-approval-capability-binding.md) | 001 + 006 |
 | `approvals` / `capability_grants` | Approval → scoped grant | [011](adr/011-approval-capability-binding.md) | 001 |
-| `runs` | Run SM; `parent_run_id` children | [039](adr/039-logical-child-runs.md) | 001 + 011 + 015 |
+| `runs` | Run SM; `parent_run_id` children; `child_kind`/`child_tools` for `task_id` resume | [039](adr/039-logical-child-runs.md) | 001 + 011 + 015 + 029 |
 | `tool_calls` | Broker call record | [012](adr/012-tool-broker-execution-boundary.md) | 001 / 005 |
 | `task_skill_snapshots` | Explicit preload; immutable | [036](adr/036-task-skill-snapshot.md) | 010 |
 | `jobs` / `job_runs` / `job_leases` | Chat-native cron; H7 `model_ref` | [042](adr/042-chat-native-jobs.md) | 012 + 017 + 021 + 024 |

@@ -2,6 +2,7 @@
 
 - 状态：Accepted（产品化进行中）
 - 日期：2026-08-06
+- 更新：2026-09-03（`session_search` 查询排除 `parent_run_id` child runs）
 - 更新：2026-08-13（H5-lite：default_ttl + 过期软归档）
 
 ## 背景
@@ -107,7 +108,7 @@ chatsession ──► internal/memory.Manager (in-process)
 | `memory_search` | R0 | agent+plan | L0–L2 FTS/LIKE；不注入 |
 | `memory_write` | R1 | **仅 agent** | `action`: add\|replace\|remove；`global`/`kind`/`priority` |
 | `memory_promote` | R1 | **仅 agent** | session entry → user/global curated |
-| `session_search` | R0 | agent+plan | L3 transcript FTS；有界结果；可可选 summary |
+| `session_search` | R0 | agent+plan | L3 transcript FTS；有界结果；排除 `runs.parent_run_id IS NOT NULL`（ADR-039） |
 
 ### 可见性（只读）
 

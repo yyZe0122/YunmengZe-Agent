@@ -2,7 +2,7 @@
 
 ## 状态
 
-已接受，2026-07-17。
+已接受，2026-07-17。更新：2026-09-03（`ResumePrompt` 可在最终 assistant / 半截历史后继续，ADR-039）。
 
 ## 背景
 
@@ -46,7 +46,7 @@ YunmengZe 已经有 Session、Task、Plan、Run、Approval、Capability Grant、
 - 已持久化 Tool Result 与 `tool_calls` 中的成功响应不一致：返回 `ErrCorruptHistory`；
 - Assistant Tool Call 缺少 Tool Result，但 `tool_calls` 已有 `succeeded` 响应：从已有响应补写 Tool Result，然后继续 Provider；
 - Assistant Tool Call 缺少 Tool Result，且 `tool_calls` 不存在或不是 `succeeded`：返回 `ErrRecoveryBlocked`，不调用 Provider、不执行 Tool、不再次消费 Grant；
-- 已有最终 Assistant Message：直接返回持久化结果，不再次调用 Provider。
+- 已有最终 Assistant Message：直接返回持久化结果，不再次调用 Provider。例外：`RunRequest.ResumePrompt`（ADR-039 `task_id` 续跑）在 restore 之后追加 user 再继续，即使上次已是最终 assistant 或历史半截。
 
 因此，恢复只会补齐“已确认成功执行但消息尚未追加”的安全缺口，不会自动重试状态不明、失败、超时、取消或拒绝的工具调用。调用方需要创建新 Run、重新审批或重新规划。
 
