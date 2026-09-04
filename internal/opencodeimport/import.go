@@ -87,7 +87,7 @@ func Convert(raw []byte) (Result, error) {
 	}
 	knownKeep := map[string]struct{}{
 		"$schema": {}, "model": {}, "provider": {}, "mcp": {}, "compaction": {},
-		"command": {}, "models": {}, // command → chat.commands (O3)
+		"command": {}, "models": {}, // models → YMZ role map; command → chat.commands
 	}
 	for key := range root {
 		if _, ok := knownKeep[key]; ok {
@@ -145,6 +145,15 @@ func Convert(raw []byte) (Result, error) {
 		}
 	}
 
+	// top-level models → YMZ role map (subagent/compact/web/vision/speech)
+	if rawRoles, ok := root["models"]; ok {
+		roles, w := mapRoleModels(rawRoles)
+		warnings = append(warnings, w...)
+		if len(roles) > 0 {
+			out.Models = roles
+		}
+	}
+
 	// mcp
 	if rawMCP, ok := root["mcp"]; ok {
 		mcp, w := mapMCP(rawMCP)
@@ -179,6 +188,54 @@ func Convert(raw []byte) (Result, error) {
 	}
 
 	return Result{File: out, Warnings: warnings}, nil
+}
+
+func mapRoleModels(raw json.RawMessage) (map[string]string, []string) {
+	var warnings []string
+	var root map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &root); err != nil {
+		return nil, []string{fmt.Sprintf("models: decode failed: %v", err)}
+	}
+	out := make(map[string]string)
+	keys := make([]string, 0, len(root))
+	for key := range root {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		role := strings.TrimSpace(key)
+		if role == "" {
+			warnings = append(warnings, "models: skipped empty role key")
+			continue
+		}
+		if role == providerconfig.RoleMain {
+			warnings = append(warnings, `dropped models.main: use top-level "model"`)
+			continue
+		}
+		if _, ok := providerconfig.AllowedModelRoles[role]; !ok {
+			warnings = append(warnings, fmt.Sprintf("dropped models.%s: not a supported role (allowed: %s)", role, providerconfig.AllowedModelRoleList()))
+			continue
+		}
+		var ref string
+		if err := json.Unmarshal(root[key], &ref); err != nil {
+			warnings = append(warnings, fmt.Sprintf("models.%s: skipped (want provider/model string)", role))
+			continue
+		}
+		ref = strings.TrimSpace(ref)
+		if ref == "" {
+			continue
+		}
+		providerID, modelID, cut := strings.Cut(ref, "/")
+		if !cut || strings.TrimSpace(providerID) == "" || strings.TrimSpace(modelID) == "" {
+			warnings = append(warnings, fmt.Sprintf("models.%s: skipped (must use provider/model format)", role))
+			continue
+		}
+		out[role] = ref
+	}
+	if len(out) == 0 {
+		return nil, warnings
+	}
+	return out, warnings
 }
 
 func mapCommands(raw json.RawMessage) (map[string]providerconfig.ChatCommandConfig, []string) {

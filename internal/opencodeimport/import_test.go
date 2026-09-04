@@ -139,6 +139,48 @@ func TestConvertMCPLocalAndRemote(t *testing.T) {
 	}
 }
 
+func TestConvertRoleModels(t *testing.T) {
+	t.Parallel()
+	raw := []byte(`{
+  "model": "a/b",
+  "models": {
+    "subagent": "a/b",
+    "compact": "a/c",
+    "main": "a/b",
+    "title": "a/b"
+  },
+  "provider": {
+    "a": {
+      "options": { "baseURL": "https://example.com", "apiKey": "sk-x" },
+      "models": { "b": {}, "c": {} }
+    }
+  }
+}`)
+	res, err := Convert(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.File.Models["subagent"] != "a/b" {
+		t.Fatalf("subagent=%q", res.File.Models["subagent"])
+	}
+	if res.File.Models["compact"] != "a/c" {
+		t.Fatalf("compact=%q", res.File.Models["compact"])
+	}
+	if _, ok := res.File.Models["main"]; ok {
+		t.Fatal("models.main must be dropped")
+	}
+	if _, ok := res.File.Models["title"]; ok {
+		t.Fatal("unknown role title must be dropped")
+	}
+	joined := strings.Join(res.Warnings, "\n")
+	if !strings.Contains(joined, "models.main") {
+		t.Fatalf("want models.main warning: %s", joined)
+	}
+	if !strings.Contains(joined, "models.title") {
+		t.Fatalf("want models.title warning: %s", joined)
+	}
+}
+
 func TestConvertCompaction(t *testing.T) {
 	t.Parallel()
 	raw := []byte(`{

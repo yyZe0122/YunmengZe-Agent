@@ -1,4 +1,4 @@
-﻿{
+{
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://ymz.local/schema/agent.json",
   "title": "YunmengZe Agent provider configuration",
@@ -45,6 +45,7 @@
       "minProperties": 1,
       "additionalProperties": {"$ref": "#/$defs/provider"}
     },
+    "mcp": {"$ref": "#/$defs/mcp"},
     "chat": {"$ref": "#/$defs/chat"}
   },
   "$defs": {
@@ -121,6 +122,55 @@
           }
         },
         "reasoningEffort": {"type": "string", "minLength": 1}
+      }
+    },
+    "mcp": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "MCP servers registered through the Tool Broker (ADR-040). Not hot-reloaded.",
+      "properties": {
+        "servers": {
+          "type": "object",
+          "additionalProperties": {"$ref": "#/$defs/mcpServer"},
+          "description": "Map of server id → transport. Tool names become mcp_<id>_<tool>."
+        }
+      }
+    },
+    "mcpServer": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "One MCP server. Omit type: command → stdio; url only → remote.",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["stdio", "local", "http", "sse", "remote"],
+          "description": "stdio|local = subprocess; http = Streamable HTTP; sse = legacy HTTP+SSE; remote = streamable then SSE fallback."
+        },
+        "command": {
+          "type": "string",
+          "minLength": 1,
+          "description": "stdio executable. Required when type is stdio/local or when type is omitted and url is absent."
+        },
+        "args": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "stdio argv after command"
+        },
+        "env": {
+          "type": "object",
+          "additionalProperties": {"type": "string"},
+          "description": "stdio child env. Values may use {env:VAR} / {file:…}."
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Absolute http(s) URL for remote transports"
+        },
+        "headers": {
+          "type": "object",
+          "additionalProperties": {"type": "string"},
+          "description": "Remote request headers. Values may use {env:VAR} / {file:…}. Never served on Gateway status."
+        }
       }
     },
     "chat": {

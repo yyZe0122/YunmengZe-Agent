@@ -51,6 +51,11 @@ var AllowedModelRoles = map[string]struct{}{
 	RoleSpeech:   {},
 }
 
+// AllowedModelRoleList is a sorted comma-separated list of AllowedModelRoles keys.
+func AllowedModelRoleList() string {
+	return allowedModelRoleList()
+}
+
 func allowedModelRoleList() string {
 	names := make([]string, 0, len(AllowedModelRoles))
 	for role := range AllowedModelRoles {

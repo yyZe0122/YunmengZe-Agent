@@ -1,4 +1,4 @@
-﻿{
+{
   "$schema": "./configs/agent.schema.json",
   "model": "deepseek1/deepseek-chat",
   "models": {
@@ -97,6 +97,23 @@
       "models": {
         "demo": {
           "name": "File-ref apiKey example (path relative to config dir)"
+        }
+      }
+    }
+  },
+  "mcp": {
+    "servers": {
+      "local-example": {
+        "type": "stdio",
+        "command": "npx",
+        "args": ["-y", "some-mcp-server"],
+        "env": {}
+      },
+      "remote-example": {
+        "type": "remote",
+        "url": "https://mcp.example.com/mcp",
+        "headers": {
+          "Authorization": "{env:MCP_TOKEN}"
         }
       }
     }
