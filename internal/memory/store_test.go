@@ -260,3 +260,50 @@ func TestDeleteTranscriptByRunIDs(t *testing.T) {
 		t.Fatal("kept run missing")
 	}
 }
+
+func TestSearchTranscriptExcludesChildRuns(t *testing.T) {
+	ctx := context.Background()
+	database, err := storesqlite.Open(ctx, t.TempDir()+"/core.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	sqlDB := database.SQL()
+	stamp := time.Now().UTC().Format(time.RFC3339Nano)
+	for _, q := range []struct {
+		sql  string
+		args []any
+	}{
+		{"INSERT INTO sessions(session_id,state,created_at,updated_at) VALUES(?,?,?,?)", []any{"s1", "active", stamp, stamp}},
+		{"INSERT INTO tasks(task_id,session_id,title,objective,state,created_at,updated_at) VALUES(?,?,?,?,?,?,?)", []any{"t1", "s1", "T", "O", "completed", stamp, stamp}},
+		{"INSERT INTO plans(plan_id,task_id,revision,state,scope_hash,created_at,updated_at,document) VALUES(?,?,?,?,?,?,?,?)", []any{"p1", "t1", 1, "approved", "h", stamp, stamp, `{}`}},
+		{"INSERT INTO runs(run_id,task_id,plan_id,state,started_at,updated_at) VALUES(?,?,?,?,?,?)", []any{"run-parent", "t1", "p1", "completed", stamp, stamp}},
+		{"INSERT INTO runs(run_id,task_id,plan_id,state,started_at,updated_at,parent_run_id) VALUES(?,?,?,?,?,?,?)", []any{"run-child", "t1", "p1", "completed", stamp, stamp, "run-parent"}},
+	} {
+		if _, err := sqlDB.Exec(q.sql, q.args...); err != nil {
+			t.Fatalf("%s: %v", q.sql, err)
+		}
+	}
+	store, err := NewStore(sqlDB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.IndexTranscript(ctx, "s1", "run-parent", 0, "assistant_message", "parent leak token", stamp); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.IndexTranscript(ctx, "s1", "run-child", 0, "assistant_message", "child internals leak token", stamp); err != nil {
+		t.Fatal(err)
+	}
+	hits, err := store.SearchTranscript(ctx, "s1", "leak", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, h := range hits {
+		if h.RunID == "run-child" || strings.Contains(h.Content, "child internals") {
+			t.Fatalf("child transcript leaked: %+v", h)
+		}
+	}
+	if len(hits) == 0 {
+		t.Fatal("parent transcript missing")
+	}
+}

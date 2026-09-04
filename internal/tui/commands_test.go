@@ -194,6 +194,30 @@ func TestBareNewDropsOldStream(t *testing.T) {
 	}
 }
 
+func TestChildStreamDoesNotPaintLiveDraft(t *testing.T) {
+	m := newModel(paths.ModeUser, &fakeGateway{})
+	m.sessionID = "sess-1"
+	updated, _ := m.Update(modelStreamMsg{env: modelstream.Envelope{
+		SessionID:   "sess-1",
+		RunID:       "child-run",
+		ParentRunID: "parent-run",
+		Event:       providerapi.StreamEvent{Type: providerapi.StreamDelta, ContentDelta: "child thinking leak"},
+	}})
+	got := updated.(model)
+	if got.liveContent != "" {
+		t.Fatalf("child stream painted live draft: %q", got.liveContent)
+	}
+	updated, _ = got.Update(modelStreamMsg{env: modelstream.Envelope{
+		SessionID: "sess-1",
+		RunID:     "parent-run",
+		Event:     providerapi.StreamEvent{Type: providerapi.StreamDelta, ContentDelta: "parent"},
+	}})
+	got = updated.(model)
+	if got.liveContent != "parent" {
+		t.Fatalf("parent stream = %q", got.liveContent)
+	}
+}
+
 func TestBareNewDropsStaleRefresh(t *testing.T) {
 	m := newModel(paths.ModeUser, &fakeGateway{})
 	m.sessionID = "sess-old"

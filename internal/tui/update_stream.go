@@ -20,6 +20,9 @@ func (m model) applyModelStream(env modelstream.Envelope) (tea.Model, tea.Cmd) {
 	if env.SessionID != "" && gatewayclient.SessionID(env.SessionID) != m.sessionID {
 		return m, nil
 	}
+	if strings.TrimSpace(env.ParentRunID) != "" {
+		return m, nil
+	}
 	if env.RunID != "" {
 		m.liveRunID = gatewayclient.RunID(env.RunID)
 	}

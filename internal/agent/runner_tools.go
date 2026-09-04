@@ -220,6 +220,9 @@ func (r *Runner) indexToolResult(ctx context.Context, request RunRequest, toolNa
 	if r == nil || r.transcript == nil || strings.TrimSpace(request.SessionID) == "" {
 		return
 	}
+	if request.Depth > 0 || strings.TrimSpace(request.ParentRunID) != "" {
+		return
+	}
 	body := projectToolResult(toolName, rec.Message)
 	if body == "" {
 		return

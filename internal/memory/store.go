@@ -33,7 +33,14 @@ const (
 	entrySelectPrefixed = `e.entry_id, e.session_id, e.content, e.source, e.tags_json, e.created_at,
 		       COALESCE(e.kind, 'session'), COALESCE(e.priority, 0),
 		       COALESCE(e.expires_at, ''), COALESCE(e.updated_at, ''), COALESCE(e.archived_at, '')`
+
+	// ADR-039: session_search hides child-run traces even if they were indexed.
+	transcriptNotChildSQL = `NOT EXISTS (SELECT 1 FROM runs r WHERE r.run_id = %s AND r.parent_run_id IS NOT NULL)`
 )
+
+func transcriptExcludeChild(runIDExpr string) string {
+	return fmt.Sprintf(transcriptNotChildSQL, runIDExpr)
+}
 
 // Entry is one durable memory fact.
 type Entry struct {
@@ -482,11 +489,12 @@ func (s *Store) listRecentTranscript(ctx context.Context, sessionID string, limi
 	if sessionID == "" {
 		rows, err = s.db.QueryContext(ctx, `
 			SELECT session_id, run_id, position, record_type, content, created_at
-			FROM transcript_search ORDER BY created_at DESC LIMIT ?`, limit)
+			FROM transcript_search WHERE `+transcriptExcludeChild("run_id")+`
+			ORDER BY created_at DESC LIMIT ?`, limit)
 	} else {
 		rows, err = s.db.QueryContext(ctx, `
 			SELECT session_id, run_id, position, record_type, content, created_at
-			FROM transcript_search WHERE session_id = ?
+			FROM transcript_search WHERE session_id = ? AND `+transcriptExcludeChild("run_id")+`
 			ORDER BY created_at DESC LIMIT ?`, sessionID, limit)
 	}
 	if err != nil {
@@ -512,14 +520,14 @@ func (s *Store) searchTranscriptFTS(ctx context.Context, sessionID, query string
 			SELECT t.session_id, t.run_id, t.position, t.record_type, t.content, t.created_at
 			FROM transcript_fts f
 			JOIN transcript_search t ON t.row_id = f.row_id
-			WHERE transcript_fts MATCH ?
+			WHERE transcript_fts MATCH ? AND `+transcriptExcludeChild("t.run_id")+`
 			ORDER BY t.created_at DESC LIMIT ?`, ftsQuery, limit)
 	} else {
 		rows, err = s.db.QueryContext(ctx, `
 			SELECT t.session_id, t.run_id, t.position, t.record_type, t.content, t.created_at
 			FROM transcript_fts f
 			JOIN transcript_search t ON t.row_id = f.row_id
-			WHERE transcript_fts MATCH ? AND t.session_id = ?
+			WHERE transcript_fts MATCH ? AND t.session_id = ? AND `+transcriptExcludeChild("t.run_id")+`
 			ORDER BY t.created_at DESC LIMIT ?`, ftsQuery, sessionID, limit)
 	}
 	if err != nil {
@@ -537,12 +545,12 @@ func (s *Store) searchTranscriptLike(ctx context.Context, sessionID, query strin
 	if sessionID == "" {
 		rows, err = s.db.QueryContext(ctx, `
 			SELECT session_id, run_id, position, record_type, content, created_at
-			FROM transcript_search WHERE content LIKE ? ESCAPE '\'
+			FROM transcript_search WHERE content LIKE ? ESCAPE '\' AND `+transcriptExcludeChild("run_id")+`
 			ORDER BY created_at DESC LIMIT ?`, pattern, limit)
 	} else {
 		rows, err = s.db.QueryContext(ctx, `
 			SELECT session_id, run_id, position, record_type, content, created_at
-			FROM transcript_search WHERE session_id = ? AND content LIKE ? ESCAPE '\'
+			FROM transcript_search WHERE session_id = ? AND content LIKE ? ESCAPE '\' AND `+transcriptExcludeChild("run_id")+`
 			ORDER BY created_at DESC LIMIT ?`, sessionID, pattern, limit)
 	}
 	if err != nil {

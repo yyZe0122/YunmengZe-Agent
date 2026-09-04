@@ -48,6 +48,21 @@ func TestBuildTimelineOrder(t *testing.T) {
 	}
 }
 
+func TestBuildTimelineSkipsChildRuns(t *testing.T) {
+	parent := gatewayclient.RunID("run-parent")
+	childBody := "child internals"
+	parentBody := "parent done"
+	items := buildTimeline(nil, nil, []gatewayclient.Run{
+		{ID: "run-parent", TaskID: "t1", State: gatewayclient.RunStateCompleted, StartedAt: "t1", Result: &parentBody},
+		{ID: "run-child", TaskID: "t1", ParentRunID: &parent, State: gatewayclient.RunStateCompleted, StartedAt: "t2", Result: &childBody},
+	})
+	for _, it := range items {
+		if strings.Contains(it.Title, "run-child") || strings.Contains(it.Body, "child internals") {
+			t.Fatalf("child run leaked into timeline: %#v", it)
+		}
+	}
+}
+
 func TestBuildTimelineNilTask(t *testing.T) {
 	if items := buildTimeline(nil, nil, nil); items != nil {
 		t.Fatalf("got %#v", items)

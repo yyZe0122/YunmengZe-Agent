@@ -262,6 +262,7 @@ func (s *Store) SessionTranscript(ctx context.Context, sessionID coreidentity.Se
         INNER JOIN runs r ON r.run_id = a.run_id
         INNER JOIN tasks t ON t.task_id = r.task_id
         WHERE t.session_id = ?
+          AND r.parent_run_id IS NULL
           AND t.task_id NOT IN (SELECT value FROM json_each(?))
         ORDER BY a.created_at ASC, a.run_id ASC, a.position ASC
         LIMIT ? OFFSET ?`, sessionID, hiddenIDsJSON(session.HiddenTaskIDs), options.Page.Limit, options.Page.Offset)
@@ -343,6 +344,7 @@ func (s *Store) SessionTranscriptTail(ctx context.Context, sessionID coreidentit
         INNER JOIN runs r ON r.run_id = a.run_id
         INNER JOIN tasks t ON t.task_id = r.task_id
         WHERE t.session_id = ?
+          AND r.parent_run_id IS NULL
           AND t.task_id NOT IN (SELECT value FROM json_each(?))
         ORDER BY a.created_at DESC, a.run_id DESC, a.position DESC
         LIMIT ?`, sessionID, hiddenIDsJSON(session.HiddenTaskIDs), n)

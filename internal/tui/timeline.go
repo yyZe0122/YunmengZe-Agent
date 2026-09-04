@@ -142,14 +142,14 @@ func buildTimeline(task *gatewayclient.Task, plan *gatewayclient.Plan, runs []ga
 	}
 
 	for _, run := range runs {
+		if run.ParentRunID != nil && strings.TrimSpace(string(*run.ParentRunID)) != "" {
+			continue
+		}
 		step := "plan"
 		if run.StepID != nil {
 			step = string(*run.StepID)
 		}
 		title := fmt.Sprintf("run %s [%s]", shortID(string(run.ID)), step)
-		if run.ParentRunID != nil && strings.TrimSpace(string(*run.ParentRunID)) != "" {
-			title = fmt.Sprintf("run %s [%s] ←%s", shortID(string(run.ID)), step, shortID(string(*run.ParentRunID)))
-		}
 		body := ""
 		kind := tlRun
 		if run.Error != nil && strings.TrimSpace(*run.Error) != "" {

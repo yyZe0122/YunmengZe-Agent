@@ -576,3 +576,74 @@ func TestHiddenTaskIsNotFound(t *testing.T) {
 		t.Fatalf("latest=%v", sess.LatestTaskID)
 	}
 }
+
+func TestSessionTranscriptExcludesChildRuns(t *testing.T) {
+	ctx := context.Background()
+	db, err := coresqlite.Open(ctx, t.TempDir()+"/core.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	sqlDB := db.SQL()
+	stamp := time.Now().UTC().Format(time.RFC3339Nano)
+	for _, q := range []struct {
+		sql  string
+		args []any
+	}{
+		{"INSERT INTO sessions(session_id,state,version,created_at,updated_at) VALUES(?,?,?,?,?)",
+			[]any{"session-child", "active", 1, stamp, stamp}},
+		{"INSERT INTO tasks(task_id,session_id,title,objective,state,execution_mode,version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
+			[]any{"task-child", "session-child", "Hello", "user turn", "completed", "agent", 1, stamp, stamp}},
+		{"INSERT INTO plans(plan_id,task_id,revision,state,scope_hash,document,version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
+			[]any{"plan-child", "task-child", 1, "approved", "h", "{}", 1, stamp, stamp}},
+		{"INSERT INTO runs(run_id,task_id,plan_id,state,started_at,updated_at,version) VALUES(?,?,?,?,?,?,?)",
+			[]any{"run-parent", "task-child", "plan-child", "completed", stamp, stamp, 1}},
+		{"INSERT INTO runs(run_id,task_id,plan_id,state,started_at,updated_at,version,parent_run_id) VALUES(?,?,?,?,?,?,?,?)",
+			[]any{"run-child", "task-child", "plan-child", "completed", stamp, stamp, 1, "run-parent"}},
+		{"INSERT INTO agent_run_records(run_id,position,record_type,message,usage,finish_reason,tool_call_id,created_at) VALUES(?,?,?,?,?,?,?,?)",
+			[]any{"run-parent", 0, "assistant_message", `{"role":"assistant","content":"parent reply"}`, `{}`, "stop", "", stamp}},
+		{"INSERT INTO agent_run_records(run_id,position,record_type,message,usage,finish_reason,tool_call_id,created_at) VALUES(?,?,?,?,?,?,?,?)",
+			[]any{"run-child", 0, "input_message", `{"role":"user","content":"child prompt leak"}`, `{}`, "", "", stamp}},
+		{"INSERT INTO agent_run_records(run_id,position,record_type,message,usage,finish_reason,tool_call_id,created_at) VALUES(?,?,?,?,?,?,?,?)",
+			[]any{"run-child", 1, "assistant_message", `{"role":"assistant","content":"child internals"}`, `{}`, "stop", "", stamp}},
+	} {
+		if _, err := sqlDB.ExecContext(ctx, q.sql, q.args...); err != nil {
+			t.Fatalf("%s: %v", q.sql, err)
+		}
+	}
+	store, err := New(sqlDB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	msgs, err := store.SessionTranscript(ctx, coreidentity.SessionID("session-child"), TranscriptOptions{Page: Page{Limit: 50}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range msgs {
+		if strings.Contains(m.Content, "child prompt leak") || strings.Contains(m.Content, "child internals") {
+			t.Fatalf("child record leaked into session transcript: %#v", m)
+		}
+	}
+	tail, err := store.SessionTranscriptTail(ctx, coreidentity.SessionID("session-child"), 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range tail {
+		if strings.Contains(m.Content, "child prompt leak") || strings.Contains(m.Content, "child internals") {
+			t.Fatalf("child record leaked into session tail: %#v", m)
+		}
+	}
+	taskMsgs, err := store.TaskTranscript(ctx, coreidentity.TaskID("task-child"), TranscriptOptions{Page: Page{Limit: 50}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sawChild bool
+	for _, m := range taskMsgs {
+		if strings.Contains(m.Content, "child internals") {
+			sawChild = true
+		}
+	}
+	if !sawChild {
+		t.Fatalf("TaskTranscript should still include child records: %#v", taskMsgs)
+	}
+}
