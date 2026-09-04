@@ -418,6 +418,83 @@ func TestRunnerDefaultHasNoStepCap(t *testing.T) {
 	}
 }
 
+func TestRunnerResumePromptContinuesAfterFinalAssistant(t *testing.T) {
+	store, _, _ := openAgentFixture(t)
+	provider := &sequenceProvider{responses: []providerapi.CompletionResponse{
+		{Content: "first", Usage: providerapi.Usage{TotalTokens: 1}},
+		{Content: "second", Usage: providerapi.Usage{TotalTokens: 1}},
+	}}
+	runner := newTestRunner(t, provider, &recordingBroker{definitions: testDefinitions()}, store)
+	request := testRunRequest()
+	first, err := runner.Run(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Content != "first" {
+		t.Fatalf("first = %+v", first)
+	}
+	prefix, err := store.InitialPrefix(context.Background(), request.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Messages = prefix
+	request.ResumePrompt = "continue"
+	second, err := runner.Run(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Content != "second" {
+		t.Fatalf("second = %+v", second)
+	}
+	if provider.calls != 2 {
+		t.Fatalf("provider calls = %d", provider.calls)
+	}
+	tail := provider.requests[1].Messages
+	if tail[len(tail)-1].Role != providerapi.RoleUser || tail[len(tail)-1].Content != "continue" {
+		t.Fatalf("resume tail = %+v", tail[len(tail)-1])
+	}
+}
+
+func TestRunnerResumePromptContinuesAfterIncompleteHistory(t *testing.T) {
+	store, db, _ := openAgentFixture(t)
+	firstProvider := &sequenceProvider{
+		responses: []providerapi.CompletionResponse{{
+			ToolCalls: []providerapi.ToolCall{{ID: "call-resume", Name: "test_read", Arguments: `{}`}},
+			Usage:     providerapi.Usage{TotalTokens: 2},
+		}},
+		errors: []error{nil, context.Canceled},
+	}
+	broker := &recordingBroker{db: db, definitions: testDefinitions()}
+	request := testRunRequest()
+	request.AllowedTools = []string{"test_read"}
+	first := newTestRunner(t, firstProvider, broker, store)
+	_, err := first.Run(context.Background(), request)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("first Run() error = %v, want context.Canceled", err)
+	}
+	prefix, err := store.InitialPrefix(context.Background(), request.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Messages = prefix
+	request.ResumePrompt = "continue after tools"
+	secondProvider := &sequenceProvider{responses: []providerapi.CompletionResponse{{
+		Content: "second", Usage: providerapi.Usage{TotalTokens: 1},
+	}}}
+	second := newTestRunner(t, secondProvider, broker, store)
+	got, err := second.Run(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Content != "second" {
+		t.Fatalf("second = %+v", got)
+	}
+	tail := secondProvider.requests[0].Messages
+	if tail[len(tail)-1].Role != providerapi.RoleUser || tail[len(tail)-1].Content != "continue after tools" {
+		t.Fatalf("resume tail = %+v", tail[len(tail)-1])
+	}
+}
+
 func TestRunnerClaimsNextStepInboxAfterText(t *testing.T) {
 	store, _, _ := openAgentFixture(t)
 	provider := &sequenceProvider{responses: []providerapi.CompletionResponse{
@@ -428,7 +505,7 @@ func TestRunnerClaimsNextStepInboxAfterText(t *testing.T) {
 	request := testRunRequest()
 	request.SessionID = "session-steer"
 	request.AllowedTools = []string{"test_read"}
-	runner.Inbox().Steer(request.SessionID, "steer-1", "do this instead")
+	runner.Inbox().Steer(request.SessionID, request.RunID, "steer-1", "do this instead")
 	result, err := runner.Run(context.Background(), request)
 	if err != nil {
 		t.Fatal(err)

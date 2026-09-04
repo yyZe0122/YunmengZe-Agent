@@ -63,13 +63,24 @@ func (r *Runner) Run(ctx context.Context, request RunRequest) (Result, error) {
 		"session_id", request.SessionID, "run_id", request.RunID, "task_id", request.TaskID,
 		"plan_id", request.PlanID, "step_id", request.StepID, "trace_id", request.TraceID,
 		"record_count", len(records), "completed", completed)
-	if completed {
+	resumePrompt := strings.TrimSpace(request.ResumePrompt)
+	if completed && resumePrompt == "" {
 		slog.Info("agent run completed from recovery", "component", "agent", "operation", "run", "result", "succeeded",
 			"session_id", request.SessionID, "run_id", request.RunID, "task_id", request.TaskID,
 			"plan_id", request.PlanID, "step_id", request.StepID, "trace_id", request.TraceID,
 			"iterations", result.Iterations, "tool_calls", len(result.ToolCalls),
 			"duration_ms", time.Since(startedAt).Milliseconds())
 		return result, nil
+	}
+	if resumePrompt != "" {
+		msg := providerapi.Message{Role: providerapi.RoleUser, Content: resumePrompt}
+		if _, err := r.records.AppendUser(ctx, request.RunID, msg); err != nil {
+			return result, err
+		}
+		messages = append(messages, msg)
+		completed = false
+		slog.Info("agent run resumed", "component", "agent", "operation", "resume", "result", "continued",
+			"session_id", request.SessionID, "run_id", request.RunID, "task_id", request.TaskID)
 	}
 
 	provider, model, roleWindow := r.snapshotForRole(request.Role)
@@ -297,7 +308,7 @@ func (r *Runner) claimAndAppendStepInbox(ctx context.Context, request RunRequest
 	if r == nil || r.inbox == nil || strings.TrimSpace(request.SessionID) == "" {
 		return false, nil
 	}
-	claimed := r.inbox.ClaimStep(request.SessionID)
+	claimed := r.inbox.ClaimStep(request.SessionID, request.RunID)
 	if len(claimed) == 0 {
 		return false, nil
 	}

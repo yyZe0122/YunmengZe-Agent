@@ -16,11 +16,12 @@ const DefaultDebounce = 33 * time.Millisecond
 
 // Envelope wraps a StreamEvent with routing ids for multi-subscriber UIs.
 type Envelope struct {
-	Seq       uint64                  `json:"seq"`
-	SessionID string                  `json:"session_id,omitempty"`
-	TaskID    string                  `json:"task_id,omitempty"`
-	RunID     string                  `json:"run_id,omitempty"`
-	Event     providerapi.StreamEvent `json:"event"`
+	Seq         uint64                  `json:"seq"`
+	SessionID   string                  `json:"session_id,omitempty"`
+	TaskID      string                  `json:"task_id,omitempty"`
+	RunID       string                  `json:"run_id,omitempty"`
+	ParentRunID string                  `json:"parent_run_id,omitempty"`
+	Event       providerapi.StreamEvent `json:"event"`
 }
 
 // Hub is a process-local pub/sub for model stream envelopes.
@@ -38,12 +39,13 @@ type Hub struct {
 }
 
 type pendingBatch struct {
-	sessionID string
-	taskID    string
-	runID     string
-	content   string
-	thinking  string
-	timer     *time.Timer
+	sessionID   string
+	taskID      string
+	runID       string
+	parentRunID string
+	content     string
+	thinking    string
+	timer       *time.Timer
 }
 
 type subscription struct {
@@ -70,17 +72,17 @@ func (h *Hub) batchKey(sessionID, runID string) string {
 
 // Publish sends an envelope to matching subscribers (non-blocking drop if full).
 // StreamDelta/StreamThinking are debounced; other event types flush pending first.
-func (h *Hub) Publish(sessionID, taskID, runID string, event providerapi.StreamEvent) {
+func (h *Hub) Publish(sessionID, taskID, runID, parentRunID string, event providerapi.StreamEvent) {
 	if h == nil {
 		return
 	}
 	switch event.Type {
 	case providerapi.StreamDelta, providerapi.StreamThinking:
-		h.publishDebounced(sessionID, taskID, runID, event)
+		h.publishDebounced(sessionID, taskID, runID, parentRunID, event)
 		return
 	default:
 		h.flushKey(h.batchKey(sessionID, runID))
-		h.emit(sessionID, taskID, runID, event)
+		h.emit(sessionID, taskID, runID, parentRunID, event)
 	}
 }
 
@@ -91,10 +93,10 @@ func (h *Hub) PublishTerminal(sessionID, taskID, runID string) {
 		return
 	}
 	h.flushKey(h.batchKey(sessionID, runID))
-	h.emit(sessionID, taskID, runID, providerapi.StreamEvent{Type: providerapi.StreamComplete})
+	h.emit(sessionID, taskID, runID, "", providerapi.StreamEvent{Type: providerapi.StreamComplete})
 }
 
-func (h *Hub) publishDebounced(sessionID, taskID, runID string, event providerapi.StreamEvent) {
+func (h *Hub) publishDebounced(sessionID, taskID, runID, parentRunID string, event providerapi.StreamEvent) {
 	key := h.batchKey(sessionID, runID)
 	debounce := h.Debounce
 	if debounce <= 0 {
@@ -105,7 +107,7 @@ func (h *Hub) publishDebounced(sessionID, taskID, runID string, event providerap
 	defer h.mu.Unlock()
 	b := h.pending[key]
 	if b == nil {
-		b = &pendingBatch{sessionID: sessionID, taskID: taskID, runID: runID}
+		b = &pendingBatch{sessionID: sessionID, taskID: taskID, runID: runID, parentRunID: parentRunID}
 		h.pending[key] = b
 	} else {
 		if sessionID != "" {
@@ -116,6 +118,9 @@ func (h *Hub) publishDebounced(sessionID, taskID, runID string, event providerap
 		}
 		if runID != "" {
 			b.runID = runID
+		}
+		if parentRunID != "" {
+			b.parentRunID = parentRunID
 		}
 	}
 	switch event.Type {
@@ -144,29 +149,30 @@ func (h *Hub) flushKey(key string) {
 		b.timer.Stop()
 		b.timer = nil
 	}
-	sessionID, taskID, runID := b.sessionID, b.taskID, b.runID
+	sessionID, taskID, runID, parentRunID := b.sessionID, b.taskID, b.runID, b.parentRunID
 	content, thinking := b.content, b.thinking
 	h.mu.Unlock()
 
 	if content != "" {
-		h.emit(sessionID, taskID, runID, providerapi.StreamEvent{
+		h.emit(sessionID, taskID, runID, parentRunID, providerapi.StreamEvent{
 			Type: providerapi.StreamDelta, ContentDelta: content,
 		})
 	}
 	if thinking != "" {
-		h.emit(sessionID, taskID, runID, providerapi.StreamEvent{
+		h.emit(sessionID, taskID, runID, parentRunID, providerapi.StreamEvent{
 			Type: providerapi.StreamThinking, ThinkingDelta: thinking,
 		})
 	}
 }
 
-func (h *Hub) emit(sessionID, taskID, runID string, event providerapi.StreamEvent) {
+func (h *Hub) emit(sessionID, taskID, runID, parentRunID string, event providerapi.StreamEvent) {
 	env := Envelope{
-		Seq:       h.seq.Add(1),
-		SessionID: sessionID,
-		TaskID:    taskID,
-		RunID:     runID,
-		Event:     event,
+		Seq:         h.seq.Add(1),
+		SessionID:   sessionID,
+		TaskID:      taskID,
+		RunID:       runID,
+		ParentRunID: parentRunID,
+		Event:       event,
 	}
 	h.mu.Lock()
 	subs := make([]*subscription, 0, len(h.subs))
@@ -196,7 +202,7 @@ func (h *Hub) Handler(sessionID, taskID, runID string) providerapi.StreamHandler
 		return nil
 	}
 	return func(event providerapi.StreamEvent) error {
-		h.Publish(sessionID, taskID, runID, event)
+		h.Publish(sessionID, taskID, runID, "", event)
 		return nil
 	}
 }

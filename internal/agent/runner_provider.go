@@ -166,7 +166,7 @@ func (r *Runner) collectOnce(ctx context.Context, provider StreamingProvider, re
 	}
 	var accumulator providerapi.StreamAccumulator
 	side := func(event providerapi.StreamEvent) error {
-		r.stream.Publish(runReq.SessionID, runReq.TaskID, runReq.RunID, event)
+		r.stream.Publish(runReq.SessionID, runReq.TaskID, runReq.RunID, runReq.ParentRunID, event)
 		return nil
 	}
 	handler := providerapi.TeeStreamHandler(accumulator.Add, side)

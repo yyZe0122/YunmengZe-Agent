@@ -9,6 +9,7 @@ import (
 type InboxItem struct {
 	ID      string
 	Session string
+	RunID   string
 	Text    string
 	// Persisted is true when chatsession already wrote this user row to
 	// agent_run_records. The runner then injects it into the provider view only.
@@ -37,6 +38,7 @@ func (in *Inbox) Enqueue(item InboxItem) {
 	}
 	item.ID = strings.TrimSpace(item.ID)
 	item.Session = strings.TrimSpace(item.Session)
+	item.RunID = strings.TrimSpace(item.RunID)
 	item.Text = strings.TrimSpace(item.Text)
 	if item.Text == "" || item.Session == "" {
 		return
@@ -51,17 +53,19 @@ func (in *Inbox) Enqueue(item InboxItem) {
 	in.next = append(in.next, item)
 }
 
-// Steer queues text for the nearest later step of this session (does not wake).
-func (in *Inbox) Steer(sessionID, id, text string) {
-	in.Enqueue(InboxItem{ID: id, Session: sessionID, Text: text})
+// Steer queues text for the nearest later step of this run (does not wake).
+func (in *Inbox) Steer(sessionID, runID, id, text string) {
+	in.Enqueue(InboxItem{ID: id, Session: sessionID, RunID: runID, Text: text})
 }
 
-// ClaimStep removes every next-step item for session (FIFO).
-func (in *Inbox) ClaimStep(sessionID string) []InboxItem {
+// ClaimStep removes next-step items for this session+run (FIFO).
+// Empty runID matches only items that also have an empty RunID.
+func (in *Inbox) ClaimStep(sessionID, runID string) []InboxItem {
 	if in == nil {
 		return nil
 	}
 	sessionID = strings.TrimSpace(sessionID)
+	runID = strings.TrimSpace(runID)
 	if sessionID == "" {
 		return nil
 	}
@@ -70,7 +74,7 @@ func (in *Inbox) ClaimStep(sessionID string) []InboxItem {
 	var claimed []InboxItem
 	kept := in.next[:0]
 	for _, item := range in.next {
-		if item.Session != sessionID {
+		if item.Session != sessionID || item.RunID != runID {
 			kept = append(kept, item)
 			continue
 		}

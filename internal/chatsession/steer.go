@@ -75,7 +75,7 @@ func (s *Service) Steer(ctx context.Context, sessionID kernel.SessionID, text st
 		return SteerResult{}, fmt.Errorf("persist steer: %w", err)
 	}
 	inbox.Enqueue(agent.InboxItem{
-		ID: itemID, Session: string(sessionID), Text: text, Persisted: true,
+		ID: itemID, Session: string(sessionID), RunID: string(runID), Text: text, Persisted: true,
 	})
 	slog.Info("chat turn steered", runlog.Attrs("chatsession", "steer", "accepted", runlog.IDs{
 		SessionID: string(sessionID), TaskID: string(taskID), RunID: string(runID),

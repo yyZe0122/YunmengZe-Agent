@@ -13,7 +13,7 @@ func TestHubPublishSubscribe(t *testing.T) {
 	ch, cancel := h.Subscribe("sess-1", "", 8)
 	defer cancel()
 
-	h.Publish("sess-1", "task-1", "run-1", providerapi.StreamEvent{
+	h.Publish("sess-1", "task-1", "run-1", "", providerapi.StreamEvent{
 		Type: providerapi.StreamDelta, ContentDelta: "hi",
 	})
 	// Wait for debounce flush.
@@ -26,7 +26,7 @@ func TestHubPublishSubscribe(t *testing.T) {
 		t.Fatal("timeout waiting for event")
 	}
 
-	h.Publish("other", "task-2", "run-2", providerapi.StreamEvent{
+	h.Publish("other", "task-2", "run-2", "", providerapi.StreamEvent{
 		Type: providerapi.StreamDelta, ContentDelta: "nope",
 	})
 	select {
@@ -42,9 +42,9 @@ func TestHubDebounceCoalescesDeltas(t *testing.T) {
 	ch, cancel := h.Subscribe("", "", 16)
 	defer cancel()
 
-	h.Publish("s", "t", "r", providerapi.StreamEvent{Type: providerapi.StreamDelta, ContentDelta: "a"})
-	h.Publish("s", "t", "r", providerapi.StreamEvent{Type: providerapi.StreamDelta, ContentDelta: "b"})
-	h.Publish("s", "t", "r", providerapi.StreamEvent{Type: providerapi.StreamDelta, ContentDelta: "c"})
+	h.Publish("s", "t", "r", "", providerapi.StreamEvent{Type: providerapi.StreamDelta, ContentDelta: "a"})
+	h.Publish("s", "t", "r", "", providerapi.StreamEvent{Type: providerapi.StreamDelta, ContentDelta: "b"})
+	h.Publish("s", "t", "r", "", providerapi.StreamEvent{Type: providerapi.StreamDelta, ContentDelta: "c"})
 
 	select {
 	case env := <-ch:
@@ -67,7 +67,7 @@ func TestHubPublishTerminalFlushesAndCompletes(t *testing.T) {
 	ch, cancel := h.Subscribe("", "", 16)
 	defer cancel()
 
-	h.Publish("s", "t", "r", providerapi.StreamEvent{Type: providerapi.StreamDelta, ContentDelta: "x"})
+	h.Publish("s", "t", "r", "", providerapi.StreamEvent{Type: providerapi.StreamDelta, ContentDelta: "x"})
 	h.PublishTerminal("s", "t", "r")
 
 	var deltas, completes int

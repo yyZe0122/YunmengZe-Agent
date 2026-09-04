@@ -155,6 +155,27 @@ func (s *RecordStore) List(ctx context.Context, runID string) ([]RunRecord, erro
 	return listRunRecords(ctx, s.db, strings.TrimSpace(runID))
 }
 
+// InitialPrefix returns the leading input_message records used as Prepare's
+// immutable prefix (ADR-030). Resume must pass this back, not a rebuilt prompt.
+func (s *RecordStore) InitialPrefix(ctx context.Context, runID string) ([]providerapi.Message, error) {
+	records, err := s.List(ctx, runID)
+	if err != nil {
+		return nil, err
+	}
+	return initialPrefixMessages(records), nil
+}
+
+func initialPrefixMessages(records []RunRecord) []providerapi.Message {
+	out := make([]providerapi.Message, 0, 4)
+	for _, record := range records {
+		if record.Type != RecordInputMessage {
+			break
+		}
+		out = append(out, cloneMessage(record.Message))
+	}
+	return out
+}
+
 func (s *RecordStore) LoadSucceededToolCall(ctx context.Context, runID, callID string) (toolapi.Response, error) {
 	if ctx == nil {
 		return toolapi.Response{}, errors.New("agent record context is required")

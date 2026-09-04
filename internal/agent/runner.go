@@ -35,7 +35,7 @@ type ToolBroker interface {
 
 // StreamObserver receives provider stream events for UI fan-out (optional).
 type StreamObserver interface {
-	Publish(sessionID, taskID, runID string, event providerapi.StreamEvent)
+	Publish(sessionID, taskID, runID, parentRunID string, event providerapi.StreamEvent)
 }
 
 // RoleEndpoint is a provider+model pair for a model role (ADR-045).
@@ -134,6 +134,12 @@ type RunRequest struct {
 	OverrideMaxOutputTokens int64
 	// Compacted is set when the turn-start ContextView already summarized or dropped turns.
 	Compacted bool
+	// ResumePrompt continues an existing run (ADR-039 task_id reuse). Appended
+	// after restore even if history is incomplete. Messages must be that run's
+	// original Prepare prefix.
+	ResumePrompt string
+	// ParentRunID is set on child task runs for stream routing; empty for top-level chat.
+	ParentRunID string
 }
 
 type Result struct {
