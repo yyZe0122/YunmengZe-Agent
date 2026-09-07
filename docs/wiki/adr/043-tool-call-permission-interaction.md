@@ -5,6 +5,7 @@
 - 更新：2026-08-13（H4：pending 只读 suggested_decision；不自动 decide）
 - 更新：2026-08-28（Phase W：`web_search` / `web_extract` 与 `http_get` 同闸，similar = host）
 - 更新：2026-09-02（TUI 授权卡；extra-root 四档；Wait 30m）
+- 更新：2026-09-07（similar/permanent grant TTL 夹进 chat approval 24h 窗；process 空 Command plan 允许 command-narrowed grant）
 
 ## 背景
 
@@ -88,8 +89,8 @@ CreatePending / Decide 成功后 **best-effort** 追加 Event Store 事件（不
 ### Grant 范围
 
 - **allow_once**：单次 call；从 plan once scope 签发。
-- **allow_similar**：本会话同 capability，路径尽量收窄到请求路径所属 plan 根；TTL ~24h。
-- **allow_permanent**：需 `confirm:true` 二次确认；写 ConfigDir `permissions-trust.json`；长 TTL grant。
+- **allow_similar**：本会话同 capability，路径尽量收窄到请求路径所属 plan 根；TTL 标称 ~24h，但 **不得晚于** 该 chat 的 system approval 窗（会话开始 +24h；`IssueGrant` 夹到 `approvals.expires_at`）。process 空 Command plan 允许把 grant 收成单条 command + args prefix。
+- **allow_permanent**：需 `confirm:true` 二次确认；写 ConfigDir `permissions-trust.json`；grant TTL 同样夹进 approval 窗（trust 文件仍按 permanent 记）。
 - **deny**：不发 grant。
 - scheme A 路径/command 规则不变。见 ADR-046。
 

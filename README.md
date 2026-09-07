@@ -160,7 +160,7 @@ Sub-agents use `task` with `kind` `general` / `explore` / `web` (`vision` / `spe
 
 `/help` lists the rest. Slash priority: built-in → `chat.commands` → skill id.
 
-VS Code / Cursor: optional TUI launcher (VSIX, not Marketplace). [Install](docs/wiki/vscode.md).
+VS Code / Cursor: session list + editor-tab chat (VSIX, not Marketplace). Drag files as `@path`. Ctrl/Cmd+Esc focuses the composer (`ymz.useTerminal` falls back to the TUI). [Install](docs/wiki/vscode.md).
 
 ## Configure
 

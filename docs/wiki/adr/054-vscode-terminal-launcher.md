@@ -3,6 +3,8 @@
 - 状态：Accepted
 - 日期：2026-08-24
 - 更新：2026-08-24（V3：GitHub Release 挂 `ymz-vscode_{version}.vsix`）
+- 更新：2026-09-04（V4 Webview 聊天见 [ADR-056](056-vscode-webview-chat.md)；本 ADR 的启动器降为 `ymz.useTerminal` 回退）
+- 更新：2026-09-07（命令表：`openNewTerminal` 始终新开；Alt+K 打 Webview；启动器无默认键）
 
 ## 背景
 
@@ -22,7 +24,7 @@ VS Code 扩展
 ```
 
 - 源码在本仓 `extensions/vscode/`，**不**进入 `go.mod`。`make check` 不跑 npm。
-- 扩展 **不** 读 `gateway.json`、**不** 调 `/v1/*`、**不** 打开 `core.db`、**不** 执行 tool / provider / grant。
+- **启动器路径** **不** 读 `gateway.json`、**不** 调 `/v1/*`。Webview 聊天（ADR-056）才打 Gateway。两边都 **不** 打开 `core.db`、**不** 执行 tool / provider / grant。
 - 关编辑器 **不** `ymz stop`（ADR-037）。
 - **不** 把 `ymzd` / `ymz` 打进 VSIX。
 - **不** 给 TUI 增加 `--port` / `append-prompt`。`@file` 用 VS Code `Terminal.sendText(ref, false)`。Charm AltScreen 或 perm 卡打开时，键可能打到错误焦点——可接受。
@@ -30,24 +32,26 @@ VS Code 扩展
 - 终端名固定 `ymz`。`openTerminal` 复用已有同名终端；`openNewTerminal` 始终 `ViewColumn.Beside` 新开。
 - 分发：本机 `make vscode`；发版由 `publish-release.sh` / `release.yml` 在 goreleaser **之后** 打 `ymz-vscode_{version}.vsix` 并 `gh release upload`（不要写入 goreleaser `extra_files`：`--clean` 会清 `dist/`）。无 Node 则警告跳过，Go 资产仍成功。不上 Marketplace / Open VSX。用户说明：[`docs/wiki/vscode.md`](../vscode.md)。
 
-原生侧栏 Webview 聊天（Gateway HTTP/SSE、`interactive: true`）是 **另案**；落地时仍禁止在扩展进程跑 agent，走现有 `/v1/*`，不抄 OpenCode TUI 端口。
+原生 Webview 聊天已落地为 [ADR-056](056-vscode-webview-chat.md)（活动栏列表 + 编辑器 Tab → `/v1/*`）。本 ADR 的启动器保留为 `ymz.useTerminal` 回退；仍禁止给 TUI 加 `--port` / `append-prompt`。
 
 ## 命令
 
 | 命令 | 默认快捷键 | 行为 |
 | --- | --- | --- |
-| `ymz.openTerminal` | Ctrl/Cmd+Esc | 已有名为 `ymz` 的终端则 show；否则分屏新建并启动 |
-| `ymz.openNewTerminal` | Ctrl/Cmd+Shift+Esc；编辑器标题栏 | 始终新开一列 |
-| `ymz.addFilepathToTerminal` | Ctrl+Alt+K / Cmd+Alt+K | 活动编辑器相对路径 + 选区 1-based 行号 → `@path` / `@path#L12` / `@path#L12-20`；仅当活动终端名为 `ymz` 时 `sendText(..., false)` |
+| `ymz.openTerminal` | 无（`ymz.useTerminal` 时 Ctrl/Cmd+Esc） | 已有名为 `ymz` 的终端则 show；否则分屏新建并启动 |
+| `ymz.openNewTerminal` | 无（`ymz.useTerminal` 时 Ctrl/Cmd+Shift+Esc） | 始终 `ViewColumn.Beside` 新开一列 |
+| `ymz.addFilepathToTerminal` | 无默认键 | 活动编辑器 `@path` / `#L` 写入名为 `ymz` 的终端（不回车） |
+
+默认快捷键打 Webview（ADR-056）。`useTerminal` 时 Esc reuse、Shift+Esc 新开。
 
 ## 非目标
 
-- Webview / Chat Participant / Language Model API 作为主循环
-- inline diff、多会话 tab、Plan 文档批注、检查点 UI
+- 给 TUI 加 `--port` / `append-prompt`（Webview 主循环见 ADR-056）
+- inline diff、Plan 文档批注、检查点 UI
 - Marketplace publisher、Open VSX、bundled 二进制
 - 扩展 import `internal/gateway` 或复制一份 daemon
 
 ## 后果
 
-- TUI 仍是主 UX；扩展是快捷方式。
-- 活尾巴：原生 Webview（V4）与 Marketplace（V5）见 `docs/backlog/current.md`。安装/挂包步骤不写进本 ADR，见 [`docs/wiki/vscode.md`](../vscode.md)。
+- TUI 仍是终端主 UX；本 ADR 的启动器是快捷方式。Webview 是 IDE 主 UX（ADR-056）。
+- Webview 聊天见 [ADR-056](056-vscode-webview-chat.md)。Marketplace（V5）见 `docs/backlog/current.md`。安装/挂包步骤见 [`docs/wiki/vscode.md`](../vscode.md)。

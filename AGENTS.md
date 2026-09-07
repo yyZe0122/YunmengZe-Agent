@@ -78,7 +78,7 @@ Local release matrix: `goreleaser release --snapshot --clean --parallelism 1`.
 | `docs/wiki/` | Design KB: ADR index `wiki/README.md`, `wiki/adr/`, `wiki/database.md` |
 | `docs/history/changelog/` | Per-tag release notes (`vX.Y.Z.md` + `unreleased.md`) |
 | `docs/backlog/current.md` | **Only** living optimization doc |
-| `extensions/vscode` | VS Code terminal launcher (ADR-054); not in `go.mod`; `make check` does not run npm. User/install: `docs/wiki/vscode.md` |
+| `extensions/vscode` | VS Code Webview 聊天（ADR-056）+ TUI 启动器回退（ADR-054）；not in `go.mod`; `make check` does not run npm. User/install: `docs/wiki/vscode.md` |
 
 ### Wiring rules
 
@@ -119,4 +119,4 @@ Local release matrix: `goreleaser release --snapshot --clean --parallelism 1`.
 
 ## Deep dives
 
-Index: `docs/README.md` → `docs/wiki/README.md`. Start with: `001-core-boundaries`, `004-database-ownership`, `012-tool-broker-execution-boundary`, `018-local-gateway-boundary`, `037-cli-daemon-lifecycle`, `038-session-chat-boundary`, `039-logical-child-runs`, `040-mcp-tool-broker`, `041-context-packing-and-pressure`, `042-chat-native-jobs`, `043-tool-call-permission-interaction`, `044-in-process-memory-boundary`, `045-model-roles`, `046-session-workspace-and-permission-tiers`, `047-structured-logging-and-debug-chain`, `048-provider-config-hot-reload`, `022-application-query-boundaries`, `050-in-process-self-improvement`, `051-coding-loop-contextview`, `052-coding-loop-harness`, `053-charm-v2-tui`, `054-vscode-terminal-launcher`, `055-auxiliary-media-boundary`. Schema map: `docs/wiki/database.md`. Status / backlog: `docs/backlog/current.md`. VS Code VSIX: `docs/wiki/vscode.md` (ADR-054). Model window catalog: `internal/modelcatalog`. PR norms: `CONTRIBUTING.md`.
+Index: `docs/README.md` → `docs/wiki/README.md`. Start with: `001-core-boundaries`, `004-database-ownership`, `012-tool-broker-execution-boundary`, `018-local-gateway-boundary`, `037-cli-daemon-lifecycle`, `038-session-chat-boundary`, `039-logical-child-runs`, `040-mcp-tool-broker`, `041-context-packing-and-pressure`, `042-chat-native-jobs`, `043-tool-call-permission-interaction`, `044-in-process-memory-boundary`, `045-model-roles`, `046-session-workspace-and-permission-tiers`, `047-structured-logging-and-debug-chain`, `048-provider-config-hot-reload`, `022-application-query-boundaries`, `050-in-process-self-improvement`, `051-coding-loop-contextview`, `052-coding-loop-harness`, `053-charm-v2-tui`, `054-vscode-terminal-launcher`, `055-auxiliary-media-boundary`, `056-vscode-webview-chat`. Schema map: `docs/wiki/database.md`. Status / backlog: `docs/backlog/current.md`. VS Code VSIX: `docs/wiki/vscode.md` (ADR-056). Model window catalog: `internal/modelcatalog`. PR norms: `CONTRIBUTING.md`.

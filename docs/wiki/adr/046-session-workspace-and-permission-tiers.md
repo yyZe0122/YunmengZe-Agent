@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (implemented 2026-08-10; extra-root `/perm` 2026-09-02)
+Accepted (implemented 2026-08-10; extra-root `/perm` 2026-09-02; command-narrowed process grants 2026-09-07)
 
 ## Context
 
@@ -37,7 +37,7 @@ Config (optional; defaults preserve client_cwd behavior when roots empty):
 | Decision | Meaning |
 | --- | --- |
 | `allow_once` | Single tool call (existing) |
-| `allow_similar` | Session-scoped: same capability + path parent prefix; process args may **prefix-match** (ADR-051, e.g. `go test` ⊇ `go test ./foo`) |
+| `allow_similar` | Session-scoped: same capability + path parent prefix; process args may **prefix-match** (ADR-051, e.g. `go test` ⊇ `go test ./foo`). Empty-command process plan scopes may issue a command-narrowed grant. Grant TTL is clamped to the chat system approval window. |
 | `allow_permanent` | Requires `confirm: true`; writes ConfigDir trust entry; future matches pre-grant |
 | `deny` | Existing |
 

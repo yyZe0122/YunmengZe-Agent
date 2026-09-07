@@ -1,13 +1,13 @@
 # YunmengZe Agent 当前状态
 
-更新：2026-09-04（v0.6.0：本会话 `/model` + 卡片 + extra-root `/perm` + `task_id` 续跑。下一优先 = VS Code V4；O5–O6 / 飞书等用户再提）
+更新：2026-09-07（VS Code V4 Webview + `/perm` grant 夹窗/command-narrowing。O5–O6 / 飞书等用户再提）
 
 **本文件是唯一活着的优化/backlog 文档。** 只写未完成与暂缓项；已落地细节见 ADR（`docs/wiki/adr/`）、[`docs/wiki/database.md`](../wiki/database.md)、changelog 与 git。目录：[`docs/README.md`](../README.md)。
 
 ## 现状
 
 生产形态稳定：`ymzd` + CLI·TUI（`ymz`）+ `core.db`。设计知识库：`docs/wiki/`。  
-当前发布线：**v0.6.0** = 本会话 `/model` + 提问/授权卡 + extra-root `/perm` + `task_id` 续跑。v0.5.0 = models.dev 填窗 + Phase S/W/M。v0.4.0 = 清宣纸 TUI（ADR-053）+ VS Code 启动器（ADR-054）+ `/edit` retract + `fs_remove`。
+当前发布线：**v0.7.0** = VS Code V4 Webview + `/perm` grant 夹窗。v0.6.0 = 本会话 `/model` + 提问/授权卡 + extra-root `/perm` + `task_id` 续跑。v0.5.0 = models.dev 填窗 + Phase S/W/M。v0.4.0 = 清宣纸 TUI（ADR-053）+ VS Code 启动器（ADR-054）+ `/edit` retract + `fs_remove`。
 
 | 对标 | 契约重叠（粗） | 说明 |
 | --- | --- | --- |
@@ -21,8 +21,8 @@
 | Hermes Media & Web | ~70% | `web_search`/`web_extract`/`http_get` + 辅助 vision/speech/video 工具；无实时 Voice / 图生 |
 | Hermes 消息网关 | ~0% | 仅本机 UDS/loopback；**暂不上**飞书/微信（本机编码/定时为主） |
 
-**产品焦点：** 本机编码循环质量（工具观察 + turn/step/inbox + TUI 跟手）+ 简单任务 + 定时任务。通道/SDK 是添头。  
-**下一优先：** **VS Code V4**（Claude Code 式侧栏）。O5–O6 / H2 / 飞书 M* / Marketplace 仍用户再提。
+**产品焦点：** 本机编码循环质量（工具观察 + turn/step/inbox + TUI 跟手）+ IDE Webview 皮 + 简单任务 + 定时任务。通道/SDK 是添头。  
+**下一优先：** O5–O6 / H2 / 飞书 M* / Marketplace 仍用户再提。
 
 ## 原则（不变）
 
@@ -31,7 +31,7 @@
 - Skill 仅指令文本，不扩大授权；`skill_ids` 仅显式预载（TUI/job）；Prefix 注入技能目录（id+一句话）；正文仍 `skills_list` → `skill_view`（ADR-036 / 052）。用户规则：`<ConfigDir>/AGENTS.md` + 可选项目 `.yunmengze/AGENTS.md`（子代理同样继承）。
 - plan 永远只读；高风险工具仅 agent。TUI Tab **Agent → Plan → Auto**：Agent 未预授则 `/perm`；Auto 为本 session 预授 process+git（切走结束）。记住放行：`chat.permission.allow` 或 `chat.tools.*`（OR）。cron / CLI 永不 wait。见 ADR-038 / 043 / 046。
 - 会话记忆为 in-process MemoryManager（ADR-044），非独立 Memory 进程。
-- **客户端分层（ADR-018/022/054）：** 业务用例只在 daemon；Gateway 仅 HTTP 适配；CLI 与 TUI 经 `gatewayclient` 并列，TUI **不** exec CLI、**不** import tools/providers/agent。VS Code 扩展（本相）只启动 TUI，不走 Gateway HTTP。拖文件 / 原生聊天 = V4 Webview，终端启动器做不到。
+- **客户端分层（ADR-018/022/054/056）：** 业务用例只在 daemon；Gateway 仅 HTTP 适配；CLI 与 TUI 经 `gatewayclient` 并列，TUI **不** exec CLI、**不** import tools/providers/agent。VS Code Webview（ADR-056）是第四 peer，打 `/v1/*`，不跑 tool；终端启动器（ADR-054）仍不走 Gateway。
 - **子代理：** 逻辑子 Run（`parent_run_id` + `task` 工具，ADR-039）；同步阻塞；grant/工具不得扩大。可选显式 `task_id`（= child `run_id`）续跑同一子代理；主 packing/TUI/`session_search` 排除 child records。`task.kind` 目录：广告 `general`/`explore`/`web`；配了 `models.vision|speech` 才广告 vision/speech/video。子永远叶子。**不上** Hermes 并行/后台/`role=orchestrator`。
 - **消息通道（规划）：** 第二客户端 → `tasksubmission` / `taskcontrol`；**不**在 Gateway 内跑 tool/provider/grant。
 - **Go 精神：** 具体类型 + 调用方小接口；composition root 在 `cmd/`；无 DI 容器 / ORM / 通用事件总线。
@@ -61,6 +61,7 @@
 | **IDE-launcher** | VS Code 终端启动器 V0–V3（ADR-054） | **v0.4.0** |
 | **QG retract** | `/edit` · `/editundo`；`fs_remove`；`edit_revisions.kind`（028） | **v0.4.0** |
 | **TUI cards** | 提问/授权真卡片；自定义回答；Esc Esc dismiss；extra-root 四档 | **v0.6.0** |
+| **IDE-webview** | VS Code V4：活动栏列表 + 编辑器 Tab → `/v1/*`；拖文件 `@path`（ADR-056）；`/perm` grant 配套 | **v0.7.0** |
 | **O4 /model** | `/model` 本会话 + sticky ready draft；`/model main` 全局 | **v0.6.0** |
 | **Sub-agent resume** | `task_id` 续跑；父 packing/TUI/`session_search` 排除 child | **v0.6.0** |
 
@@ -85,7 +86,7 @@ Phase IDE-launcher：VS Code 终端启动器（ADR-054）V0–V3 ✅ v0.4.0
 Phase S：类型化子代理 `general`/`explore` ✅
 Phase W：网页检索 `web_search`/`web_extract` + `kind=web` ✅
 Phase M：辅助媒体 vision/speech/video ✅
-Phase IDE-webview：VS Code V4   ← 下一优先
+Phase IDE-webview：VS Code V4 ✅（ADR-056）
 H2 / O5–O6 / 飞书 M* / Marketplace ── 用户再提（不插队）
 ```
 
@@ -139,9 +140,7 @@ H2 / O5–O6 / 飞书 M* / Marketplace ── 用户再提（不插队）
 
 V0–V3 已发 **v0.4.0**：`extensions/vscode` 启动 TUI；`make vscode` 本机打包；发版脚本 / Actions 在 goreleaser 之后挂 `ymz-vscode_{version}.vsix`。用户说明：[`docs/wiki/vscode.md`](../wiki/vscode.md)。架构：[ADR-054](../wiki/adr/054-vscode-terminal-launcher.md)。
 
-终端 TUI **接不住**拖文件。要 Claude Code 式 GUI 就开 **V4 Webview**（新 ADR 或扩 ADR-054）：侧栏 → `gatewayclient` HTTP/SSE，`interactive: true`；拖文件 / 资源管理器 → 工作区相对路径写入用户消息（`@path`）；**不**在扩展里跑 tool。关编辑器仍不 `ymz stop`。不上 Marketplace。
-
-启动器薄补丁（cwd = 工作区、设置里填 `ymz` 路径）可当 V4 前的小步，不挡 S/W/M。
+V4 已落地（ADR-056）：活动栏会话列表 + 编辑器 Tab（可拖侧栏）；Host 读 `gateway.json`（UDS/TCP）打 `/v1/*`，`interactive: true`；拖文件 / 资源管理器 → `@path`（区外绝对路径 + extra-root `/perm`）；**不**在扩展里跑 tool；无 inline diff。**activate 不** `ymz start`。关编辑器仍不 `ymz stop`。不上 Marketplace。TUI 启动器保留为 `ymz.useTerminal`。`/perm similar|permanent` grant TTL 夹进 chat approval 窗。
 
 | ID | 项 | 状态 |
 | --- | --- | --- |
@@ -149,7 +148,7 @@ V0–V3 已发 **v0.4.0**：`extensions/vscode` 启动 TUI；`make vscode` 本�
 | **V1** | 三命令 + PATH + `@file#L` | ✅ |
 | **V2** | `make vscode` 本机 VSIX | ✅ |
 | **V3** | Release 挂 VSIX | ✅ |
-| **V4** | 原生侧栏 Webview 聊天 + 拖文件 | 下一优先 |
+| **V4** | 原生 Webview 聊天 + 拖文件（列表 + 编辑器 Tab） | ✅ ADR-056 |
 | **V5** | Marketplace / Open VSX | 用户量上来再做 |
 
 ### 等用户再提
@@ -194,7 +193,7 @@ V0–V3 已发 **v0.4.0**：`extensions/vscode` 启动 TUI；`make vscode` 本�
 用例（daemon services）     → 已统一
 外观（gatewayclient）       → 已共享
 语法（CLI argv / TUI slash / HTTP）→ 故意分叉
-IDE（extensions/vscode）    → 本相只启动 TUI；V4 Webview 在 S/W/M 之后才走 HTTP
+IDE（extensions/vscode）    → Webview 第四 peer（ADR-056）；TUI 启动器回退（ADR-054）
 通道（channel adapter）     → 规划中；与 gatewayclient 并列的 Core 客户端
 ```
 

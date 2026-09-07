@@ -152,7 +152,7 @@ GoReleaser builds **one archive per OS/arch**. Each archive contains **two binar
 | `ymz_{version}_{os}_{arch}.tar.gz` | `ymz_0.3.0_linux_amd64.tar.gz` |
 | `ymz_{version}_windows_{arch}.zip` | `ymz_0.3.0_windows_amd64.zip` |
 | `checksums.txt` | SHA-256 of all archives (fixed name) |
-| `ymz-vscode_{version}.vsix` | VS Code / Cursor terminal launcher — **required** on every tag |
+| `ymz-vscode_{version}.vsix` | VS Code / Cursor Webview chat (TUI launcher fallback) — **required** on every tag |
 
 - `{version}` = tag **without** leading `v` (GoReleaser `.Version`).
 - Prefer `YMZ_VERSION=vX.Y.Z` when the release is **Pre-release** (GitHub `latest` may skip it).

@@ -76,7 +76,7 @@ uninstall:
 	rm -f "$(BINDIR)/ymz" "$(BINDIR)/ymzd"
 	@echo "Removed from $(BINDIR): ymz ymzd"
 
-# Optional: package the VS Code terminal launcher (needs Node). Not part of check.
+# Optional: package the VS Code Webview chat VSIX (needs Node). Not part of check.
 vscode:
 	sh ./scripts/package-vscode.sh
 

@@ -4,6 +4,7 @@
 - 日期：2026-07-14
 - 更新：2026-08-27（`POST /v1/sessions/{id}/retract`；hidden task 不进 transcript/ListTasks）
 - 更新：2026-08-24（ADR-054：VS Code 终端启动器是第三 peer，本相不走 Gateway HTTP）
+- 更新：2026-09-04（ADR-056：VS Code Webview 是第四 peer，走 `/v1/*`；启动器仍不调 Gateway）
 
 ## 决策
 
@@ -72,7 +73,7 @@ internal/tui             Charm v2 TUI（ADR-053）；消费窄 `tui.Gateway`（�
                           mid-turn refresh 保留 typewriter；吸底 pin；Tab = agent/plan/auto
 internal/gatewayclient   共享 HTTP/SSE 外观 + transport（不 import gateway server）
 internal/gateway         服务端 only：路由 / handlers / LocalRunner
-extensions/vscode        VS Code 扩展（ADR-054）；本相只开集成终端跑 `ymz` TUI，不调 Gateway
+extensions/vscode        VS Code 扩展：Webview 聊天（ADR-056）打 `/v1/*`；终端启动器（ADR-054）仍不调 Gateway
 ```
 
 TUI 与 CLI 不得 import `tools`、`providers`、`store/sqlite`、`agent`、`chatsession` 实现。主交互斜杠：`/new`（离焦 ready，运行中则 cancel）、`/edit`（隐藏上一轮并填编辑器）、`/editundo`（同上并撤回该轮文件）、`/undo`、`/cron`、`/compact`、`/perm`、`/memory`、`/expand`、`/journey`（memory + skill 事件）、`/skills`（含 apply/reject/archived；显式预载快照）、`/<skill-id>`、`/<command>`（`chat.commands`）、`/model`（本会话）/ `/model main`（全局默认）、`/status`（含 daemon 版本）。运行中普通回车 = steer（不 cancel）；空闲/已结束会话回车提交新一轮；steer 409 回退 submit。提问/授权卡开着时 Enter 不 steer。`ask_user` 弹出问题卡（perm 优先；自定义回答；Esc Esc dismiss）。折叠快捷键：`e` / `E` / `c`（输入为空时）。用户规则：`<ConfigDir>/AGENTS.md` + 可选项目 `.yunmengze/AGENTS.md`。Prefix 含技能目录；正文仍 `skill_view`。CLI：`ymz config import-opencode`（离线写 ConfigDir，不经 Gateway）。可选尾巴见 `docs/backlog/current.md`。
