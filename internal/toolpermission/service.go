@@ -306,7 +306,7 @@ func (s *Service) DecideWithOptions(ctx context.Context, permissionID, decision,
 		scope = narrowScopeForSimilar(scope, req)
 	}
 
-	approvalID, err := s.lookupApprovalID(ctx, plan, req.PlanHash)
+	approvalID, approvalExpires, err := s.lookupApproval(ctx, plan, req.PlanHash)
 	if err != nil {
 		return Request{}, err
 	}
@@ -321,6 +321,10 @@ func (s *Service) DecideWithOptions(ctx context.Context, permissionID, decision,
 		state = StateAllowedPermanent
 	default:
 		state = StateAllowedOnce
+	}
+	expiresAt, err = clampGrantExpiry(now, expiresAt, approvalExpires)
+	if err != nil {
+		return Request{}, err
 	}
 	_, err = s.approvals.IssueGrant(ctx, approval.GrantInput{
 		ID: approval.GrantID(grantID), ApprovalID: approval.ApprovalID(approvalID),
@@ -580,43 +584,74 @@ func (s *Service) loadPlanDocument(ctx context.Context, planID string) (approval
 	return plan, nil
 }
 
-func (s *Service) lookupApprovalID(ctx context.Context, plan approval.PlanDocument, planHash string) (string, error) {
-	var approvalID string
+func (s *Service) lookupApproval(ctx context.Context, plan approval.PlanDocument, planHash string) (string, time.Time, error) {
 	hash := strings.TrimSpace(planHash)
 	if hash == "" {
 		var err error
 		hash, err = plan.Hash()
 		if err != nil {
-			return "", err
+			return "", time.Time{}, err
 		}
 	}
+	id, expires, err := s.scanApproval(ctx, plan, hash)
+	if errors.Is(err, sql.ErrNoRows) {
+		h2, herr := plan.Hash()
+		if herr != nil {
+			return "", time.Time{}, herr
+		}
+		id, expires, err = s.scanApproval(ctx, plan, h2)
+	}
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", time.Time{}, approval.ErrNotApproved
+	}
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	return id, expires, nil
+}
+
+func (s *Service) scanApproval(ctx context.Context, plan approval.PlanDocument, hash string) (string, time.Time, error) {
+	var approvalID string
+	var expires sql.NullString
 	err := s.db.QueryRowContext(ctx, `
-		SELECT approval_id FROM approvals
+		SELECT approval_id, expires_at FROM approvals
 		WHERE plan_id = ? AND plan_revision = ? AND scope_hash = ? AND decision = ?
 		AND scope_type = ? AND step_id IS NULL AND invalidated_at IS NULL
 		ORDER BY decided_at DESC, approval_id DESC LIMIT 1`,
 		plan.PlanID, plan.Revision, hash, approval.DecisionApproved, approval.ScopePlan,
-	).Scan(&approvalID)
-	if errors.Is(err, sql.ErrNoRows) {
-		h2, herr := plan.Hash()
-		if herr != nil {
-			return "", herr
-		}
-		err = s.db.QueryRowContext(ctx, `
-			SELECT approval_id FROM approvals
-			WHERE plan_id = ? AND plan_revision = ? AND scope_hash = ? AND decision = ?
-			AND scope_type = ? AND step_id IS NULL AND invalidated_at IS NULL
-			ORDER BY decided_at DESC, approval_id DESC LIMIT 1`,
-			plan.PlanID, plan.Revision, h2, approval.DecisionApproved, approval.ScopePlan,
-		).Scan(&approvalID)
-	}
-	if errors.Is(err, sql.ErrNoRows) {
-		return "", approval.ErrNotApproved
-	}
+	).Scan(&approvalID, &expires)
 	if err != nil {
-		return "", err
+		return "", time.Time{}, err
 	}
-	return approvalID, nil
+	if !expires.Valid || strings.TrimSpace(expires.String) == "" {
+		return approvalID, time.Time{}, nil
+	}
+	parsed, err := time.Parse(time.RFC3339Nano, expires.String)
+	if err != nil {
+		return "", time.Time{}, fmt.Errorf("parse approval expiration: %w", err)
+	}
+	return approvalID, parsed.UTC(), nil
+}
+
+// clampGrantExpiry keeps IssueGrant inside the approval window (ADR-043/046).
+// similar is 24h and permanent is 365d, but chat system approvals expire at 24h from start;
+// a grant later than that window is rejected as not approved (HTTP 500 without this clamp).
+func clampGrantExpiry(issuedAt, desired, approvalExpires time.Time) (time.Time, error) {
+	issuedAt = issuedAt.UTC()
+	desired = desired.UTC()
+	if !approvalExpires.IsZero() {
+		approvalExpires = approvalExpires.UTC()
+		if !issuedAt.Before(approvalExpires) {
+			return time.Time{}, fmt.Errorf("%w: approval has expired", ErrInvalidDecide)
+		}
+		if desired.After(approvalExpires) {
+			desired = approvalExpires
+		}
+	}
+	if !desired.After(issuedAt) {
+		return time.Time{}, fmt.Errorf("%w: grant expiration must be after issue time", ErrInvalidDecide)
+	}
+	return desired, nil
 }
 
 func shortHash(parts ...string) string {

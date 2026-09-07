@@ -471,6 +471,9 @@ func planContainsScope(plan PlanDocument, stepID kernel.StepID, scope Capability
 			if hostCapabilityNarrowing(candidate, scope) {
 				return true
 			}
+			if commandCapabilityNarrowing(candidate, scope) {
+				return true
+			}
 			if extraRootGrant(candidate, scope) {
 				return true
 			}
@@ -502,6 +505,65 @@ func hostCapabilityNarrowing(planScope, grantScope CapabilityScope) bool {
 	if planScope.OneTime != grantScope.OneTime || planScope.MaxCalls != grantScope.MaxCalls ||
 		planScope.MaxDurationMillis != grantScope.MaxDurationMillis {
 		return false
+	}
+	return true
+}
+
+// commandCapabilityNarrowing allows a /perm similar|permanent grant whose only
+// difference from a path-scoped process plan (empty Command) is filling a command
+// plus optional args. similar already prefix-narrows args in toolpermission
+// (ADR-046 / ADR-051, e.g. go test ⊇ go test ./foo).
+func commandCapabilityNarrowing(planScope, grantScope CapabilityScope) bool {
+	switch planScope.Capability {
+	case "process_exec", "process_shell":
+	default:
+		return false
+	}
+	if planScope.Capability != grantScope.Capability {
+		return false
+	}
+	if strings.TrimSpace(planScope.Command) != "" {
+		return false
+	}
+	if strings.TrimSpace(grantScope.Command) == "" {
+		return false
+	}
+	if planScope.OneTime != grantScope.OneTime || planScope.MaxCalls != grantScope.MaxCalls ||
+		planScope.MaxDurationMillis != grantScope.MaxDurationMillis {
+		return false
+	}
+	if !pathsNarrowedOrEqual(planScope.Paths, grantScope.Paths) {
+		return false
+	}
+	if !slices.Equal(planScope.NetworkDomains, grantScope.NetworkDomains) {
+		return false
+	}
+	return true
+}
+
+func pathsNarrowedOrEqual(planPaths, grantPaths []string) bool {
+	if len(grantPaths) == 0 {
+		return len(planPaths) == 0
+	}
+	for _, grantPath := range grantPaths {
+		grantPath = strings.TrimSpace(grantPath)
+		if grantPath == "" {
+			return false
+		}
+		ok := false
+		for _, planPath := range planPaths {
+			planPath = strings.TrimSpace(planPath)
+			if planPath == "" {
+				continue
+			}
+			if grantPath == planPath || strings.HasPrefix(grantPath, strings.TrimRight(planPath, "/")+"/") {
+				ok = true
+				break
+			}
+		}
+		if !ok {
+			return false
+		}
 	}
 	return true
 }

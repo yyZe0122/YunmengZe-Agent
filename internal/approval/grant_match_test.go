@@ -56,6 +56,71 @@ func TestPlanContainsHTTPGetDomainNarrowing(t *testing.T) {
 	}
 }
 
+func TestPlanContainsProcessCommandNarrowing(t *testing.T) {
+	plan := PlanDocument{Steps: []StepScope{{
+		StepID: "s1",
+		Capabilities: []CapabilityScope{{
+			Capability: "process_exec", Paths: []string{"/tmp/ws"},
+			MaxDurationMillis: 60000, MaxCalls: 8,
+		}},
+	}}}
+	narrow := CapabilityScope{
+		Capability: "process_exec", Paths: []string{"/tmp/ws"},
+		Command: "go", Arguments: []string{"test"},
+		MaxDurationMillis: 60000, MaxCalls: 8,
+	}
+	if !planContainsScope(plan, "s1", narrow) {
+		t.Fatal("empty-command process plan should allow command-narrowed similar grant")
+	}
+	withArgs := narrow
+	withArgs.Arguments = []string{"test", "./internal/foo/"}
+	if !planContainsScope(plan, "s1", withArgs) {
+		t.Fatal("command-narrowed grant may carry a similar args prefix")
+	}
+	wide := narrow
+	wide.Command = ""
+	wide.Arguments = []string{"test"}
+	if planContainsScope(plan, "s1", wide) {
+		t.Fatal("must not fill args while leaving command empty")
+	}
+	otherCap := narrow
+	otherCap.Capability = "process_shell"
+	if planContainsScope(plan, "s1", otherCap) {
+		t.Fatal("must not change capability")
+	}
+	once := narrow
+	once.OneTime = true
+	once.MaxCalls = 1
+	if planContainsScope(plan, "s1", once) {
+		t.Fatal("must not change once/max_calls while command-narrowing")
+	}
+	shellPlan := PlanDocument{Steps: []StepScope{{
+		StepID: "s1",
+		Capabilities: []CapabilityScope{{
+			Capability: "process_shell", Paths: []string{"/tmp/ws"},
+			MaxDurationMillis: 60000, MaxCalls: 8,
+		}},
+	}}}
+	shellNarrow := CapabilityScope{
+		Capability: "process_shell", Paths: []string{"/tmp/ws"},
+		Command: "/bin/sh", Arguments: []string{"-c", "go test"},
+		MaxDurationMillis: 60000, MaxCalls: 8,
+	}
+	if !planContainsScope(shellPlan, "s1", shellNarrow) {
+		t.Fatal("empty-command process_shell plan should allow command-narrowed similar grant")
+	}
+	sub := narrow
+	sub.Paths = []string{"/tmp/ws/internal"}
+	if !planContainsScope(plan, "s1", sub) {
+		t.Fatal("command-narrowed grant may also narrow to a subdirectory of a plan root")
+	}
+	outside := narrow
+	outside.Paths = []string{"/other"}
+	if planContainsScope(plan, "s1", outside) {
+		t.Fatal("must not command-narrow onto a path outside the plan")
+	}
+}
+
 func TestPlanContainsExtraRootGrant(t *testing.T) {
 	plan := PlanDocument{Steps: []StepScope{{
 		StepID: "s1",

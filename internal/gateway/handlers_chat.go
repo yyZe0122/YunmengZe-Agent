@@ -15,6 +15,7 @@ import (
 	"github.com/yyZe0122/yunmengze-agent/internal/runlog"
 	"github.com/yyZe0122/yunmengze-agent/internal/taskcontrol"
 	"github.com/yyZe0122/yunmengze-agent/internal/tasksubmission"
+	"github.com/yyZe0122/yunmengze-agent/internal/toolpermission"
 )
 
 type taskSubmissionRequest struct {
@@ -503,11 +504,13 @@ func (a *API) handlePermissionDecide(w http.ResponseWriter, r *http.Request) {
 		slog.Warn("permission decide failed", runlog.Attrs("gateway", "permission_decide", "failed", runlog.IDs{},
 			"permission_id", id, "decision", request.Decision, "error", err)...)
 		msg := err.Error()
-		if strings.Contains(msg, "not found") {
+		if errors.Is(err, toolpermission.ErrNotFound) || strings.Contains(msg, "not found") {
 			writeError(w, http.StatusNotFound, "not_found", msg)
 			return
 		}
-		if strings.Contains(msg, "not pending") || strings.Contains(msg, "invalid") {
+		if errors.Is(err, toolpermission.ErrNotPending) || errors.Is(err, toolpermission.ErrInvalidDecide) ||
+			errors.Is(err, approval.ErrNotApproved) || errors.Is(err, approval.ErrGrantDenied) ||
+			strings.Contains(msg, "not pending") || strings.Contains(msg, "invalid") {
 			writeError(w, http.StatusBadRequest, "invalid_request", msg)
 			return
 		}
