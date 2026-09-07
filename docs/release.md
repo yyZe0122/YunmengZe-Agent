@@ -91,7 +91,7 @@ Replace `vX.Y.Z` (e.g. `v0.4.0`). The script **refuses** a missing or stub chang
 | 5 | `make check` green (script runs it unless `--skip-check`). |
 | 6 | Node 18+ available as the repo owner (root publish `su`s to that user to pack VSIX). Missing VSIX **fails**. |
 | 7 | `gh auth login` or valid `GITHUB_TOKEN` + `PACKAGE_GITHUB_TOKEN`. |
-| 8 | As **root**, clean tree: `./scripts/publish-release.sh vX.Y.Z --yes`. |
+| 8 | As **root**, clean tree: `./scripts/publish-release.sh vX.Y.Z --yes`. Script prepends `/usr/local/go/bin` + `yyze` Go/gh bins (root login PATH is often empty). |
 
 ### After publish
 

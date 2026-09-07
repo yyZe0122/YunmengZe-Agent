@@ -88,6 +88,23 @@ run() {
   eval "$@"
 }
 
+# Root login PATH often lacks Go (secure_path). Prepend known tool dirs before make/goreleaser.
+ensure_toolchain_path() {
+  local extra="" d
+  for d in /usr/local/go/bin /home/yyze/go/bin /home/yyze/.local/bin /usr/local/bin; do
+    if [[ -d "$d" ]]; then
+      extra="${extra:+$extra:}$d"
+    fi
+  done
+  if [[ -n "$extra" ]]; then
+    PATH="${extra}:$PATH"
+    export PATH
+  fi
+  if ! command -v go >/dev/null 2>&1; then
+    die "go not found in PATH (looked in /usr/local/go/bin). Root login PATH is too thin; install Go or add it to PATH."
+  fi
+}
+
 find_goreleaser() {
   if command -v goreleaser >/dev/null 2>&1; then
     command -v goreleaser
@@ -172,6 +189,8 @@ done
 if [[ "$(id -u)" -ne 0 ]]; then
   die "must run as root (scheme A: only root commits/pushes/tags)"
 fi
+
+ensure_toolchain_path
 
 [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]] \
   || die "tag must look like v0.1.0 or v0.1.0-alpha.1 (got: $TAG)"
