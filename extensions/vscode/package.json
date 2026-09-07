@@ -1,7 +1,7 @@
 {
   "name": "ymz-vscode",
   "displayName": "YunmengZe",
-  "description": "Open the YunmengZe TUI in the VS Code terminal",
+  "description": "YunmengZe chat in VS Code: session list, editor tabs, drag files as @path",
   "version": "0.0.1",
   "publisher": "yunmengze",
   "license": "Apache-2.0",
@@ -12,64 +12,155 @@
   "engines": {
     "vscode": "^1.94.0"
   },
-  "categories": ["Other"],
-  "activationEvents": [],
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./dist/extension.js",
   "icon": "images/icon.png",
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "ymz",
+          "title": "YunmengZe",
+          "icon": "images/button-light.svg"
+        }
+      ]
+    },
+    "views": {
+      "ymz": [
+        {
+          "id": "ymz.sessions",
+          "name": "Sessions"
+        }
+      ]
+    },
     "commands": [
       {
-        "command": "ymz.openTerminal",
-        "title": "YunmengZe: Open TUI",
+        "command": "ymz.focusInput",
+        "title": "YunmengZe: Focus Input",
         "icon": {
           "light": "images/button-dark.svg",
           "dark": "images/button-light.svg"
         }
+      },
+      {
+        "command": "ymz.openNewTab",
+        "title": "YunmengZe: Open in New Tab",
+        "icon": {
+          "light": "images/button-dark.svg",
+          "dark": "images/button-light.svg"
+        }
+      },
+      {
+        "command": "ymz.openSession",
+        "title": "YunmengZe: Open Session"
+      },
+      {
+        "command": "ymz.addFilepath",
+        "title": "YunmengZe: Insert @-file reference"
+      },
+      {
+        "command": "ymz.addExplorerPath",
+        "title": "YunmengZe: Add to chat"
+      },
+      {
+        "command": "ymz.openTerminal",
+        "title": "YunmengZe: Open TUI"
       },
       {
         "command": "ymz.openNewTerminal",
-        "title": "YunmengZe: Open TUI in new tab",
-        "icon": {
-          "light": "images/button-dark.svg",
-          "dark": "images/button-light.svg"
-        }
+        "title": "YunmengZe: Open TUI in new tab"
       },
       {
         "command": "ymz.addFilepathToTerminal",
-        "title": "YunmengZe: Insert @-file reference"
+        "title": "YunmengZe: Insert @-file into TUI"
       }
     ],
     "menus": {
       "editor/title": [
         {
-          "command": "ymz.openNewTerminal",
+          "command": "ymz.openNewTab",
+          "group": "navigation"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "ymz.addExplorerPath",
+          "group": "navigation@99"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "ymz.addFilepath",
+          "group": "navigation@99"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "ymz.openNewTab",
+          "when": "view == ymz.sessions",
           "group": "navigation"
         }
       ]
     },
     "keybindings": [
       {
-        "command": "ymz.openTerminal",
+        "command": "ymz.focusInput",
         "key": "ctrl+escape",
         "mac": "cmd+escape"
       },
       {
-        "command": "ymz.openNewTerminal",
+        "command": "ymz.openNewTab",
         "key": "ctrl+shift+escape",
         "mac": "cmd+shift+escape"
       },
       {
-        "command": "ymz.addFilepathToTerminal",
-        "key": "ctrl+alt+k",
-        "mac": "cmd+alt+k"
+        "command": "ymz.addFilepath",
+        "key": "alt+k",
+        "mac": "alt+k",
+        "when": "editorTextFocus"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "YunmengZe",
+      "properties": {
+        "ymz.executablePath": {
+          "type": "string",
+          "default": "",
+          "description": "Absolute path to the ymz binary. Empty = PATH then ~/.local/bin/ymz."
+        },
+        "ymz.home": {
+          "type": "string",
+          "default": "",
+          "description": "Override YMZ_HOME / ~/.yunmengze (absolute). Used to find run/gateway.json."
+        },
+        "ymz.useTerminal": {
+          "type": "boolean",
+          "default": false,
+          "description": "Open the TUI in an integrated terminal instead of the Webview chat (ADR-054)."
+        },
+        "ymz.preferredLocation": {
+          "type": "string",
+          "enum": [
+            "panel",
+            "sidebar"
+          ],
+          "default": "panel",
+          "description": "Where new chat tabs open: editor area (panel) or beside the editor (sidebar)."
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run package",
     "compile": "node esbuild.js",
     "package": "node esbuild.js --production",
     "check-types": "tsc --noEmit",
+    "test": "tsx --test src/paths.test.ts",
     "vsix": "npm run check-types && npm run package && vsce package --no-dependencies"
   },
   "devDependencies": {
@@ -77,6 +168,7 @@
     "@types/vscode": "^1.94.0",
     "@vscode/vsce": "^3.2.2",
     "esbuild": "^0.25.3",
+    "tsx": "^4.23.13",
     "typescript": "^5.8.3"
   }
 }

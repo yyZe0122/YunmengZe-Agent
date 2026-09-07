@@ -1,0 +1,131 @@
+:root {
+  color: var(--vscode-foreground);
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+}
+html, body, #app {
+  margin: 0;
+  height: 100%;
+}
+#app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  background: var(--vscode-editor-background);
+}
+.hdr {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 8px 12px 6px;
+  border-bottom: 1px solid var(--vscode-widget-border, var(--vscode-editorWidget-border));
+}
+.hdr-title { font-weight: 600; }
+.hdr-sub, .dim { color: var(--vscode-descriptionForeground); font-size: 12px; }
+.timeline {
+  flex: 1;
+  overflow: auto;
+  padding: 10px 12px 16px;
+}
+.msg { margin: 0 0 14px; }
+.msg-role {
+  font-size: 11px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--vscode-descriptionForeground);
+  margin-bottom: 4px;
+}
+.msg.user .prose { color: var(--vscode-foreground); }
+.fold { margin: 6px 0; }
+.fold summary {
+  cursor: pointer;
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+}
+.prose, .md { white-space: pre-wrap; word-break: break-word; line-height: 1.45; }
+.code, .pre {
+  font-family: var(--vscode-editor-font-family);
+  font-size: 12px;
+  background: var(--vscode-textCodeBlock-background);
+  padding: 8px;
+  overflow: auto;
+}
+code {
+  font-family: var(--vscode-editor-font-family);
+  background: var(--vscode-textCodeBlock-background);
+  padding: 0 3px;
+}
+.card {
+  border: 1px solid var(--vscode-widget-border, var(--vscode-focusBorder));
+  padding: 10px;
+  margin: 8px 0 14px;
+}
+.card-h { font-weight: 600; margin-bottom: 6px; }
+.card-b, .q-q, .hint { font-size: 12px; color: var(--vscode-descriptionForeground); margin-bottom: 8px; }
+.row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.row.line { margin: 4px 0; }
+.grow { flex: 1; }
+.btn, .seg button, .slash-item, .at, .link {
+  background: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+  border: 0;
+  padding: 4px 8px;
+  cursor: pointer;
+  font: inherit;
+}
+.btn.primary, .seg-on, .btn.on {
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+}
+.btn.danger { background: var(--vscode-inputValidation-errorBackground); color: var(--vscode-errorForeground); }
+.btn.ghost { background: transparent; color: var(--vscode-foreground); }
+.inp, .ta {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  border: 1px solid var(--vscode-input-border, transparent);
+  font: inherit;
+  padding: 6px 8px;
+}
+.composer {
+  padding: 8px 12px 0;
+  border-top: 1px solid var(--vscode-widget-border, var(--vscode-editorWidget-border));
+}
+.composer.drag { outline: 1px dashed var(--vscode-focusBorder); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.chip {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+  padding: 2px 6px;
+  font-size: 12px;
+}
+.chip.out { outline: 1px solid var(--vscode-inputValidation-warningBorder, orange); }
+.chip .x { background: transparent; border: 0; color: inherit; cursor: pointer; }
+.foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 12px 8px;
+}
+.seg { display: flex; }
+.seg button { border-radius: 0; }
+.status { padding: 0 12px 10px; font-size: 12px; color: var(--vscode-descriptionForeground); min-height: 1.2em; }
+.status.err { color: var(--vscode-errorForeground); }
+.panel {
+  border-top: 1px solid var(--vscode-widget-border, var(--vscode-editorWidget-border));
+  max-height: 40%;
+  overflow: auto;
+  padding: 8px 12px;
+}
+.panel-h { display: flex; justify-content: space-between; margin-bottom: 8px; }
+.slash, .suggest { display: flex; flex-direction: column; gap: 2px; }
+.slash-item { text-align: left; display: flex; gap: 8px; }
+.todo { font-size: 12px; color: var(--vscode-descriptionForeground); margin-bottom: 4px; }
+.pulse { opacity: .6; }
+.link, .at { padding: 0 2px; background: transparent; color: var(--vscode-textLink-foreground); }
+.opts { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }

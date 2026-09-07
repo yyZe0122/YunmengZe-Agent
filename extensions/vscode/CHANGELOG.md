@@ -2,6 +2,7 @@
 
 ## 0.0.1
 
-- Open the ymz TUI in a split integrated terminal (Ctrl/Cmd+Esc).
-- Open another TUI tab (Ctrl/Cmd+Shift+Esc).
-- Insert `@file#L` for the current selection (Ctrl+Alt+K / Cmd+Alt+K).
+- Activity-bar session list + editor-tab Webview chat (Gateway `/v1/*`).
+- Drag files / explorer / Alt+K → `@path` chips (outside workspace = absolute + extra-root `/perm`).
+- Permission and question cards; agent / plan / auto; slash commands matching the TUI.
+- TUI launcher kept as `ymz.useTerminal`.
