@@ -5,6 +5,7 @@
 - 修订：ADR-004 / 008 / 012 / 018 / 038 / 039 / 041 / 043 / 051 后果段
 - 更新：2026-09-03（Inbox `ClaimStep` 按 session+run；子循环不领取父 steer）
 - 更新：2026-09-02（问题卡向导 / 自定义回答 / dismiss / Wait 30m）
+- 更新：2026-09-07（父 ctx cancel：先落 `interrupted` 观察再取消 turn）
 
 ## 背景
 
@@ -46,7 +47,8 @@ Inbox **只有 next-step**。没有 next-turn 队列：空闲回车走现有 `Su
 | 策略拒绝 / 人 deny / CLI 无 wait | `tool_denied` JSON，继续 |
 | 工具业务失败（非零退出、缺文件、patch miss、git/MCP/HTTP 失败、超时） | `{error, tool, message, hint?}` 或工具自带 JSON，**继续** |
 | 未广告 / 非法 tool call | `unadvertised_tool` / `invalid_tool_call`，继续 |
-| 基础设施（父 ctx cancel、DB 无法落盘） | 取消/失败 turn |
+| 父 ctx cancel（Esc / `/new` / 权限等待结束） | 先落 `interrupted` JSON（in-flight + 同 step 未执行 sibling），再取消 turn。packing 不再补 `orphan_tool_call` |
+| 基础设施（DB 无法落盘） | 失败 turn |
 
 `process_exec` / `process_shell` / `git_*`：**非零退出是成功结果**（`exit_code` / stdout / stderr），不是 Go error。启动失败（找不到命令、坏工作目录）同样编成观察 JSON，除非父 ctx 已取消。Broker 工具超时改写成 `ErrToolTimeout` 后走观察，不是父 ctx 超时。
 

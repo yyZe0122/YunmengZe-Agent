@@ -164,9 +164,12 @@ func mergeToolFailureOutput(output json.RawMessage, call providerapi.ToolCall, e
 func (r *Runner) executeToolCallsSerial(ctx context.Context, request RunRequest, calls []providerapi.ToolCall) ([]providerapi.Message, []toolapi.Response, error) {
 	outMsgs := make([]providerapi.Message, 0, len(calls))
 	outResps := make([]toolapi.Response, 0, len(calls))
-	for _, call := range calls {
+	for i, call := range calls {
 		toolMessage, toolResponse, err := r.executeOneToolCall(ctx, request, call)
 		if err != nil {
+			if persistErr := r.persistInterruptedToolCalls(ctx, request, calls[i:], err); persistErr != nil {
+				return nil, nil, persistErr
+			}
 			return nil, nil, err
 		}
 		rec, err := r.records.AppendToolResult(ctx, request.RunID, toolMessage)
@@ -201,9 +204,16 @@ func (r *Runner) executeToolCallsParallel(ctx context.Context, request RunReques
 	wg.Wait()
 	outMsgs := make([]providerapi.Message, 0, len(calls))
 	outResps := make([]toolapi.Response, 0, len(calls))
+	var firstErr error
 	for i := range results {
 		if results[i].err != nil {
-			return nil, nil, results[i].err
+			if firstErr == nil {
+				firstErr = results[i].err
+			}
+			if persistErr := r.persistInterruptedToolCall(ctx, request, calls[i], results[i].err); persistErr != nil && firstErr == nil {
+				firstErr = persistErr
+			}
+			continue
 		}
 		rec, err := r.records.AppendToolResult(ctx, request.RunID, results[i].msg)
 		if err != nil {
@@ -213,7 +223,43 @@ func (r *Runner) executeToolCallsParallel(ctx context.Context, request RunReques
 		outMsgs = append(outMsgs, results[i].msg)
 		outResps = append(outResps, results[i].resp)
 	}
+	if firstErr != nil {
+		return outMsgs, outResps, firstErr
+	}
 	return outMsgs, outResps, nil
+}
+
+func (r *Runner) persistInterruptedToolCalls(ctx context.Context, request RunRequest, calls []providerapi.ToolCall, cause error) error {
+	for _, call := range calls {
+		if err := r.persistInterruptedToolCall(ctx, request, call, cause); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *Runner) persistInterruptedToolCall(ctx context.Context, request RunRequest, call providerapi.ToolCall, cause error) error {
+	if r == nil || r.records == nil || strings.TrimSpace(call.ID) == "" {
+		return nil
+	}
+	content := toolInterruptedContent(call, cause)
+	msg := providerapi.Message{Role: providerapi.RoleTool, ToolCallID: call.ID, Content: content}
+	persistCtx := context.WithoutCancel(ctx)
+	if persistCtx.Err() != nil {
+		persistCtx = context.Background()
+	}
+	rec, err := r.records.AppendToolResult(persistCtx, request.RunID, msg)
+	if err != nil {
+		return err
+	}
+	r.indexToolResult(persistCtx, request, call.Name, rec)
+	slog.Info("interrupted tool call; persisted synthetic result",
+		"component", "agent", "operation", "tool_interrupted", "result", "cancelled",
+		"run_id", request.RunID, "task_id", request.TaskID, "plan_id", request.PlanID,
+		"step_id", request.StepID, "trace_id", request.TraceID,
+		"tool", call.Name, "tool_call_id", call.ID, "error", cause,
+	)
+	return nil
 }
 
 func (r *Runner) indexToolResult(ctx context.Context, request RunRequest, toolName string, rec RunRecord) {

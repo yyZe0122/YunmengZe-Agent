@@ -87,6 +87,99 @@ func TestRunnerTrimsLongToolResultsForProviderOnly(t *testing.T) {
 	}
 }
 
+func TestRunnerPersistsInterruptedToolResult(t *testing.T) {
+	store, _, _ := openAgentFixture(t)
+	started := make(chan struct{})
+	broker := &blockingBroker{recordingBroker: recordingBroker{definitions: testDefinitions()}, started: started}
+	provider := &sequenceProvider{responses: []providerapi.CompletionResponse{
+		{ToolCalls: []providerapi.ToolCall{{ID: "call-wait", Name: "test_read", Arguments: `{}`}}},
+		{Content: "should-not-run"},
+	}}
+	runner := newTestRunner(t, provider, broker, store)
+	req := testRunRequest()
+	req.AllowedTools = []string{"test_read"}
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := runner.Run(ctx, req)
+		errCh <- err
+	}()
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("tool did not start")
+	}
+	cancel()
+	select {
+	case err := <-errCh:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("Run() error = %v, want context.Canceled", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Run did not return")
+	}
+	assertInterruptedToolResult(t, store, req.RunID, "call-wait")
+}
+
+func TestRunnerPersistsInterruptedSiblingToolCalls(t *testing.T) {
+	store, _, _ := openAgentFixture(t)
+	started := make(chan struct{})
+	broker := &blockingBroker{recordingBroker: recordingBroker{definitions: testDefinitions()}, started: started}
+	provider := &sequenceProvider{responses: []providerapi.CompletionResponse{
+		{ToolCalls: []providerapi.ToolCall{
+			{ID: "call-wait", Name: "test_read", Arguments: `{}`},
+			{ID: "call-next", Name: "test_read", Arguments: `{}`},
+		}},
+		{Content: "should-not-run"},
+	}}
+	runner := newTestRunner(t, provider, broker, store)
+	req := testRunRequest()
+	req.AllowedTools = []string{"test_read"}
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := runner.Run(ctx, req)
+		errCh <- err
+	}()
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("tool did not start")
+	}
+	cancel()
+	select {
+	case err := <-errCh:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("Run() error = %v, want context.Canceled", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Run did not return")
+	}
+	assertInterruptedToolResult(t, store, req.RunID, "call-wait")
+	assertInterruptedToolResult(t, store, req.RunID, "call-next")
+}
+
+func assertInterruptedToolResult(t *testing.T, store *RecordStore, runID, callID string) {
+	t.Helper()
+	records, err := store.List(context.Background(), runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var content string
+	for _, rec := range records {
+		if rec.Type == RecordToolResult && rec.Message.ToolCallID == callID {
+			content = rec.Message.Content
+			break
+		}
+	}
+	if content == "" {
+		t.Fatalf("missing interrupted tool result for %s", callID)
+	}
+	if !strings.Contains(content, `"error":"interrupted"`) {
+		t.Fatalf("tool result %s = %q", callID, content)
+	}
+}
+
 func TestRunnerRetriesRetryableProviderErrors(t *testing.T) {
 	store, _, _ := openAgentFixture(t)
 	provider := &sequenceProvider{
@@ -669,6 +762,23 @@ func (b *longOutputBroker) Execute(_ context.Context, request toolapi.Request) (
 		}
 	}
 	return response, nil
+}
+
+type blockingBroker struct {
+	recordingBroker
+	started chan struct{}
+}
+
+func (b *blockingBroker) Execute(ctx context.Context, request toolapi.Request) (toolapi.Response, error) {
+	if b.started != nil {
+		select {
+		case <-b.started:
+		default:
+			close(b.started)
+		}
+	}
+	<-ctx.Done()
+	return toolapi.Response{}, ctx.Err()
 }
 
 type recordingBroker struct {

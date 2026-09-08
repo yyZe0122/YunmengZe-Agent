@@ -139,6 +139,10 @@ func toolFailedContent(call providerapi.ToolCall, err error) string {
 	return toolObservationJSON("tool_failed", call, err, "Read the error and tool output. Do not claim the tool succeeded. Fix the input or approach, then retry if useful.")
 }
 
+func toolInterruptedContent(call providerapi.ToolCall, err error) string {
+	return toolObservationJSON("interrupted", call, err, "The tool call did not finish (cancelled, permission wait ended, or context ended). Do not assume it succeeded.")
+}
+
 func toolCallRejectedContent(obs toolCallObservation) string {
 	kind := obs.Kind
 	if kind == "" {
@@ -175,7 +179,7 @@ func isDeniedToolResult(content string) bool {
 
 func isObservationToolResult(content string) bool {
 	switch observationKind(content) {
-	case "tool_denied", "tool_failed", "unadvertised_tool", "invalid_tool_call", "unknown_tool":
+	case "tool_denied", "tool_failed", "unadvertised_tool", "invalid_tool_call", "unknown_tool", "interrupted":
 		return true
 	default:
 		return false
