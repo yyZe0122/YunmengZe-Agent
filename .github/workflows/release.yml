@@ -116,9 +116,17 @@ jobs:
         run: |
           tag="${GITHUB_REF_NAME}"
           ver="${tag#v}"
-          vsix="extensions/vscode/ymz-vscode_${ver}.vsix"
           sh ./scripts/package-vscode.sh "$tag"
+          vsix="extensions/vscode/ymz-vscode_${ver}.vsix"
+          tui="extensions/vscode/ymz-vscode-tui_${ver}.vsix"
           if [ ! -f "$vsix" ]; then
             vsix="dist/vscode/ymz-vscode_${ver}.vsix"
           fi
-          gh release upload "$tag" "$vsix" --clobber
+          if [ ! -f "$tui" ]; then
+            tui="dist/vscode/ymz-vscode-tui_${ver}.vsix"
+          fi
+          if [ ! -f "$vsix" ] || [ ! -f "$tui" ]; then
+            echo "missing VSIX: gui=$vsix tui=$tui" >&2
+            exit 1
+          fi
+          gh release upload "$tag" "$vsix" "$tui" --clobber

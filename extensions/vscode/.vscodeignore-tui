@@ -11,5 +11,6 @@ tsconfig.json
 CHANGELOG.md
 package-tui.json
 .vscodeignore-tui
-dist/extension-tui.js
-dist/extension-tui.js.map
+dist/extension.js
+dist/webview.js
+dist/webview.css

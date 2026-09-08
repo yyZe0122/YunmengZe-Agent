@@ -1,8 +1,15 @@
 # YunmengZe for VS Code
 
-Native chat in the editor: activity-bar session list + drag-able editor tabs. Drag files onto the composer to insert `@path` chips. Talks to the local `ymzd` gateway. Not on the Marketplace.
+Two VSIX from this folder (**do not install both** — shortcut clash):
 
-Requires [YunmengZe Agent](https://github.com/yyZe0122/YunmengZe-Agent) (`ymz` on `PATH` or `~/.local/bin/ymz`). The extension does not bundle the daemon. Opening VS Code does **not** start `ymzd`; the first chat tab does. Closing VS Code does **not** stop `ymzd`.
+| Asset | Extension | UX |
+| --- | --- | --- |
+| `ymz-vscode_*.vsix` | YunmengZe | Webview chat: activity-bar session list + drag-able editor tabs. Drag files onto the composer as `@path`. |
+| `ymz-vscode-tui_*.vsix` | YunmengZe TUI | Integrated-terminal TUI. Session cwd is the current VS Code folder. |
+
+Talks to the local `ymzd` gateway (GUI) or starts `ymz` in a terminal (TUI). Not on the Marketplace.
+
+Requires [YunmengZe Agent](https://github.com/yyZe0122/YunmengZe-Agent) (`ymz` on `PATH` or `~/.local/bin/ymz`). The extension does not bundle the daemon. Opening VS Code does **not** start `ymzd`; the first GUI chat tab starts it **silently**. Closing VS Code does **not** stop `ymzd`.
 
 ## Install (VSIX)
 
@@ -11,20 +18,31 @@ From a GitHub Release or from source: see **[docs/wiki/vscode.md](../../docs/wik
 ```bash
 make vscode
 code --install-extension extensions/vscode/ymz-vscode_*.vsix
+# or
+code --install-extension extensions/vscode/ymz-vscode-tui_*.vsix
 ```
 
-## Commands
+## GUI commands
 
 | Command | Shortcut | Action |
 | --- | --- | --- |
 | YunmengZe: Focus Input | Ctrl/Cmd+Esc | Focus the composer, or open a new tab |
 | YunmengZe: Open in New Tab | Ctrl/Cmd+Shift+Esc | Always a new chat tab |
 | YunmengZe: Insert @-file reference | Alt/Option+K | `@path` / `#L` into the composer |
-| YunmengZe: Open TUI | — | Integrated-terminal TUI (`ymz.useTerminal` to bind Esc here) |
 
-Settings: `ymz.executablePath`, `ymz.home`, `ymz.useTerminal`, `ymz.preferredLocation`.
+Settings: `ymz.executablePath`, `ymz.home`, `ymz.preferredLocation`.
 
 Workspace drops become `@rel/path`. Drops from outside the folder become `@/abs/path` (extra-root `/perm` when the agent reads them). No inline diff; no Marketplace.
+
+## TUI commands
+
+| Command | Shortcut | Action |
+| --- | --- | --- |
+| YunmengZe TUI: Open | Ctrl/Cmd+Esc | Reuse the `ymz` terminal, or split and start |
+| YunmengZe TUI: Open in new tab | Ctrl/Cmd+Shift+Esc | Always a new column |
+| YunmengZe TUI: Insert @-file | Alt/Option+K | `@path` / `#L` into the TUI (no Enter) |
+
+No drag-drop chips. Explorer context menu inserts the path as text.
 
 ## Develop
 

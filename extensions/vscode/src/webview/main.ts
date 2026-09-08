@@ -1,13 +1,15 @@
 import type { HostToWebview, Snapshot, WebviewToHost } from "../chat/protocol"
-import type {
-  Chip,
-  Job,
-  LiveState,
-  MemoryEntry,
-  Permission,
-  Stance,
-  TranscriptMessage,
-  UserQuestion,
+import {
+  cycleStance,
+  type Chip,
+  type Job,
+  type LiveState,
+  type MemoryEntry,
+  type Permission,
+  type Stance,
+  type TranscriptMessage,
+  type TranscriptToolCall,
+  type UserQuestion,
 } from "../types"
 
 declare function acquireVsCodeApi(): {
@@ -51,6 +53,8 @@ function emptySnapshot(): Snapshot {
     selectedSkills: [],
     commands: [],
     status: "",
+    statusError: false,
+    version: "",
   }
 }
 
@@ -72,15 +76,17 @@ window.addEventListener("message", (ev: MessageEvent<HostToWebview>) => {
       break
     case "permissions":
       snap.permissions = msg.permissions
-      render()
+      renderCards()
+      renderStatus(snap.statusError)
       break
     case "questions":
       snap.questions = msg.questions
-      render()
+      renderCards()
+      renderStatus(snap.statusError)
       break
     case "todos":
       snap.todos = msg.todos
-      renderFooter()
+      renderTimeline()
       break
     case "context":
       snap.context = msg.context
@@ -97,6 +103,7 @@ window.addEventListener("message", (ev: MessageEvent<HostToWebview>) => {
       break
     case "status":
       snap.status = msg.text
+      snap.statusError = !!msg.error
       renderStatus(msg.error)
       break
     case "insert":
@@ -154,14 +161,24 @@ function post(msg: WebviewToHost): void {
 function render(): void {
   const keepFocus = document.activeElement?.id === "input"
   app.innerHTML = ""
+  const ver = displayVersion(snap.version)
+  const meta = ["ymz"]
+  if (ver) {
+    meta.push(ver)
+  }
+  meta.push(snap.title || "YunmengZe")
   app.append(el("header", "hdr", [
-    el("div", "hdr-title", [text(snap.title || "YunmengZe")]),
+    el("div", "hdr-title", [text(meta.join("  ·  "))]),
     el("div", "hdr-sub", [text(snap.sessionId ? short(snap.sessionId) : "new")]),
   ]))
   const timeline = el("div", "timeline")
   timeline.id = "timeline"
   app.append(timeline)
   renderTimeline()
+  const cards = el("div", "cards")
+  cards.id = "cards"
+  app.append(cards)
+  renderCards()
   if (panel !== "none") {
     app.append(renderPanel())
   }
@@ -176,10 +193,19 @@ function render(): void {
   const status = el("div", "status")
   status.id = "status"
   status.textContent = snap.status
+  status.classList.toggle("err", !!snap.statusError)
   app.append(status)
   if (keepFocus) {
     focusInput()
   }
+}
+
+function displayVersion(v?: string): string {
+  const s = (v || "").trim()
+  if (!s || s === "0.0.1" || s === "0.0.0-dev") {
+    return "dev"
+  }
+  return s
 }
 
 function renderStatus(error?: boolean): void {
@@ -201,16 +227,9 @@ function renderTimeline(): void {
   for (const todo of snap.todos) {
     root.append(el("div", `todo ${todo.status}`, [text(`${todo.status} · ${todo.content}`)]))
   }
-  for (const p of snap.permissions) {
-    root.append(permCard(p))
-  }
-  if (!snap.permissions.length) {
-    for (const q of snap.questions) {
-      root.append(questionCard(q))
-    }
-  }
+  const toolNames = toolNameByCallID(snap.messages)
   for (const m of snap.messages) {
-    root.append(messageNode(m))
+    root.append(messageNode(m, toolNames))
   }
   if (snap.live.content || snap.live.thinking || snap.live.tools.length) {
     root.append(liveNode(snap.live))
@@ -220,31 +239,108 @@ function renderTimeline(): void {
   }
 }
 
-function messageNode(m: TranscriptMessage): HTMLElement {
+function renderCards(): void {
+  const root = document.getElementById("cards")
+  if (!root) {
+    return
+  }
+  root.innerHTML = ""
+  root.classList.toggle("empty", !snap.permissions.length && !snap.questions.length)
+  for (const p of snap.permissions) {
+    root.append(permCard(p))
+  }
+  if (!snap.permissions.length) {
+    for (const q of snap.questions) {
+      root.append(questionCard(q))
+    }
+  }
+}
+
+function toolNameByCallID(messages: TranscriptMessage[]): Map<string, string> {
+  const names = new Map<string, string>()
+  for (const m of messages) {
+    for (const tc of m.tool_calls || []) {
+      if (tc.id) {
+        names.set(tc.id, tc.name)
+      }
+    }
+  }
+  return names
+}
+
+function messageNode(m: TranscriptMessage, toolNames: Map<string, string>): HTMLElement {
   const wrap = el("article", `msg ${m.role}`)
-  wrap.append(el("div", "msg-role", [text(m.role)]))
+  wrap.append(el("div", "msg-role", [text(roleLabel(m.role))]))
   if (m.thinking) {
     wrap.append(fold("thinking", mdLite(m.thinking)))
   }
   if (m.tool_calls?.length) {
     for (const tc of m.tool_calls) {
-      const body = el("div", "tool-body")
-      body.append(mdLite(tc.arguments || ""))
-      const path = extractPath(tc.arguments || "")
-      if (path) {
-        const a = el("button", "link", [text(path)]) as HTMLButtonElement
-        a.addEventListener("click", () => post({ type: "openPath", path }))
-        body.prepend(a)
-      }
-      wrap.append(fold(`${tc.name}`, body))
+      wrap.append(toolCallNode(tc))
     }
   }
   if (m.role === "tool") {
-    wrap.append(fold(m.tool_call_id || "tool", mdLite(m.content)))
+    wrap.append(toolResultNode(m, toolNames.get(m.tool_call_id || "") || ""))
   } else if (m.content) {
     wrap.append(mdLite(m.content))
   }
   return wrap
+}
+
+function roleLabel(role: string): string {
+  switch (role) {
+    case "user":
+      return "you"
+    case "assistant":
+      return "assistant"
+    case "tool":
+      return "tool"
+    default:
+      return role
+  }
+}
+
+function toolCallNode(tc: TranscriptToolCall): HTMLElement {
+  const preview = toolCallPreview(tc.name, tc.arguments || "")
+  const title = preview ? `⚙ ${tc.name} · ${preview}` : `⚙ ${tc.name}`
+  const body = el("div", "tool-body")
+  const path = extractPath(tc.arguments || "")
+  if (path) {
+    const a = el("button", "link", [text(path)]) as HTMLButtonElement
+    a.addEventListener("click", () => post({ type: "openPath", path }))
+    body.append(a)
+  }
+  if (tc.arguments && tc.arguments !== "{}") {
+    body.append(el("pre", "code", [text(prettyJSON(tc.arguments))]))
+  }
+  return fold(title, body)
+}
+
+function toolResultNode(m: TranscriptMessage, toolName: string): HTMLElement {
+  const parsed = parseToolJSON(m.content)
+  const err = typeof parsed?.error === "string" ? parsed.error : ""
+  const name = toolName || (typeof parsed?.tool === "string" ? parsed.tool : "result")
+  const label = m.tool_call_id ? `${name} ${short(m.tool_call_id)}` : name
+  if (err === "orphan_tool_call" || err === "interrupted" || err === "tool_denied" || err === "tool_failed") {
+    const hint = typeof parsed?.hint === "string" ? parsed.hint : ""
+    const msg = typeof parsed?.message === "string" ? parsed.message : err
+    const box = el("div", `tool-err ${err}`)
+    box.append(el("div", "tool-err-h", [text(`${err} · ${label}`)]))
+    box.append(el("div", "tool-err-b", [text(msg)]))
+    if (hint) {
+      box.append(el("div", "hint", [text(hint)]))
+    }
+    return box
+  }
+  const body = el("div", "tool-body")
+  const path = typeof parsed?.path === "string" ? parsed.path : extractPath(m.content)
+  if (path) {
+    const a = el("button", "link", [text(path)]) as HTMLButtonElement
+    a.addEventListener("click", () => post({ type: "openPath", path }))
+    body.append(a)
+  }
+  body.append(el("pre", "code", [text(prettyJSON(m.content))]))
+  return fold(`· ${label}`, body)
 }
 
 function liveNode(live: LiveState): HTMLElement {
@@ -254,7 +350,8 @@ function liveNode(live: LiveState): HTMLElement {
     wrap.append(fold("thinking", mdLite(live.thinking)))
   }
   for (const t of live.tools) {
-    wrap.append(fold(t.name, mdLite(t.preview)))
+    const title = t.preview ? `⚙ ${t.name} · ${t.preview}` : `⚙ ${t.name}`
+    wrap.append(fold(title, mdLite(t.preview)))
   }
   if (live.content) {
     wrap.append(mdLite(live.content))
@@ -266,17 +363,44 @@ function liveNode(live: LiveState): HTMLElement {
 
 function permCard(p: Permission): HTMLElement {
   const card = el("div", "card perm")
-  const title = p.extra_root ? "extra-root permission" : "tool permission"
-  card.append(el("div", "card-h", [text(title)]))
-  card.append(el("div", "card-b", [text(`${p.tool_name}${p.path ? " · " + p.path : ""}${p.command ? " · " + p.command : ""}`)]))
-  if (p.suggested_decision) {
-    card.append(el("div", "hint", [text(`hint ${p.suggested_decision}${p.suggested_reason ? " · " + p.suggested_reason : ""}`)]))
+  if (Date.now() < dismissArmedUntil) {
+    card.classList.add("armed")
+    card.append(el("div", "armed-h", [text("press Esc again in 3s to deny")]))
+  }
+  const title = p.extra_root ? "Permission · extra root" : "Permission"
+  const head = el("div", "card-h")
+  head.append(el("span", "", [text(title)]))
+  head.append(el("span", "card-tool", [text(p.tool_name)]))
+  if (p.risk) {
+    head.append(el("span", "dim", [text(p.risk)]))
+  }
+  card.append(head)
+  if (p.path) {
+    const pathBtn = el("button", "link path", [text(p.path)]) as HTMLButtonElement
+    pathBtn.addEventListener("click", () => post({ type: "openPath", path: p.path || "" }))
+    card.append(pathBtn)
+  }
+  if (p.extra_root) {
+    card.append(el("div", "hint", [text("outside workspace — extra root")]))
+  }
+  const cmd = [p.command, ...(p.command_args || [])].filter(Boolean).join(" ")
+  if (cmd) {
+    card.append(el("div", "card-b", [text(`$ ${cmd}`)]))
+  }
+  if (p.network_domain) {
+    card.append(el("div", "card-b", [text(`host ${p.network_domain}`)]))
+  }
+  if (p.suggested_reason) {
+    card.append(el("div", "hint", [text(p.suggested_reason)]))
+  } else if (p.suggested_decision) {
+    card.append(el("div", "hint", [text(`hint ${p.suggested_decision}`)]))
   }
   const row = el("div", "row")
+  const permanentLabel = p.extra_root ? "permanent · write chat.workspace.allow" : "permanent · remember this tool"
   for (const [label, decision] of [
-    ["once", "allow_once"],
-    ["similar", "allow_similar"],
-    ["permanent", "allow_permanent"],
+    ["once · this call", "allow_once"],
+    ["similar · this session", "allow_similar"],
+    [permanentLabel, "allow_permanent"],
     ["deny", "deny"],
   ] as const) {
     const b = el("button", decision === "deny" ? "btn danger" : "btn", [text(label)]) as HTMLButtonElement
@@ -284,6 +408,7 @@ function permCard(p: Permission): HTMLElement {
       if (decision === "allow_permanent" && permConfirm !== p.permission_id) {
         permConfirm = p.permission_id
         b.textContent = "confirm permanent"
+        b.classList.add("on")
         return
       }
       permConfirm = undefined
@@ -292,6 +417,7 @@ function permCard(p: Permission): HTMLElement {
     row.append(b)
   }
   card.append(row)
+  card.append(el("div", "card-k", [text("Esc Esc deny · /perm once|similar|permanent|deny <id>")]))
   return card
 }
 
@@ -448,7 +574,7 @@ function builtinItems(): { name: string; desc: string }[] {
     { name: "skills", desc: "list / apply / reject" },
     { name: "memory", desc: "session memory" },
     { name: "cron", desc: "list or create job" },
-    { name: "perm", desc: "show permission cards" },
+    { name: "perm", desc: "once|similar|permanent|deny <id>" },
     { name: "help", desc: "this list" },
   ]
 }
@@ -464,6 +590,7 @@ function renderComposer(): void {
 function fillComposer(box: HTMLElement): void {
   box.className = "composer"
   box.innerHTML = ""
+  box.append(stampRow())
   if (snap.chips.length) {
     const chips = el("div", "chips")
     for (const c of snap.chips) {
@@ -520,6 +647,18 @@ function fillComposer(box: HTMLElement): void {
     }
   })
   ta.addEventListener("keydown", (e) => {
+    if (e.key === "Tab") {
+      e.preventDefault()
+      const next = cycleStance(snap.stance, e.shiftKey ? -1 : 1)
+      snap.stance = next
+      post({ type: "stance", stance: next })
+      renderFooter()
+      const stamp = document.getElementById("stamp")
+      if (stamp) {
+        stamp.replaceWith(stampRow())
+      }
+      return
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault()
       submit()
@@ -530,6 +669,20 @@ function fillComposer(box: HTMLElement): void {
         dismissArmedUntil = 0
         render()
         focusInput()
+        return
+      }
+      if (snap.permissions.length) {
+        const now = Date.now()
+        if (now < dismissArmedUntil) {
+          dismissArmedUntil = 0
+          post({ type: "decide", permissionId: snap.permissions[0].permission_id, decision: "deny" })
+          return
+        }
+        dismissArmedUntil = now + 3000
+        snap.status = "press Esc again in 3s to deny"
+        snap.statusError = true
+        renderCards()
+        renderStatus(true)
         return
       }
       if (snap.questions.length) {
@@ -590,13 +743,23 @@ function renderFooter(): void {
   fillFooter(foot)
 }
 
+function stampRow(): HTMLElement {
+  const row = el("div", "stamp")
+  row.id = "stamp"
+  const chip = el("span", `stamp-chip ${snap.stance}`, [text(snap.stance.toUpperCase())])
+  row.append(chip)
+  row.append(el("span", "stamp-model", [text(snap.sessionModel || snap.model.model || "—")]))
+  row.append(el("span", "stamp-rule", []))
+  return row
+}
+
 function fillFooter(foot: HTMLElement): void {
   foot.className = "foot"
   foot.innerHTML = ""
   const stances: Stance[] = ["agent", "plan", "auto"]
   const seg = el("div", "seg")
   for (const s of stances) {
-    const b = el("button", snap.stance === s ? "seg-on" : "", [text(s)]) as HTMLButtonElement
+    const b = el("button", snap.stance === s ? `seg-on ${s}` : s, [text(s)]) as HTMLButtonElement
     b.addEventListener("click", () => post({ type: "stance", stance: s }))
     seg.append(b)
   }
@@ -679,19 +842,126 @@ function mdLite(src: string): HTMLElement {
   return pre
 }
 
+function parseToolJSON(src: string): Record<string, unknown> | undefined {
+  try {
+    const j = JSON.parse(src) as unknown
+    if (j && typeof j === "object" && !Array.isArray(j)) {
+      return j as Record<string, unknown>
+    }
+  } catch {
+    /* ignore */
+  }
+  return undefined
+}
+
+function prettyJSON(src: string): string {
+  try {
+    return JSON.stringify(JSON.parse(src), null, 2)
+  } catch {
+    return src
+  }
+}
+
+function toolCallPreview(name: string, argumentsJSON: string): string {
+  const args = parseToolJSON(argumentsJSON) || {}
+  const field = (...keys: string[]): string => {
+    for (const k of keys) {
+      const v = args[k]
+      if (typeof v === "string" && v.trim()) {
+        return v.trim()
+      }
+    }
+    return ""
+  }
+  if (name.startsWith("fs_")) {
+    return basename(field("path", "file", "filepath", "target", "dest"))
+  }
+  if (name.startsWith("process_")) {
+    const cmd = field("command", "cmd")
+    if (cmd) {
+      return truncate(cmd, 72)
+    }
+    const argv = args.argv
+    if (Array.isArray(argv)) {
+      return truncate(argv.map(String).join(" "), 72)
+    }
+  }
+  if (name.startsWith("git_")) {
+    return basename(field("path", "repo", "repository")) || field("command")
+  }
+  return field("path", "url", "uri", "command", "query")
+}
+
+function basename(p: string): string {
+  if (!p) {
+    return ""
+  }
+  const n = p.replace(/\\/g, "/").split("/").filter(Boolean).pop()
+  return n || p
+}
+
+function truncate(s: string, n: number): string {
+  const runes = Array.from(s)
+  if (runes.length <= n) {
+    return s
+  }
+  return `${runes.slice(0, n).join("")}…`
+}
+
 function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
 }
 
 function inline(src: string): HTMLElement {
-  const span = el("div", "prose")
-  span.innerHTML = escapeHtml(src)
-    .replace(/`([^`]+)`/g, "<code>$1</code>")
-    .replace(/@([A-Za-z0-9_./@+-]+(?:#L\d+(?:-\d+)?)?)/g, '<button class="at" data-p="$1">@$1</button>')
-  span.querySelectorAll("button.at").forEach((b) => {
+  const wrap = el("div", "prose")
+  const lines = src.split("\n")
+  let list: HTMLElement | undefined
+  const flushList = () => {
+    if (list) {
+      wrap.append(list)
+      list = undefined
+    }
+  }
+  for (const line of lines) {
+    const heading = /^(#{1,3})\s+(.*)$/.exec(line)
+    if (heading) {
+      flushList()
+      const h = el(`h${heading[1].length}` as "h1" | "h2" | "h3", "", [])
+      h.innerHTML = inlineHTML(heading[2])
+      wrap.append(h)
+      continue
+    }
+    const bullet = /^[-*]\s+(.*)$/.exec(line)
+    if (bullet) {
+      if (!list) {
+        list = el("ul", "")
+      }
+      const li = el("li", "")
+      li.innerHTML = inlineHTML(bullet[1])
+      list.append(li)
+      continue
+    }
+    flushList()
+    if (!line.trim()) {
+      wrap.append(el("div", "gap"))
+      continue
+    }
+    const p = el("div", "")
+    p.innerHTML = inlineHTML(line)
+    wrap.append(p)
+  }
+  flushList()
+  wrap.querySelectorAll("button.at").forEach((b) => {
     b.addEventListener("click", () => post({ type: "openPath", path: (b as HTMLElement).dataset.p || "" }))
   })
-  return span
+  return wrap
+}
+
+function inlineHTML(src: string): string {
+  return escapeHtml(src)
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/@([A-Za-z0-9_./@+-]+(?:#L\d+(?:-\d+)?)?)/g, '<button class="at" data-p="$1">@$1</button>')
 }
 
 function extractPath(args: string): string {

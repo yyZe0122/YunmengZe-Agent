@@ -12,6 +12,7 @@ import {
   withLineRange,
   workspaceRelative,
 } from "./paths"
+import { cycleStance } from "./types"
 
 test("workspace relative inside root", () => {
   const root = path.sep === "/" ? "/home/yyze/proj" : "C:\\home\\yyze\\proj"
@@ -66,6 +67,14 @@ test("cron every matches Go duration", () => {
   assert.throws(() => parseCronEvery("15"))
   assert.throws(() => parseCronEvery("1H"))
   assert.throws(() => parseCronEvery("500ms"))
+})
+
+test("tab cycles agent plan auto", () => {
+  assert.equal(cycleStance("agent", 1), "plan")
+  assert.equal(cycleStance("plan", 1), "auto")
+  assert.equal(cycleStance("auto", 1), "agent")
+  assert.equal(cycleStance("agent", -1), "auto")
+  assert.equal(cycleStance("auto", -1), "plan")
 })
 
 test("task title ellipsis", () => {

@@ -1,5 +1,5 @@
 import * as vscode from "vscode"
-import { ensureGateway, openTuiTerminal } from "../daemon"
+import { ensureGateway } from "../daemon"
 import { Gateway, GatewayError } from "../gateway"
 import {
   composeMessage,
@@ -12,11 +12,11 @@ import {
   parseSlash,
   taskTitle,
   videoLike,
-  withLineRange,
   workspaceRelative,
 } from "../paths"
 import { SessionTree } from "../sessions/tree"
 import type { ChatCommand, Chip, LiveState, ModelConfig, Session, Stance, Task } from "../types"
+import { fileRefFromEditor, workspaceRoot } from "../workspace"
 import type { HostToWebview, Snapshot, WebviewToHost } from "./protocol"
 
 const VIEW_TYPE = "ymz.chat"
@@ -55,15 +55,7 @@ export class ChatHost {
     }
   }
 
-  useTerminal(): boolean {
-    return vscode.workspace.getConfiguration("ymz").get<boolean>("useTerminal") === true
-  }
-
   async focusInput(): Promise<void> {
-    if (this.useTerminal()) {
-      openTuiTerminal({ reuse: true })
-      return
-    }
     if (this.active && this.active.visible()) {
       this.active.post({ type: "focus" })
       this.active.reveal()
@@ -73,10 +65,6 @@ export class ChatHost {
   }
 
   async openNew(): Promise<void> {
-    if (this.useTerminal()) {
-      openTuiTerminal({ reuse: false })
-      return
-    }
     const column = this.preferredColumn()
     const panel = vscode.window.createWebviewPanel(VIEW_TYPE, "YunmengZe", column, webviewOptions(this.context))
     const chat = this.attachPanel(panel, "", "New session")
@@ -250,6 +238,8 @@ class ChatPanel {
   private modelAbort?: AbortController
   private sseAfter = 0
   private pendingDot: "none" | "permission" | "done" = "none"
+  private permPoll?: ReturnType<typeof setInterval>
+  private statusError = false
 
   constructor(
     private readonly host: ChatHost,
@@ -266,7 +256,10 @@ class ChatPanel {
       light: vscode.Uri.joinPath(host.context.extensionUri, "images", "button-dark.svg"),
       dark: vscode.Uri.joinPath(host.context.extensionUri, "images", "button-light.svg"),
     }
-    this.panel.onDidDispose(() => this.stopStreams())
+    this.panel.onDidDispose(() => {
+      this.stopStreams()
+      this.stopPermPoll()
+    })
     this.panel.webview.onDidReceiveMessage((msg: WebviewToHost) => {
       void this.onMessage(msg)
     })
@@ -289,6 +282,7 @@ class ChatPanel {
 
   dispose(): void {
     this.stopStreams()
+    this.stopPermPoll()
     this.panel.dispose()
   }
 
@@ -327,9 +321,11 @@ class ChatPanel {
           this.running = this.task?.state === "running"
         }
         this.startStreams()
+        this.startPermPoll()
       }
       this.skills = await gw.listSkills().catch(() => [])
-      this.status = this.sessionId ? "" : "new session"
+      this.status = this.sessionId ? this.waitingStatus() : "new session"
+      this.statusError = this.permissions.length > 0
       this.pushSnapshot()
     } catch (err) {
       this.status = errText(err)
@@ -380,6 +376,8 @@ class ChatPanel {
       selectedSkills: this.selectedSkills,
       commands: this.host.currentCommands(),
       status: this.status,
+      statusError: this.statusError,
+      version: String((this.host.context.extension.packageJSON as { version?: string } | undefined)?.version || ""),
     }
   }
 
@@ -482,6 +480,7 @@ class ChatPanel {
       }
     } catch (err) {
       this.status = errText(err)
+      this.statusError = true
       this.post({ type: "status", text: this.status, error: true })
     }
   }
@@ -534,7 +533,9 @@ class ChatPanel {
     }
     this.live = { content: "", thinking: "", tools: [], runId: submitted.run_id || "" }
     this.status = "running"
+    this.statusError = false
     this.startStreams()
+    this.startPermPoll()
     this.messages = this.sessionId ? await gw.sessionMessages(this.sessionId) : this.messages
     this.pushSnapshot()
     void this.host.refreshSessions()
@@ -549,6 +550,7 @@ class ChatPanel {
     this.task = await gw.controlTask(current.task_id, "cancel", current.version, "vscode stop")
     this.running = false
     this.status = "cancelled"
+    this.statusError = false
     this.resetLive()
     this.pushSnapshot()
   }
@@ -589,6 +591,7 @@ class ChatPanel {
     if (!this.permissions.length) {
       this.pendingDot = this.running ? "none" : "done"
     }
+    this.applyWaitingStatus()
     this.pushSnapshot()
   }
 
@@ -596,6 +599,7 @@ class ChatPanel {
     const gw = await this.host.gateway()
     await gw.answerQuestion(id, answers)
     this.questions = this.sessionId ? await gw.listQuestions(this.sessionId) : []
+    this.applyWaitingStatus()
     this.pushSnapshot()
   }
 
@@ -603,6 +607,7 @@ class ChatPanel {
     const gw = await this.host.gateway()
     await gw.dismissQuestion(id)
     this.questions = this.sessionId ? await gw.listQuestions(this.sessionId) : []
+    this.applyWaitingStatus()
     this.pushSnapshot()
   }
 
@@ -687,11 +692,11 @@ class ChatPanel {
         this.post({
           type: "slashResult",
           kind: "help",
-          body: "Built-ins: /new /compact /undo /edit /editundo /retry /cancel /model /status /skills /memory /cron /perm\nDrag files onto the composer for @path chips.",
+          body: "Built-ins: /new /compact /undo /edit /editundo /retry /cancel /model /status /skills /memory /cron /perm\nTab / Shift+Tab cycles agent → plan → auto.\n/perm once|similar|permanent|deny <id-prefix>\nDrag files onto the composer for @path chips.",
         })
         return
       case "perm":
-        this.post({ type: "permissions", permissions: this.permissions })
+        await this.permSlash(arg)
         return
       case "sessions":
       case "back":
@@ -703,6 +708,118 @@ class ChatPanel {
         return
       default:
         throw new Error(`unknown command /${name}`)
+    }
+  }
+
+  private async permSlash(arg: string): Promise<void> {
+    const gw = await this.host.gateway()
+    if (this.sessionId) {
+      this.permissions = await gw.listPermissions(this.sessionId)
+    }
+    const trimmed = arg.trim()
+    if (!trimmed) {
+      this.applyWaitingStatus()
+      this.pushSnapshot()
+      if (!this.permissions.length) {
+        this.post({ type: "status", text: "no pending tool permissions" })
+      }
+      return
+    }
+    const parts = trimmed.split(/\s+/)
+    if (parts.length !== 2) {
+      throw new Error("usage: /perm [once|similar|permanent|deny <id-prefix>]")
+    }
+    const decision = normalizeDecision(parts[0])
+    if (!decision) {
+      throw new Error("decision must be once / similar / permanent / deny")
+    }
+    const prefix = parts[1].toLowerCase()
+    const matches = this.permissions.filter((p) => {
+      const id = p.permission_id.toLowerCase()
+      return id.startsWith(prefix) || id.includes(prefix)
+    })
+    if (matches.length === 0) {
+      throw new Error(`no pending permission matching ${JSON.stringify(parts[1])}`)
+    }
+    if (matches.length > 1) {
+      throw new Error(`ambiguous permission prefix ${JSON.stringify(parts[1])}`)
+    }
+    await this.decide(matches[0].permission_id, decision)
+  }
+
+  private waitingStatus(): string {
+    if (this.permissions.length) {
+      return `waiting permission (${this.permissions.length}) · once / similar / permanent / deny`
+    }
+    if (this.questions.length && !this.permissions.length) {
+      return `waiting question (${this.questions.length}) · answer or Esc Esc dismiss`
+    }
+    if (this.running) {
+      return "running"
+    }
+    return this.status === "running" || this.status.startsWith("waiting ") ? "" : this.status
+  }
+
+  private applyWaitingStatus(): void {
+    if (this.permissions.length) {
+      this.status = this.waitingStatus()
+      this.statusError = true
+      this.pendingDot = "permission"
+      return
+    }
+    if (this.questions.length) {
+      this.status = this.waitingStatus()
+      this.statusError = false
+      return
+    }
+    if (this.statusError && this.status.startsWith("waiting ")) {
+      this.status = this.running ? "running" : ""
+      this.statusError = false
+    }
+    if (!this.permissions.length && this.pendingDot === "permission") {
+      this.pendingDot = this.running ? "none" : "done"
+    }
+  }
+
+  private startPermPoll(): void {
+    if (this.permPoll || !this.sessionId) {
+      return
+    }
+    this.permPoll = setInterval(() => {
+      void this.pollCards()
+    }, 2000)
+  }
+
+  private stopPermPoll(): void {
+    if (this.permPoll) {
+      clearInterval(this.permPoll)
+      this.permPoll = undefined
+    }
+  }
+
+  private async pollCards(): Promise<void> {
+    if (!this.sessionId) {
+      return
+    }
+    try {
+      const gw = await this.host.gateway()
+      const [permissions, questions] = await Promise.all([
+        gw.listPermissions(this.sessionId),
+        gw.listQuestions(this.sessionId),
+      ])
+      const permChanged = JSON.stringify(permissions) !== JSON.stringify(this.permissions)
+      const qChanged = JSON.stringify(questions) !== JSON.stringify(this.questions)
+      this.permissions = permissions
+      this.questions = questions
+      if (permChanged || qChanged) {
+        this.applyWaitingStatus()
+        this.panel.title = this.tabTitle()
+        this.post({ type: "permissions", permissions: this.permissions })
+        this.post({ type: "questions", questions: this.questions })
+        this.post({ type: "status", text: this.status, error: this.statusError })
+      }
+    } catch {
+      /* ignore poll errors */
     }
   }
 
@@ -1029,12 +1146,13 @@ class ChatPanel {
       this.live.thinking += env.event.thinking_delta || ""
       this.post({ type: "live", live: this.live })
     } else if (t === "tool_call" && env.event.tool_call) {
+      const args = env.event.tool_call.arguments || ""
       this.live.tools = [
         ...this.live.tools,
         {
           id: env.event.tool_call.id || String(this.live.tools.length),
           name: env.event.tool_call.name || "tool",
-          preview: (env.event.tool_call.arguments || "").slice(0, 180),
+          preview: liveToolPreview(env.event.tool_call.name || "tool", args),
         },
       ]
       this.post({ type: "live", live: this.live })
@@ -1049,16 +1167,17 @@ class ChatPanel {
       const gw = await this.host.gateway()
       if (typ.startsWith("permission.")) {
         this.permissions = this.sessionId ? await gw.listPermissions(this.sessionId) : []
-        if (this.permissions.length) {
-          this.pendingDot = "permission"
-        }
+        this.applyWaitingStatus()
         this.panel.title = this.tabTitle()
         this.post({ type: "permissions", permissions: this.permissions })
+        this.post({ type: "status", text: this.status, error: this.statusError })
         return
       }
       if (typ.startsWith("question.")) {
         this.questions = this.sessionId ? await gw.listQuestions(this.sessionId) : []
+        this.applyWaitingStatus()
         this.post({ type: "questions", questions: this.questions })
+        this.post({ type: "status", text: this.status, error: this.statusError })
         return
       }
       if (typ.startsWith("task.") || typ.startsWith("run.")) {
@@ -1072,6 +1191,7 @@ class ChatPanel {
             this.resetLive()
           }
         }
+        this.applyWaitingStatus()
         await this.refreshTranscript()
         void this.host.refreshSessions()
       }
@@ -1107,20 +1227,6 @@ class ChatPanel {
   }
 }
 
-function workspaceRoot(): string | undefined {
-  return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
-}
-
-export function fileRefFromEditor(editor: vscode.TextEditor): { mention: string; abs: string; outside: boolean } {
-  const ref = workspaceRelative(editor.document.uri.fsPath, workspaceRoot())
-  const sel = editor.selection
-  let mention = ref.mention
-  if (!sel.isEmpty) {
-    mention = withLineRange(mention, sel.start.line + 1, sel.end.line + 1)
-  }
-  return { mention, abs: ref.abs, outside: ref.outside }
-}
-
 async function openWorkspacePath(p: string): Promise<void> {
   const raw = p.replace(/^@/, "").split("#")[0]
   const root = workspaceRoot()
@@ -1135,6 +1241,30 @@ async function openWorkspacePath(p: string): Promise<void> {
 
 function shortTitle(id: string): string {
   return id.length <= 12 ? id : id.slice(0, 10)
+}
+
+function liveToolPreview(name: string, args: string): string {
+  try {
+    const j = JSON.parse(args) as Record<string, unknown>
+    const pick = (...keys: string[]): string => {
+      for (const k of keys) {
+        const v = j[k]
+        if (typeof v === "string" && v.trim()) {
+          return v.trim()
+        }
+      }
+      return ""
+    }
+    const path = pick("path", "file", "filepath", "url", "uri", "command", "query")
+    if (path) {
+      const base = path.replace(/\\/g, "/").split("/").filter(Boolean).pop()
+      return base || path
+    }
+  } catch {
+    /* raw */
+  }
+  const compact = args.replace(/\s+/g, " ").trim()
+  return compact.length > 80 ? `${compact.slice(0, 80)}…` : compact
 }
 
 function errText(err: unknown): string {

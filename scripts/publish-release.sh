@@ -448,6 +448,7 @@ if [[ "$VIA_ACTIONS" -eq 1 ]]; then
     ymz_${VER_NUM}_windows_arm64.zip
     checksums.txt
     ymz-vscode_${VER_NUM}.vsix
+    ymz-vscode-tui_${VER_NUM}.vsix
 EOF
   exit 0
 fi
@@ -543,12 +544,26 @@ fi
 
 apply_release_notes
 
+resolve_vsix() {
+  local name="$1"
+  if [[ -f "extensions/vscode/${name}" ]]; then
+    echo "extensions/vscode/${name}"
+    return 0
+  fi
+  if [[ -f "dist/vscode/${name}" ]]; then
+    echo "dist/vscode/${name}"
+    return 0
+  fi
+  return 1
+}
+
 upload_vscode_vsix() {
-  local vsix owner pkg_ec names
-  vsix="extensions/vscode/ymz-vscode_${VER_NUM}.vsix"
-  log "package VS Code VSIX (${TAG}) — required on every tag"
+  local vsix tui owner pkg_ec names
+  vsix="ymz-vscode_${VER_NUM}.vsix"
+  tui="ymz-vscode-tui_${VER_NUM}.vsix"
+  log "package VS Code VSIX (${TAG}) — GUI + TUI required on every tag"
   if [[ "$DRY_RUN" -eq 1 ]]; then
-    log "would run: scripts/package-vscode.sh ${TAG} && gh release upload ${TAG} ${vsix}"
+    log "would run: scripts/package-vscode.sh ${TAG} && gh release upload ${TAG} ${vsix} ${tui}"
     return 0
   fi
   owner=$(stat -c '%U' "$REPO_DIR" 2>/dev/null || echo yyze)
@@ -564,17 +579,17 @@ upload_vscode_vsix() {
   if [[ "$pkg_ec" -ne 0 ]]; then
     die "VS Code VSIX package failed (exit ${pkg_ec}; need Node 18+ as user ${owner}). Go assets may already be on the Release. Fix Node, then: ./scripts/publish-release.sh ${TAG} --upload-only --skip-check --skip-snapshot"
   fi
-  if [[ ! -f "$vsix" && -f "dist/vscode/ymz-vscode_${VER_NUM}.vsix" ]]; then
-    vsix="dist/vscode/ymz-vscode_${VER_NUM}.vsix"
-  fi
-  [[ -f "$vsix" ]] || die "missing ${vsix} after package-vscode.sh"
-  GH_BIN=$(find_gh) || die "gh not found; cannot upload required ${vsix}"
-  log "upload ${vsix} to ${TAG}"
-  GITHUB_TOKEN="${GITHUB_TOKEN}" GH_TOKEN="${GITHUB_TOKEN}" "$GH_BIN" release upload "$TAG" "$vsix" --repo "$GITHUB_REPOSITORY" --clobber
+  vsix=$(resolve_vsix "$vsix") || die "missing ymz-vscode_${VER_NUM}.vsix after package-vscode.sh"
+  tui=$(resolve_vsix "$tui") || die "missing ymz-vscode-tui_${VER_NUM}.vsix after package-vscode.sh"
+  GH_BIN=$(find_gh) || die "gh not found; cannot upload required VSIX"
+  log "upload ${vsix} ${tui} to ${TAG}"
+  GITHUB_TOKEN="${GITHUB_TOKEN}" GH_TOKEN="${GITHUB_TOKEN}" "$GH_BIN" release upload "$TAG" "$vsix" "$tui" --repo "$GITHUB_REPOSITORY" --clobber
   names=$("$GH_BIN" release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' 2>/dev/null || true)
   echo "$names" | grep -q "ymz-vscode_${VER_NUM}.vsix" \
     || die "GitHub Release ${TAG} missing asset ymz-vscode_${VER_NUM}.vsix"
-  log "GitHub Release includes ymz-vscode_${VER_NUM}.vsix"
+  echo "$names" | grep -q "ymz-vscode-tui_${VER_NUM}.vsix" \
+    || die "GitHub Release ${TAG} missing asset ymz-vscode-tui_${VER_NUM}.vsix"
+  log "GitHub Release includes ymz-vscode_${VER_NUM}.vsix and ymz-vscode-tui_${VER_NUM}.vsix"
 }
 
 upload_vscode_vsix
@@ -595,7 +610,8 @@ cat <<EOF
     ymz_${VER_NUM}_windows_amd64.zip
     ymz_${VER_NUM}_windows_arm64.zip
     checksums.txt
-    ymz-vscode_${VER_NUM}.vsix   # required; missing VSIX fails the publish
+    ymz-vscode_${VER_NUM}.vsix       # required GUI; missing fails the publish
+    ymz-vscode-tui_${VER_NUM}.vsix   # required TUI; missing fails the publish
 
   Body: ${NOTES}
   Install (recommended):

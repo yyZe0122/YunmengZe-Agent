@@ -1,0 +1,99 @@
+{
+  "name": "ymz-vscode-tui",
+  "displayName": "YunmengZe TUI",
+  "description": "Open the YunmengZe TUI in the VS Code integrated terminal. Session cwd is the current folder.",
+  "version": "0.0.1",
+  "publisher": "yunmengze",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yyZe0122/YunmengZe-Agent"
+  },
+  "engines": {
+    "vscode": "^1.94.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension-tui.js",
+  "icon": "images/icon.png",
+  "contributes": {
+    "commands": [
+      {
+        "command": "ymz.tui.open",
+        "title": "YunmengZe TUI: Open",
+        "icon": {
+          "light": "images/button-dark.svg",
+          "dark": "images/button-light.svg"
+        }
+      },
+      {
+        "command": "ymz.tui.openNew",
+        "title": "YunmengZe TUI: Open in new tab",
+        "icon": {
+          "light": "images/button-dark.svg",
+          "dark": "images/button-light.svg"
+        }
+      },
+      {
+        "command": "ymz.tui.addFilepath",
+        "title": "YunmengZe TUI: Insert @-file"
+      },
+      {
+        "command": "ymz.tui.addExplorerPath",
+        "title": "YunmengZe TUI: Add to TUI"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "ymz.tui.open",
+          "group": "navigation"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "ymz.tui.addExplorerPath",
+          "group": "navigation@99"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "ymz.tui.addFilepath",
+          "group": "navigation@99"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "ymz.tui.open",
+        "key": "ctrl+escape",
+        "mac": "cmd+escape"
+      },
+      {
+        "command": "ymz.tui.openNew",
+        "key": "ctrl+shift+escape",
+        "mac": "cmd+shift+escape"
+      },
+      {
+        "command": "ymz.tui.addFilepath",
+        "key": "alt+k",
+        "mac": "alt+k",
+        "when": "editorTextFocus"
+      }
+    ],
+    "configuration": {
+      "title": "YunmengZe TUI",
+      "properties": {
+        "ymz.executablePath": {
+          "type": "string",
+          "default": "",
+          "description": "Absolute path to the ymz binary. Empty = PATH then ~/.local/bin/ymz."
+        }
+      }
+    }
+  }
+}

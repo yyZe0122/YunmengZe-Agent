@@ -1,5 +1,12 @@
 export type Stance = "agent" | "plan" | "auto"
 
+const STANCES: Stance[] = ["agent", "plan", "auto"]
+
+export function cycleStance(current: Stance, delta: 1 | -1): Stance {
+  const i = Math.max(0, STANCES.indexOf(current))
+  return STANCES[(i + delta + STANCES.length) % STANCES.length]
+}
+
 export type Session = {
   session_id: string
   state: string

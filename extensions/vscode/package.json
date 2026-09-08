@@ -66,18 +66,6 @@
       {
         "command": "ymz.addExplorerPath",
         "title": "YunmengZe: Add to chat"
-      },
-      {
-        "command": "ymz.openTerminal",
-        "title": "YunmengZe: Open TUI"
-      },
-      {
-        "command": "ymz.openNewTerminal",
-        "title": "YunmengZe: Open TUI in new tab"
-      },
-      {
-        "command": "ymz.addFilepathToTerminal",
-        "title": "YunmengZe: Insert @-file into TUI"
       }
     ],
     "menus": {
@@ -137,11 +125,6 @@
           "type": "string",
           "default": "",
           "description": "Override YMZ_HOME / ~/.yunmengze (absolute). Used to find run/gateway.json."
-        },
-        "ymz.useTerminal": {
-          "type": "boolean",
-          "default": false,
-          "description": "Open the TUI in an integrated terminal instead of the Webview chat (ADR-054)."
         },
         "ymz.preferredLocation": {
           "type": "string",

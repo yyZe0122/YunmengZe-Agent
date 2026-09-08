@@ -4,6 +4,8 @@ import * as path from "path"
 import { spawn } from "child_process"
 import * as vscode from "vscode"
 import { Gateway } from "./gateway"
+import { workspaceRelative } from "./paths"
+import { fileRefFromEditor, workspaceRoot } from "./workspace"
 
 const TERMINAL_NAME = "ymz"
 
@@ -59,8 +61,10 @@ export function openTuiTerminal(opts?: { reuse?: boolean }): void {
     )
     return
   }
+  const cwd = workspaceRoot()
   const terminal = vscode.window.createTerminal({
     name: TERMINAL_NAME,
+    ...(cwd ? { cwd } : {}),
     iconPath: {
       light: vscode.Uri.file(path.join(__dirname, "..", "images", "button-dark.svg")),
       dark: vscode.Uri.file(path.join(__dirname, "..", "images", "button-light.svg")),
@@ -69,6 +73,34 @@ export function openTuiTerminal(opts?: { reuse?: boolean }): void {
   })
   terminal.show()
   terminal.sendText(shellQuote(bin))
+}
+
+export function insertMentionIntoTerminal(): void {
+  const editor = vscode.window.activeTextEditor
+  if (!editor || editor.document.uri.scheme !== "file") {
+    return
+  }
+  sendToYmzTerminal(fileRefFromEditor(editor).mention)
+}
+
+export function addUriToTerminal(uri: vscode.Uri): void {
+  if (uri.scheme !== "file") {
+    return
+  }
+  sendToYmzTerminal(workspaceRelative(uri.fsPath, workspaceRoot()).mention)
+}
+
+function sendToYmzTerminal(text: string): void {
+  const terminal =
+    vscode.window.activeTerminal?.name === TERMINAL_NAME
+      ? vscode.window.activeTerminal
+      : vscode.window.terminals.find((t) => t.name === TERMINAL_NAME)
+  if (!terminal) {
+    void vscode.window.showInformationMessage("Open YunmengZe TUI first (YunmengZe TUI: Open).")
+    return
+  }
+  terminal.show()
+  terminal.sendText(text, false)
 }
 
 function findOnPath(exe: string): string | undefined {
@@ -120,7 +152,14 @@ async function ping(gw: Gateway): Promise<boolean> {
 
 function startDaemon(bin: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn(bin, ["start"], { detached: true, stdio: "ignore" })
+    const cwd = workspaceRoot()
+    const child = spawn(bin, ["start"], {
+      ...(cwd ? { cwd } : {}),
+      detached: true,
+      stdio: "ignore",
+      windowsHide: true,
+      env: process.env,
+    })
     let settled = false
     const done = (err?: Error) => {
       if (settled) {

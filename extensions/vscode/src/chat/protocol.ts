@@ -60,6 +60,8 @@ export type Snapshot = {
   selectedSkills: string[]
   commands: ChatCommand[]
   status: string
+  statusError?: boolean
+  version?: string
 }
 
 export type WebviewToHost =
