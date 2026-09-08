@@ -41,7 +41,7 @@ Do **not** restore deleted pieces: Module Runtime/Supervisor, out-of-process Mem
 | 19 | [051](adr/051-coding-loop-contextview.md) | Phase Q ContextView + coding-loop contract (QB–QH) |
 | 20 | [052](adr/052-coding-loop-harness.md) | Phase R turn/step/next-step inbox + observation contract |
 | 21 | [053](adr/053-charm-v2-tui.md) | Charm v2 TUI: 清宣纸 chrome, textarea, no mouse |
-| 22 | [054](adr/054-vscode-terminal-launcher.md) | VS Code extension: terminal launcher for existing TUI; `useTerminal` 回退 |
+| 22 | [054](adr/054-vscode-terminal-launcher.md) | VS Code TUI 独立 VSIX：集成终端启动已有 TUI；cwd = 文件夹 |
 | 23 | [055](adr/055-auxiliary-media-boundary.md) | Auxiliary vision/speech/video tools; main loop stays text |
 | 24 | [056](adr/056-vscode-webview-chat.md) | VS Code Webview 第四 peer：活动栏列表 + 编辑器 Tab → `/v1/*` |
 
@@ -99,7 +99,7 @@ Provider / `chat.*` / OpenCode import: [`provider-protocols.md`](provider-protoc
 | 051 | Coding-loop ContextView | Single `Build`; retire `History`; todo / L3 / checkpoint boundaries |
 | 052 | Coding-loop harness | Observation contract; turn/step/next-step inbox; steer / ask_user cards（R1–R5 已落地） |
 | 053 | Charm v2 TUI | bubbletea/lipgloss/glamour v2 + 清宣纸 chrome；提问/授权卡；无 UV 整页 / lazy list；no mouse grab |
-| 054 | VS Code terminal launcher | `extensions/vscode`; TUI 回退；Webview 见 056 |
+| 054 | VS Code terminal launcher | `ymz-vscode-tui` 独立 VSIX；cwd = 文件夹；Webview 见 056 |
 | 055 | Auxiliary media boundary | Tool-internal Complete / Whisper; no multimodal main loop |
 | 056 | VS Code Webview chat | 第四 peer；列表 + 编辑器 Tab；拖文件 `@path`；`/perm` grant 配套见 approval/toolpermission |
 

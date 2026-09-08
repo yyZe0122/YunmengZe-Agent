@@ -18,7 +18,7 @@ Do **not** restore deleted architecture: Module Runtime/Supervisor, out-of-proce
 | --- | --- | --- |
 | Format | `make format` | `.\scripts\dev.ps1 -Action format` |
 | Check (fmt + vet + test [+ systemd unit]) | `make check` | `.\scripts\dev.ps1 -Action check` |
-| Package VS Code VSIX (optional; Node) | `make vscode` | — |
+| Package VS Code GUI+TUI VSIX (optional; Node) | `make vscode` | — |
 | Build → `bin/` | `make build` | `.\scripts\dev.ps1 -Action build` |
 | Install to PATH | `make install` → `~/.local/bin` | `.\scripts\dev.ps1 -Action install` |
 | check + build + daemon `--check` | `make all` | `.\scripts\dev.ps1 -Action all` |
@@ -37,7 +37,7 @@ Local release matrix: `goreleaser release --snapshot --clean --parallelism 1`.
 
 **Publish (root only on this host):** batch-commit the dirty tree by feature (never one-shot a multi-feature dump), write **`docs/history/changelog/vX.Y.Z.md`** (this file **is** the GitHub Release body; empty stub fails), reset `unreleased.md`, then  
 `sudo -i && cd /home/yyze/projects/AutoZeAgent && ./scripts/publish-release.sh vX.Y.Z --yes`  
-(`--commit-paths changelog` only for a leftover notes commit.) Every tag **must** attach `ymz-vscode_{version}.vsix` (fail-closed; Node 18+). Full runbook: [`docs/release.md`](docs/release.md). Only `scripts/publish-release.sh` publishes — do not invent parallel scripts or steps.
+(`--commit-paths changelog` only for a leftover notes commit.) Every tag **must** attach `ymz-vscode_{version}.vsix` **and** `ymz-vscode-tui_{version}.vsix` (fail-closed; Node 18+). Full runbook: [`docs/release.md`](docs/release.md). Only `scripts/publish-release.sh` publishes — do not invent parallel scripts or steps.
 
 `make check` on Linux also runs `scripts/check-systemd.sh` (no-ops on non-Linux / missing `systemd-analyze`).
 
@@ -78,7 +78,7 @@ Local release matrix: `goreleaser release --snapshot --clean --parallelism 1`.
 | `docs/wiki/` | Design KB: ADR index `wiki/README.md`, `wiki/adr/`, `wiki/database.md` |
 | `docs/history/changelog/` | Per-tag release notes (`vX.Y.Z.md` + `unreleased.md`) |
 | `docs/backlog/current.md` | **Only** living optimization doc |
-| `extensions/vscode` | VS Code Webview 聊天（ADR-056）+ TUI 启动器回退（ADR-054）；not in `go.mod`; `make check` does not run npm. User/install: `docs/wiki/vscode.md` |
+| `extensions/vscode` | VS Code Webview GUI（ADR-056）+ TUI 独立 VSIX（ADR-054）；not in `go.mod`; `make check` does not run npm. User/install: `docs/wiki/vscode.md` |
 
 ### Wiring rules
 

@@ -15,7 +15,7 @@ This page is the **only** release runbook.
 | **Clean tree** | The publish script **refuses a dirty working tree**. Batch-commit first. It will not squash a multi-feature dump. |
 | **No mega-commit** | **Never** `--commit-paths all` for a mixed dirty tree. That flag is **removed**. |
 | **Changelog first** | `docs/history/changelog/vX.Y.Z.md` must exist **before** the publish command. Tag name = file name (`v0.4.0` → `v0.4.0.md`). That file **is** the GitHub Release body (`goreleaser --release-notes`). Empty stub / git log **fails**. |
-| **VSIX required** | Every tag **must** attach `ymz-vscode_{version}.vsix` (Node 18+; fail-closed). Missing Node / missing file / failed upload **fails the publish**. |
+| **VSIX required** | Every tag **must** attach `ymz-vscode_{version}.vsix` **and** `ymz-vscode-tui_{version}.vsix` (Node 18+; fail-closed). Missing Node / missing either file / failed upload **fails the publish**. |
 | **No secrets** | Never commit `agent.local.json`, `*.db`, `env` with real keys, `bin/`, `dist/`, tokens. |
 
 ### Do not / 禁止
@@ -78,7 +78,7 @@ cd /home/yyze/projects/AutoZeAgent
 #   --message "docs(changelog): vX.Y.Z"
 ```
 
-Replace `vX.Y.Z` (e.g. `v0.4.0`). The script **refuses** a missing or stub changelog. It runs `make check`, creates an annotated tag, pushes `main` + tag, then **local** `goreleaser release`. After Go assets upload it runs `gh release edit --notes-file docs/history/changelog/vX.Y.Z.md` (that markdown **is** the GitHub Release body), then packages and **must** upload `ymz-vscode_{version}.vsix`. Missing Node / missing VSIX / failed `gh release upload` **fails the publish** (Go archives may already be on the Release; re-run `--upload-only` after fixing Node). Details: [`wiki/vscode.md`](wiki/vscode.md).
+Replace `vX.Y.Z` (e.g. `v0.4.0`). The script **refuses** a missing or stub changelog. It runs `make check`, creates an annotated tag, pushes `main` + tag, then **local** `goreleaser release`. After Go assets upload it runs `gh release edit --notes-file docs/history/changelog/vX.Y.Z.md` (that markdown **is** the GitHub Release body), then packages and **must** upload `ymz-vscode_{version}.vsix` **and** `ymz-vscode-tui_{version}.vsix`. Missing Node / missing either VSIX / failed `gh release upload` **fails the publish** (Go archives may already be on the Release; re-run `--upload-only` after fixing Node). Details: [`wiki/vscode.md`](wiki/vscode.md).
 
 ### Pre-flight checklist
 
@@ -97,7 +97,7 @@ Replace `vX.Y.Z` (e.g. `v0.4.0`). The script **refuses** a missing or stub chang
 
 ```bash
 gh release view vX.Y.Z --repo yyZe0122/YunmengZe-Agent
-# Must list platform archives + checksums.txt + ymz-vscode_*.vsix (not only Source code zip)
+# Must list platform archives + checksums.txt + ymz-vscode_*.vsix + ymz-vscode-tui_*.vsix (not only Source code zip)
 # Body must be the changelog (title YunmengZe Agent vX.Y.Z), not empty / git log
 
 gh api repos/yyZe0122/homebrew-tap/commits --jq '.[0].commit.message'
@@ -136,7 +136,7 @@ Script: [`scripts/publish-release.sh`](../scripts/publish-release.sh).
 | **Scoop** (recommended) | Windows | `scoop bucket add ymz https://github.com/yyZe0122/scoop-bucket` then `scoop install ymz` |
 | One-line scripts (fallback) | Win / Linux / macOS | `install.ps1` / `install-user.sh` |
 | Manual / source | all | Release zip/tar or `make install` |
-| **VS Code VSIX** | editor | `ymz-vscode_{version}.vsix` on the same Release — [`docs/wiki/vscode.md`](wiki/vscode.md) |
+| **VS Code VSIX** | editor | `ymz-vscode_{version}.vsix` (GUI) + `ymz-vscode-tui_{version}.vsix` (TUI) on the same Release — [`docs/wiki/vscode.md`](wiki/vscode.md) |
 
 Affiliate repos (auto-updated by GoReleaser on each tag):
 
@@ -152,7 +152,8 @@ GoReleaser builds **one archive per OS/arch**. Each archive contains **two binar
 | `ymz_{version}_{os}_{arch}.tar.gz` | `ymz_0.3.0_linux_amd64.tar.gz` |
 | `ymz_{version}_windows_{arch}.zip` | `ymz_0.3.0_windows_amd64.zip` |
 | `checksums.txt` | SHA-256 of all archives (fixed name) |
-| `ymz-vscode_{version}.vsix` | VS Code / Cursor Webview chat (TUI launcher fallback) — **required** on every tag |
+| `ymz-vscode_{version}.vsix` | VS Code / Cursor Webview GUI — **required** on every tag |
+| `ymz-vscode-tui_{version}.vsix` | VS Code / Cursor TUI launcher — **required** on every tag |
 
 - `{version}` = tag **without** leading `v` (GoReleaser `.Version`).
 - Prefer `YMZ_VERSION=vX.Y.Z` when the release is **Pre-release** (GitHub `latest` may skip it).

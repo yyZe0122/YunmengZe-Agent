@@ -138,9 +138,9 @@ H2 / O5–O6 / 飞书 M* / Marketplace ── 用户再提（不插队）
 
 ### Phase IDE-launcher / V4（S/W/M 之后）
 
-V0–V3 已发 **v0.4.0**：`extensions/vscode` 启动 TUI；`make vscode` 本机打包；发版脚本 / Actions 在 goreleaser 之后挂 `ymz-vscode_{version}.vsix`。用户说明：[`docs/wiki/vscode.md`](../wiki/vscode.md)。架构：[ADR-054](../wiki/adr/054-vscode-terminal-launcher.md)。
+V0–V3 已发 **v0.4.0**：`extensions/vscode` 启动 TUI；`make vscode` 本机打包；发版脚本 / Actions 在 goreleaser 之后挂 VSIX（当时一包；**V4.1 起 GUI+TUI 两包**）。用户说明：[`docs/wiki/vscode.md`](../wiki/vscode.md)。架构：[ADR-054](../wiki/adr/054-vscode-terminal-launcher.md)。
 
-V4 已落地（ADR-056）：活动栏会话列表 + 编辑器 Tab（可拖侧栏）；Host 读 `gateway.json`（UDS/TCP）打 `/v1/*`，`interactive: true`；拖文件 / 资源管理器 → `@path`（区外绝对路径 + extra-root `/perm`）；**不**在扩展里跑 tool；无 inline diff。**activate 不** `ymz start`。关编辑器仍不 `ymz stop`。不上 Marketplace。TUI 启动器保留为 `ymz.useTerminal`。`/perm similar|permanent` grant TTL 夹进 chat approval 窗。
+V4 已落地（ADR-056）：活动栏会话列表 + 编辑器 Tab（可拖侧栏）；Host 读 `gateway.json`（UDS/TCP）打 `/v1/*`，`interactive: true`；拖文件 / 资源管理器 → `@path`（区外绝对路径 + extra-root `/perm`）；**不**在扩展里跑 tool；无 inline diff。**activate 不** `ymz start`；第一次聊天 **静默** `ymz start`（不开终端）。关编辑器仍不 `ymz stop`。不上 Marketplace。TUI 是独立 VSIX `ymz-vscode-tui`（ADR-054；`cwd` = 当前文件夹）。不要两包同装。`/perm similar|permanent` grant TTL 夹进 chat approval 窗。
 
 | ID | 项 | 状态 |
 | --- | --- | --- |
@@ -149,6 +149,7 @@ V4 已落地（ADR-056）：活动栏会话列表 + 编辑器 Tab（可拖侧栏
 | **V2** | `make vscode` 本机 VSIX | ✅ |
 | **V3** | Release 挂 VSIX | ✅ |
 | **V4** | 原生 Webview 聊天 + 拖文件（列表 + 编辑器 Tab） | ✅ ADR-056 |
+| **V4.1** | GUI 静默 `ymz start`；TUI 独立 VSIX；两边 cwd = 文件夹 | ✅ |
 | **V5** | Marketplace / Open VSX | 用户量上来再做 |
 
 ### 等用户再提
@@ -193,7 +194,7 @@ V4 已落地（ADR-056）：活动栏会话列表 + 编辑器 Tab（可拖侧栏
 用例（daemon services）     → 已统一
 外观（gatewayclient）       → 已共享
 语法（CLI argv / TUI slash / HTTP）→ 故意分叉
-IDE（extensions/vscode）    → Webview 第四 peer（ADR-056）；TUI 启动器回退（ADR-054）
+IDE（extensions/vscode）    → Webview 第四 peer（ADR-056）；TUI 独立 VSIX（ADR-054）
 通道（channel adapter）     → 规划中；与 gatewayclient 并列的 Core 客户端
 ```
 
@@ -232,6 +233,6 @@ IDE（extensions/vscode）    → Webview 第四 peer（ADR-056）；TUI 启动�
 make check
 make build
 make all          # check + build + ymzd --check
-make vscode       # optional: package extensions/vscode → .vsix（需 Node）
+make vscode       # optional: package GUI + TUI VSIX（需 Node）
 go test ./... -count=1
 ```

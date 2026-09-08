@@ -25,7 +25,7 @@ There is **no** separate docs site. Product docs stay in GitHub markdown (README
 | [`wiki/security/linux-sandbox-roadmap.md`](wiki/security/linux-sandbox-roadmap.md) | Linux isolation phases |
 | [`wiki/testing/scheduler.md`](wiki/testing/scheduler.md) | In-process job verify |
 | [`wiki/testing/skills.md`](wiki/testing/skills.md) | File-skill verify |
-| [`wiki/vscode.md`](wiki/vscode.md) | VS Code / Cursor VSIX install + Release asset |
+| [`wiki/vscode.md`](wiki/vscode.md) | VS Code / Cursor GUI + TUI VSIX install + Release assets |
 
 ## History
 

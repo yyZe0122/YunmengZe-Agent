@@ -160,7 +160,7 @@ flowchart LR
 
 其余见 `/help`。斜杠优先级：内置 → `chat.commands` → skill id。
 
-VS Code / Cursor：会话列表 + 编辑器 Tab 聊天（VSIX，不上 Marketplace）。拖文件为 `@path`。Ctrl/Cmd+Esc focus 输入框（`ymz.useTerminal` 回退 TUI）。[安装说明](docs/wiki/vscode.md)。
+VS Code / Cursor：两个 VSIX（不要同装）。GUI = 会话列表 + 编辑器 Tab，拖文件为 `@path`。TUI = 集成终端启动器（`cwd` = 当前文件夹）。[安装说明](docs/wiki/vscode.md)。
 
 ## 配置
 
