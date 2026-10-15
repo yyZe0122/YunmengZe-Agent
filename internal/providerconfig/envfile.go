@@ -9,7 +9,7 @@ import (
 )
 
 // EnvFilename is an optional KEY=value file under ConfigDir.
-// Installers may seed it; daemon/CLI load it before resolving {env:…} keys.
+// Installers may seed it; ymz load it before resolving {env:…} keys.
 // Not required: users may set process env, use {file:…}, or put a literal apiKey in JSON.
 const EnvFilename = "env"
 
@@ -102,7 +102,7 @@ func EnsureEnvFile(configDir string) (created bool, path string, err error) {
 
 // defaultEnvTemplate is optional; empty values are fine. Fill any keys you use with {env:NAME} in config.
 const defaultEnvTemplate = `# YunmengZe optional environment file (KEY=value).
-# Loaded when the daemon/CLI starts; does not override variables already set in the process.
+# Loaded when the ymz starts; does not override variables already set in the process.
 # Pair with config apiKey "{env:DEEPSEEK1_API_KEY}" / "{env:DEEPSEEK2_API_KEY}" (recommended), or literal / {file:…}.
 # Keep this file private (mode 600). Do not commit secrets.
 #

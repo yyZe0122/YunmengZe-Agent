@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 
 	"github.com/yyZe0122/yunmengze-agent/internal/modelcatalog"
 	"github.com/yyZe0122/yunmengze-agent/internal/providers/internal/providerhttp"
@@ -27,7 +26,6 @@ type Config struct {
 	HTTPClient       *http.Client
 	MaxBodyBytes     int64
 	MessagesPath     string
-	ModelsPath       string
 	AnthropicVersion string
 	Headers          map[string]string
 }
@@ -40,7 +38,6 @@ type Provider struct {
 	client           *http.Client
 	maxBodyBytes     int64
 	messagesPath     string
-	modelsPath       string
 	anthropicVersion string
 	headers          http.Header
 }
@@ -59,7 +56,7 @@ func New(config Config) (*Provider, error) {
 	}
 	client := config.HTTPClient
 	if client == nil {
-		client = &http.Client{Timeout: 60 * time.Second}
+		client = providerhttp.NewClient()
 	}
 	maxBody := config.MaxBodyBytes
 	if maxBody == 0 {
@@ -72,14 +69,7 @@ func New(config Config) (*Provider, error) {
 	if messagesPath == "" {
 		messagesPath = "/v1/messages"
 	}
-	modelsPath := strings.TrimSpace(config.ModelsPath)
-	if modelsPath == "" {
-		modelsPath = "/v1/models"
-	}
 	if _, err := providerhttp.Endpoint(baseURL, messagesPath); err != nil {
-		return nil, err
-	}
-	if _, err := providerhttp.Endpoint(baseURL, modelsPath); err != nil {
 		return nil, err
 	}
 	version := strings.TrimSpace(config.AnthropicVersion)
@@ -92,12 +82,10 @@ func New(config Config) (*Provider, error) {
 	}
 	return &Provider{
 		name: name, baseURL: baseURL, apiKeyRef: strings.TrimSpace(config.APIKeyRef), resolver: config.Resolver,
-		client: client, maxBodyBytes: maxBody, messagesPath: messagesPath, modelsPath: modelsPath,
+		client: client, maxBodyBytes: maxBody, messagesPath: messagesPath,
 		anthropicVersion: version, headers: headers,
 	}, nil
 }
-
-func (p *Provider) Name() string { return p.name }
 
 func (p *Provider) Complete(ctx context.Context, request providerapi.CompletionRequest) (providerapi.CompletionResponse, error) {
 	body, err := p.requestBody(request)
@@ -116,50 +104,155 @@ func (p *Provider) Complete(ctx context.Context, request providerapi.CompletionR
 	if err != nil {
 		return providerapi.CompletionResponse{}, providerhttp.Protocol(p.name, err)
 	}
+	return p.decode(payload, request.Model)
+}
+
+func (p *Provider) decode(raw []byte, model string) (providerapi.CompletionResponse, error) {
 	var decoded messageResponse
-	if err := json.Unmarshal(payload, &decoded); err != nil {
-		return providerapi.CompletionResponse{}, providerhttp.Protocol(p.name, errors.New("invalid JSON response"))
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		return providerapi.CompletionResponse{}, providerhttp.Protocol(p.name, err)
 	}
 	result := providerapi.CompletionResponse{FinishReason: decoded.StopReason, Usage: usageFromAnthropic(decoded.Usage)}
-	for index, block := range decoded.Content {
+	for _, rawBlock := range decoded.Content {
+		var block struct {
+			Type, Text, Thinking, ID, Name string
+			Input                          json.RawMessage
+		}
+		if err := json.Unmarshal(rawBlock, &block); err != nil {
+			return result, providerhttp.Protocol(p.name, err)
+		}
 		switch block.Type {
 		case "text":
 			result.Content += block.Text
+		case "thinking":
+			result.Thinking += block.Thinking
 		case "tool_use":
-			if strings.TrimSpace(block.ID) == "" || strings.TrimSpace(block.Name) == "" || !json.Valid(block.Input) {
-				return providerapi.CompletionResponse{}, providerhttp.Protocol(p.name, fmt.Errorf("invalid tool_use content block %d", index))
+			if block.ID == "" || block.Name == "" || !json.Valid(block.Input) {
+				return result, providerhttp.Protocol(p.name, errors.New("invalid tool_use block"))
 			}
 			result.ToolCalls = append(result.ToolCalls, providerapi.ToolCall{ID: block.ID, Name: block.Name, Arguments: string(block.Input)})
 		}
 	}
-	if result.Content == "" && len(result.ToolCalls) == 0 {
-		return providerapi.CompletionResponse{}, providerhttp.Protocol(p.name, errors.New("response has no text or tool calls"))
-	}
+	replay, _ := json.Marshal(decoded.Content)
+	result.Replay = &providerapi.Replay{Provider: p.name + "/anthropic", Model: model, Data: replay}
 	return result, nil
 }
 
 func (p *Provider) Stream(ctx context.Context, request providerapi.CompletionRequest, handler providerapi.StreamHandler) error {
-	if handler == nil {
-		return providerhttp.Invalid(p.name, errors.New("stream handler is required"))
+	body, err := p.requestBody(request)
+	if err != nil {
+		return providerhttp.Invalid(p.name, err)
 	}
-	response, err := p.Complete(ctx, request)
+	body, err = providerhttp.SetStream(body)
 	if err != nil {
 		return err
 	}
-	return providerapi.EmitResponse(response, handler)
-}
-
-func (p *Provider) Health(ctx context.Context) providerapi.HealthStatus {
-	request, err := p.newRequest(ctx, http.MethodGet, p.modelsPath, nil)
+	response, err := p.do(ctx, http.MethodPost, p.messagesPath, body)
 	if err != nil {
-		status := providerapi.HealthStatus{CheckedAt: time.Now().UTC()}
-		var providerError *providerapi.ProviderError
-		if errors.As(err, &providerError) {
-			status.ErrorKind = providerError.Kind
-		}
-		return status
+		return err
 	}
-	return providerhttp.HealthStatus(p.name, ctx, p.client, request)
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return providerhttp.StatusError(p.name, response)
+	}
+	var result messageResponse
+	var blocks []map[string]json.RawMessage
+	var inputs []string
+	started := false
+	return providerhttp.SSE(response.Body, p.maxBodyBytes, func(_ string, raw []byte) (bool, error) {
+		var event struct {
+			Type         string
+			Index        int
+			Message      messageResponse
+			ContentBlock map[string]json.RawMessage `json:"content_block"`
+			Delta        struct {
+				Type, Text, Thinking, Signature string
+				PartialJSON                     string `json:"partial_json"`
+				StopReason                      string `json:"stop_reason"`
+			}
+			Usage anthropicUsage
+			Error json.RawMessage
+		}
+		if err := json.Unmarshal(raw, &event); err != nil {
+			return false, providerhttp.Protocol(p.name, err)
+		}
+		switch event.Type {
+		case "message_start":
+			result = event.Message
+			started = true
+		case "content_block_start":
+			if event.ContentBlock == nil || event.Index != len(blocks) || len(blocks) >= 1024 {
+				return false, providerhttp.Protocol(p.name, errors.New("invalid content block index"))
+			}
+			blocks = append(blocks, event.ContentBlock)
+			inputs = append(inputs, "")
+		case "content_block_delta":
+			if event.Index < 0 || event.Index >= len(blocks) {
+				return false, providerhttp.Protocol(p.name, errors.New("unknown content block index"))
+			}
+			block := blocks[event.Index]
+			field, delta, kind := "", "", providerapi.StreamEventType("")
+			switch event.Delta.Type {
+			case "text_delta":
+				field, delta, kind = "text", event.Delta.Text, providerapi.StreamDelta
+			case "thinking_delta":
+				field, delta, kind = "thinking", event.Delta.Thinking, providerapi.StreamThinking
+			case "signature_delta":
+				field, delta = "signature", event.Delta.Signature
+			case "input_json_delta":
+				inputs[event.Index] += event.Delta.PartialJSON
+			}
+			if field != "" {
+				var old string
+				_ = json.Unmarshal(block[field], &old)
+				block[field], _ = json.Marshal(old + delta)
+			}
+			if kind != "" {
+				if delta != "" {
+					event := providerapi.StreamEvent{Type: kind}
+					if kind == providerapi.StreamDelta {
+						event.ContentDelta = delta
+					} else {
+						event.ThinkingDelta = delta
+					}
+					return false, handler(event)
+				}
+			}
+		case "content_block_stop":
+			if event.Index < 0 || event.Index >= len(blocks) {
+				return false, providerhttp.Protocol(p.name, errors.New("unknown stopped content block"))
+			}
+			if inputs[event.Index] != "" {
+				if !json.Valid([]byte(inputs[event.Index])) {
+					return false, providerhttp.Protocol(p.name, errors.New("invalid tool input JSON"))
+				}
+				blocks[event.Index]["input"] = json.RawMessage(inputs[event.Index])
+			}
+		case "message_delta":
+			result.StopReason = event.Delta.StopReason
+			result.Usage.OutputTokens = event.Usage.OutputTokens
+		case "message_stop":
+			if !started || result.StopReason == "" {
+				return false, providerhttp.Protocol(p.name, errors.New("incomplete message stream"))
+			}
+			result.Content = nil
+			for _, block := range blocks {
+				encoded, _ := json.Marshal(block)
+				result.Content = append(result.Content, encoded)
+			}
+			encoded, _ := json.Marshal(result)
+			final, err := p.decode(encoded, request.Model)
+			if err != nil {
+				return false, err
+			}
+			final.Content = ""
+			final.Thinking = ""
+			return true, providerapi.EmitResponse(final, handler)
+		case "error":
+			return false, providerhttp.StreamError(p.name, event.Error)
+		}
+		return false, nil
+	})
 }
 
 func (p *Provider) requestBody(request providerapi.CompletionRequest) ([]byte, error) {
@@ -178,64 +271,64 @@ func (p *Provider) requestBody(request providerapi.CompletionRequest) ([]byte, e
 	}
 	payload := messageRequest{Model: request.Model, MaxTokens: maxTokens, Temperature: request.Temperature}
 	lastUser := -1
-	for i, message := range request.Messages {
-		if message.Role == providerapi.RoleUser {
+	for i, m := range request.Messages {
+		if m.Role == providerapi.RoleUser {
 			lastUser = i
+		}
+	}
+	add := func(role string, blocks []json.RawMessage) {
+		n := len(payload.Messages)
+		if n > 0 && payload.Messages[n-1].Role == role {
+			payload.Messages[n-1].Content = append(payload.Messages[n-1].Content, blocks...)
+		} else {
+			payload.Messages = append(payload.Messages, anthropicMessage{Role: role, Content: blocks})
 		}
 	}
 	for index, message := range request.Messages {
 		switch message.Role {
 		case providerapi.RoleSystem:
-			if len(message.ToolCalls) > 0 || message.ToolCallID != "" {
-				return nil, fmt.Errorf("system message %d cannot contain tool calls", index)
+			if payload.System != "" {
+				payload.System += "\n\n"
 			}
-			if message.Content != "" {
-				if payload.System != "" {
-					payload.System += "\n\n"
-				}
-				payload.System += message.Content
-			}
+			payload.System += message.Content
 		case providerapi.RoleUser:
-			if len(message.ToolCalls) > 0 || message.ToolCallID != "" {
-				return nil, fmt.Errorf("user message %d cannot contain tool calls", index)
-			}
-			blocks := []contentBlock{{Type: "text", Text: message.Content}}
+			images := append([]providerapi.ImagePart(nil), message.Images...)
 			if index == lastUser {
-				for _, img := range request.Images {
-					blocks = append(blocks, contentBlock{
-						Type:   "image",
-						Source: &imageSource{Type: "base64", MediaType: strings.TrimSpace(img.MIME), Data: img.Base64},
-					})
-				}
+				images = append(images, request.Images...)
 			}
-			payload.Messages = append(payload.Messages, anthropicMessage{Role: "user", Content: blocks})
+			add("user", imageBlocks(message.Content, images))
 		case providerapi.RoleAssistant:
-			if message.ToolCallID != "" {
-				return nil, fmt.Errorf("assistant message %d cannot contain a tool call ID", index)
-			}
-			converted := anthropicMessage{Role: "assistant"}
-			if message.Content != "" {
-				converted.Content = append(converted.Content, contentBlock{Type: "text", Text: message.Content})
-			}
-			for _, call := range message.ToolCalls {
-				if strings.TrimSpace(call.ID) == "" || strings.TrimSpace(call.Name) == "" || !json.Valid([]byte(call.Arguments)) {
-					return nil, fmt.Errorf("assistant message %d has an invalid tool call", index)
+			var blocks []json.RawMessage
+			if replay := message.ReplayFor(p.name+"/anthropic", request.Model); len(replay) > 0 {
+				if err := json.Unmarshal(replay, &blocks); err != nil {
+					return nil, err
 				}
-				converted.Content = append(converted.Content, contentBlock{Type: "tool_use", ID: call.ID, Name: call.Name, Input: json.RawMessage(call.Arguments)})
+			} else {
+				blocks = imageBlocks(message.Content, nil)
+				for _, call := range message.ToolCalls {
+					if call.ID == "" || call.Name == "" || !json.Valid([]byte(call.Arguments)) {
+						return nil, errors.New("invalid assistant tool call")
+					}
+					raw, _ := json.Marshal(contentBlock{Type: "tool_use", ID: call.ID, Name: call.Name, Input: json.RawMessage(call.Arguments)})
+					blocks = append(blocks, raw)
+				}
 			}
-			if len(converted.Content) == 0 {
+			if len(blocks) == 0 {
 				return nil, fmt.Errorf("assistant message %d is empty", index)
 			}
-			payload.Messages = append(payload.Messages, converted)
+			add("assistant", blocks)
 		case providerapi.RoleTool:
-			if strings.TrimSpace(message.ToolCallID) == "" || len(message.ToolCalls) > 0 {
-				return nil, fmt.Errorf("tool message %d requires a tool call ID and cannot contain tool calls", index)
+			if message.ToolCallID == "" {
+				return nil, errors.New("tool result requires call ID")
 			}
-			payload.Messages = append(payload.Messages, anthropicMessage{Role: "user", Content: []contentBlock{{
-				Type: "tool_result", ToolUseID: message.ToolCallID, Content: message.Content,
-			}}})
+			var output any = message.Content
+			if len(message.Images) > 0 {
+				output = imageBlocks(message.Content, message.Images)
+			}
+			raw, _ := json.Marshal(contentBlock{Type: "tool_result", ToolUseID: message.ToolCallID, Content: output})
+			add("user", []json.RawMessage{raw})
 		default:
-			return nil, fmt.Errorf("message %d has invalid role", index)
+			return nil, fmt.Errorf("invalid role %q", message.Role)
 		}
 	}
 	if len(payload.Messages) == 0 {
@@ -286,7 +379,7 @@ func (p *Provider) newRequest(ctx context.Context, method, endpoint string, body
 	if err != nil {
 		return nil, providerhttp.Invalid(p.name, errors.New("cannot create HTTP request"))
 	}
-	request.Header.Set("Accept", "application/json")
+	request.Header.Set("Accept", "application/json, text/event-stream")
 	request.Header.Set("anthropic-version", p.anthropicVersion)
 	if body != nil {
 		request.Header.Set("Content-Type", "application/json")
@@ -313,8 +406,8 @@ type messageRequest struct {
 }
 
 type anthropicMessage struct {
-	Role    string         `json:"role"`
-	Content []contentBlock `json:"content"`
+	Role    string            `json:"role"`
+	Content []json.RawMessage `json:"content"`
 }
 
 type contentBlock struct {
@@ -324,7 +417,7 @@ type contentBlock struct {
 	Name      string          `json:"name,omitempty"`
 	Input     json.RawMessage `json:"input,omitempty"`
 	ToolUseID string          `json:"tool_use_id,omitempty"`
-	Content   string          `json:"content,omitempty"`
+	Content   any             `json:"content,omitempty"`
 	Source    *imageSource    `json:"source,omitempty"`
 }
 
@@ -350,9 +443,9 @@ type outputFormat struct {
 }
 
 type messageResponse struct {
-	Content    []contentBlock `json:"content"`
-	StopReason string         `json:"stop_reason"`
-	Usage      anthropicUsage `json:"usage"`
+	Content    []json.RawMessage `json:"content"`
+	StopReason string            `json:"stop_reason"`
+	Usage      anthropicUsage    `json:"usage"`
 }
 
 type anthropicUsage struct {
@@ -370,4 +463,17 @@ func usageFromAnthropic(u anthropicUsage) providerapi.Usage {
 		CacheReadTokens:  providerapi.TokenCount(u.CacheReadInputTokens),
 		CacheWriteTokens: providerapi.TokenCount(u.CacheCreationInputTokens),
 	}
+}
+
+func imageBlocks(text string, images []providerapi.ImagePart) []json.RawMessage {
+	var blocks []json.RawMessage
+	if text != "" {
+		raw, _ := json.Marshal(contentBlock{Type: "text", Text: text})
+		blocks = append(blocks, raw)
+	}
+	for _, img := range images {
+		raw, _ := json.Marshal(contentBlock{Type: "image", Source: &imageSource{Type: "base64", MediaType: img.MIME, Data: img.Base64}})
+		blocks = append(blocks, raw)
+	}
+	return blocks
 }

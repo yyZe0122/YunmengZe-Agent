@@ -80,11 +80,6 @@ func TestNewConfiguredUsesSelectedProtocol(t *testing.T) {
 				} else {
 					test.assertBody(t, body)
 				}
-				if test.protocol == providerconfig.ProtocolOpenAIChat {
-					writer.Header().Set("Content-Type", "text/event-stream")
-					_, _ = writer.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"chat\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":2,\"completion_tokens\":1,\"total_tokens\":3}}\n\ndata: [DONE]\n\n"))
-					return
-				}
 				writer.Header().Set("Content-Type", "application/json")
 				_, _ = writer.Write([]byte(test.response))
 			}))
@@ -97,7 +92,7 @@ func TestNewConfiguredUsesSelectedProtocol(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			response, err := providerapi.CollectStream(context.Background(), provider, providerapi.CompletionRequest{
+			response, err := provider.Complete(context.Background(), providerapi.CompletionRequest{
 				Model: "test-model", Messages: []providerapi.Message{{Role: providerapi.RoleUser, Content: "hello"}},
 				MaxOutputTokens: 64,
 				Tools:           []providerapi.ToolDefinition{{Name: "lookup", InputSchema: json.RawMessage(`{"type":"object"}`)}},

@@ -3,6 +3,7 @@ package providerhttp
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -113,9 +114,30 @@ func StatusError(provider string, response *http.Response) error {
 			kind, retryable = providerapi.ErrorUnavailable, true
 		}
 	}
+	message := "provider rejected the request"
+	raw, _ := ReadLimited(response.Body, 16<<10)
+	var details struct {
+		Error struct {
+			Message string          `json:"message"`
+			Type    string          `json:"type"`
+			Code    json.RawMessage `json:"code"`
+		} `json:"error"`
+	}
+	if json.Unmarshal(raw, &details) == nil && details.Error.Message != "" {
+		message = strings.Join(strings.Fields(details.Error.Message), " ")
+		if len(message) > 1500 {
+			message = message[:1500]
+		}
+		if details.Error.Type != "" {
+			message = details.Error.Type + ": " + message
+		}
+		if len(details.Error.Code) > 0 && len(details.Error.Code) < 160 {
+			message += " (" + string(details.Error.Code) + ")"
+		}
+	}
 	return &providerapi.ProviderError{
 		Provider: provider, Kind: kind, StatusCode: response.StatusCode, Retryable: retryable,
-		RetryAfter: parseRetryAfter(response.Header.Get("Retry-After")), Err: errors.New("provider rejected the request"),
+		RetryAfter: parseRetryAfter(response.Header.Get("Retry-After")), Err: errors.New(message),
 	}
 }
 
@@ -125,31 +147,6 @@ func Invalid(provider string, err error) error {
 
 func Protocol(provider string, err error) error {
 	return &providerapi.ProviderError{Provider: provider, Kind: providerapi.ErrorProtocol, Retryable: true, Err: err}
-}
-
-func HealthStatus(provider string, ctx context.Context, client *http.Client, request *http.Request) providerapi.HealthStatus {
-	started := time.Now()
-	status := providerapi.HealthStatus{CheckedAt: started.UTC()}
-	response, err := client.Do(request)
-	status.Latency = time.Since(started)
-	if err != nil {
-		setHealthError(&status, NetworkError(provider, ctx, err))
-		return status
-	}
-	defer response.Body.Close()
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		setHealthError(&status, StatusError(provider, response))
-		return status
-	}
-	status.Healthy = true
-	return status
-}
-
-func setHealthError(status *providerapi.HealthStatus, err error) {
-	var providerError *providerapi.ProviderError
-	if errors.As(err, &providerError) {
-		status.ErrorKind = providerError.Kind
-	}
 }
 
 func parseRetryAfter(value string) time.Duration {
@@ -162,4 +159,12 @@ func parseRetryAfter(value string) time.Duration {
 		}
 	}
 	return 0
+}
+
+// NewClient permits long streaming generations while bounding connection setup
+// and the entire request. Callers can impose shorter operation deadlines.
+func NewClient() *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.ResponseHeaderTimeout = 60 * time.Second
+	return &http.Client{Transport: transport, Timeout: 10 * time.Minute}
 }

@@ -66,8 +66,8 @@ func TestLoadFillsContextWindowFromCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resolved.MaxTokens != 0 {
-		t.Fatalf("maxTokens should stay unset for omit-on-wire, got %d", resolved.MaxTokens)
+	if resolved.MaxTokens <= 0 || resolved.MaxTokens > 16384 || resolved.MaxTokens >= resolved.ContextWindow {
+		t.Fatalf("maxTokens must leave a bounded output reserve, got %d", resolved.MaxTokens)
 	}
 	if resolved.ContextWindow < 100_000 {
 		t.Fatalf("contextWindow = %d, want catalog fill", resolved.ContextWindow)

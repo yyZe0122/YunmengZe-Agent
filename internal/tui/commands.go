@@ -1,174 +1,265 @@
 package tui
 
 import (
+	tea "charm.land/bubbletea/v2"
+	"context"
+	"fmt"
+	"github.com/yyZe0122/yunmengze-agent/internal/session"
+	"sort"
 	"strings"
 )
 
-type slashCommand struct {
-	Name string
-	Desc string
-	Help string
-}
+const help = `/new 新会话 · /sessions 或 /resume 切换会话
+/model [provider/model] 选择模型 · /mode plan|agent
+/skills 查看技能 · /<skill-id> [参数] 加载技能
+/compact [重点] 压缩上下文 · /memory 查看记忆及来源
+/memory forget <id> 遗忘 · /memory edit <id> <偏好> 纠正
+/refresh-memory 刷新记忆注入 · /status · /help · /quit
+Tab 切换 plan/agent · Ctrl+L 模型 · Ctrl+S 会话
+Enter 发送或运行中纠偏 · Shift+Enter 换行 · Esc 取消
+PgUp/PgDn 滚动 · 编辑器为空时 e/E/c 折叠工具和思考
+`
 
-var slashCommands = []slashCommand{
-	{Name: "/new", Desc: "leave session", Help: "/new  leave session (cancels a running turn)"},
-	{Name: "/sessions", Desc: "list chat sessions", Help: "/sessions  list sessions (open with Enter)"},
-	{Name: "/tasks", Desc: "list / focus tasks", Help: "/tasks [id-prefix]  list tasks or focus by id"},
-	{Name: "/back", Desc: "session list", Help: "/back  open session list"},
-	{Name: "/clear", Desc: "session list", Help: "/clear  open session list"},
-	{Name: "/pause", Desc: "pause task", Help: "/pause [reason]  pause current task"},
-	{Name: "/resume", Desc: "resume task", Help: "/resume  resume current task"},
-	{Name: "/cancel", Desc: "cancel task", Help: "/cancel [reason]  cancel current task (/stop)"},
-	{Name: "/stop", Desc: "cancel task", Help: "/stop [reason]  alias for /cancel"},
-	{Name: "/retry", Desc: "resubmit last user message", Help: "/retry  resubmit last user message on focused session"},
-	{Name: "/model", Desc: "this session model", Help: "/model [provider/model]  this session; /model main provider/model  global default"},
-	{Name: "/skills", Desc: "select skills for next submit", Help: "/skills  toggle; /skills apply|reject <id>; /skills archived"},
-	{Name: "/theme", Desc: "toggle day/night theme", Help: "/theme  toggle day ↔ night theme"},
-	{Name: "/cron", Desc: "list or create scheduled jobs", Help: "/cron [every objective]  list jobs, or create on current session (Tab mode)"},
-	{Name: "/compact", Desc: "compact session context", Help: "/compact [focus]  force session head summary (optional focus text)"},
-	{Name: "/edit", Desc: "retract last turn into editor", Help: "/edit  hide last turn and fill its user text (does not restore files)"},
-	{Name: "/editundo", Desc: "retract last turn and restore its files", Help: "/editundo  hide last turn, restore that turn's file writes, fill editor"},
-	{Name: "/undo", Desc: "rewind last file edit", Help: "/undo  restore last agent file write in this session (Esc Esc)"},
-	{Name: "/perm", Desc: "tool permission queue", Help: "/perm open; keys 1–4 once|similar|permanent|deny; /perm <decision> <id>"},
-	{Name: "/expand", Desc: "expand/collapse folded blocks", Help: "/expand [all|none|last]  or keys e (last) · E (all) · c (collapse)"},
-	{Name: "/journey", Desc: "memory/skill timeline", Help: "/journey [memory|skills]  prepend read-only memory and/or skill events"},
-	{Name: "/memory", Desc: "list/search local memory", Help: "/memory [q…]  list facts; /memory archived; /memory forget|promote <id>; /memory refresh"},
-	{Name: "/refresh-memory", Desc: "rebuild frozen memory inject", Help: "/refresh-memory  invalidate session memory snapshot (next turn reinjects)"},
-	{Name: "/status", Desc: "health summary", Help: "/status  health + version + model + task + context + pending perms"},
-	{Name: "/help", Desc: "command list", Help: "/help  command list"},
-	{Name: "/quit", Desc: "exit", Help: "/quit  exit TUI (/q /exit)"},
-}
-
-// canonicalSlash maps aliases to primary command names.
-func canonicalSlash(name string) string {
-	switch strings.ToLower(strings.TrimSpace(name)) {
-	case "/q", "/exit":
-		return "/quit"
-	case "/clear", "/resume-list":
-		return "/back"
-	case "/sessions":
-		return "/sessions"
-	case "/stop":
-		return "/cancel"
+func (m *model) command(text string) (bool, tea.Cmd) {
+	name, args, _ := strings.Cut(strings.TrimPrefix(text, "/"), " ")
+	args = strings.TrimSpace(args)
+	switch name {
+	case "q", "quit", "exit":
+		if m.busy {
+			m.cancel()
+		}
+		return true, tea.Quit
+	case "new":
+		if m.busy {
+			m.newAfter = true
+			m.cancel()
+		} else {
+			m.reset()
+			m.refresh(true)
+		}
+		return true, nil
+	case "help":
+		m.entries = append(m.entries, entry{role: "info", text: help})
+		m.refresh(true)
+		return true, nil
+	}
+	if m.busy {
+		switch name {
+		case "model", "mode", "sessions", "resume", "compact", "skills", "memory", "refresh-memory", "status":
+			m.status = "请先结束或取消当前运行"
+			return true, nil
+		}
+		return false, nil
+	}
+	switch name {
+	case "sessions", "resume":
+		if args == "" {
+			m.openSessions()
+		} else if err := m.load(args); err != nil {
+			m.status = err.Error()
+		}
+	case "model":
+		if args == "" {
+			m.openModels()
+		} else if m.session.ID != "" {
+			if err := m.engine.SetModel(m.ctx, m.session, args); err != nil {
+				m.status = err.Error()
+			} else {
+				m.modelRef = args
+				m.session.Model = args
+			}
+		} else {
+			m.modelRef = args
+		}
+	case "mode":
+		mode, err := session.ParseMode(args)
+		if err != nil {
+			m.status = err.Error()
+			break
+		}
+		if m.session.ID != "" {
+			if err = m.engine.Store.Configure(m.ctx, m.session.ID, mode, m.modelRef); err != nil {
+				m.status = err.Error()
+				break
+			}
+		}
+		m.mode = mode
+		m.session.Mode = mode
+	case "skills":
+		var lines []string
+		workspace := m.engine.Workspace
+		if m.session.Workspace != "" {
+			workspace = m.session.Workspace
+		}
+		for _, sk := range m.engine.Skills(workspace).Skills() {
+			lines = append(lines, "/"+sk.ID+" · "+sk.Description)
+		}
+		if len(lines) == 0 {
+			lines = append(lines, "没有发现技能：添加 <config>/skills/<id>/SKILL.md 或 .yunmengze/skills/<id>/SKILL.md")
+		}
+		m.entries = append(m.entries, entry{role: "info", text: strings.Join(lines, "\n")})
+	case "compact":
+		if m.session.ID == "" {
+			m.status = "没有当前会话"
+			break
+		}
+		m.status = "正在压缩 · Esc 取消"
+		m.busy = true
+		m.inbox = nil
+		m.events = make(chan tea.Msg, 1)
+		ctx, cancel := context.WithCancel(m.ctx)
+		m.cancel = cancel
+		events, engine, id, root := m.events, m.engine, m.session.ID, m.ctx
+		m.runs.Add(1)
+		go func() {
+			defer m.runs.Done()
+			err := engine.Compact(ctx, id, args)
+			select {
+			case events <- doneMsg{err: err, status: "压缩完成"}:
+			case <-root.Done():
+			}
+		}()
+		return true, waitEvent(events, root)
+	case "memory":
+		if m.engine.Memory == nil {
+			m.status = "记忆已禁用"
+			break
+		}
+		action, rest, _ := strings.Cut(args, " ")
+		if action == "forget" || action == "edit" {
+			if m.mode == session.Plan {
+				m.status = "plan 模式不能修改记忆"
+				break
+			}
+			var err error
+			if action == "forget" {
+				err = m.engine.Memory.Forget(m.ctx, strings.TrimSpace(rest))
+			} else {
+				id, content, _ := strings.Cut(rest, " ")
+				err = m.engine.Memory.Correct(m.ctx, id, content)
+			}
+			if err != nil {
+				m.status = err.Error()
+			} else {
+				m.status = "记忆已更新，下次运行生效"
+			}
+			break
+		}
+		entries, err := m.engine.Memory.List(m.ctx, m.session.ID, true, 30)
+		if err != nil {
+			m.status = err.Error()
+			break
+		}
+		var lines []string
+		for _, e := range entries {
+			line := fmt.Sprintf("%s [%s] %s", e.ID, e.Kind, e.Content)
+			for _, ev := range e.Evidence {
+				line += fmt.Sprintf("\n  来源消息 %d: %s", ev.MessageID, ev.Quote)
+			}
+			lines = append(lines, line)
+		}
+		m.entries = append(m.entries, entry{role: "info", text: strings.Join(lines, "\n")})
+	case "refresh-memory":
+		if m.engine.Memory != nil {
+			m.engine.Memory.InvalidateSnapshot(m.session.ID)
+			m.status = "下次运行重新加载记忆"
+		}
+	case "status":
+		m.entries = append(m.entries, entry{role: "info", text: fmt.Sprintf("mode: %s\nmodel: %s\nsession: %s\nworkspace: %s", m.mode, m.modelRef, m.session.ID, m.session.Workspace)})
 	default:
-		return strings.ToLower(strings.TrimSpace(name))
+		return false, nil
 	}
+	m.refresh(true)
+	return true, nil
 }
 
-// isBuiltinSlash reports whether name is a fixed TUI command (not skill-as-slash).
-func isBuiltinSlash(name string) bool {
-	name = canonicalSlash(name)
-	if name == "" || name[0] != '/' {
-		return false
-	}
-	for _, cmd := range slashCommands {
-		if canonicalSlash(cmd.Name) == name {
-			return true
+func (m *model) commandNames() {
+	m.commands = []string{"new", "sessions", "resume", "model", "mode", "skills", "compact", "memory", "refresh-memory", "status", "help", "quit"}
+	if m.engine != nil {
+		for name := range m.engine.Config.Commands {
+			m.commands = append(m.commands, name)
+		}
+		workspace := m.engine.Workspace
+		if m.session.Workspace != "" {
+			workspace = m.session.Workspace
+		}
+		for _, sk := range m.engine.Skills(workspace).Skills() {
+			m.commands = append(m.commands, sk.ID)
 		}
 	}
-	// Aliases already canonicalized above.
-	return false
+	sort.Strings(m.commands)
 }
 
-// skillSlashName returns "/id" for a skill id (empty if invalid).
-func skillSlashName(id string) string {
-	id = strings.TrimSpace(id)
-	if id == "" {
-		return ""
+func (m model) suggestions() []string {
+	input := m.input.Value()
+	if !strings.HasPrefix(input, "/") || strings.ContainsAny(input, " \t\n") {
+		return nil
 	}
-	return "/" + id
-}
-
-func helpText() string {
-	var b strings.Builder
-	b.WriteString(styleTitle.Render("Commands") + "\n")
-	for _, cmd := range slashCommands {
-		b.WriteString("  ")
-		b.WriteString(paintKeywords(cmd.Help))
-		b.WriteByte('\n')
+	prefix := strings.TrimPrefix(input, "/")
+	var matches []string
+	for _, name := range m.commands {
+		if name == prefix {
+			return nil
+		}
+		if strings.HasPrefix(name, prefix) {
+			matches = append(matches, name)
+		}
 	}
-	b.WriteString("\n")
-	b.WriteString(styleTitle.Render("Keys") + "\n")
-	b.WriteString("  " + styleKeyword.Render("Tab") + "            complete slash, else cycle agent→plan→auto\n")
-	b.WriteString("  " + styleKeyword.Render("Shift+Tab") + "      cycle auto→plan→agent\n")
-	b.WriteString("  ↑↓             picker / completer / history (not chat)\n")
-	b.WriteString("  " + styleKeyword.Render("PgUp") + "/" + styleKeyword.Render("PgDn") + "      scroll this conversation\n")
-	b.WriteString("  " + styleKeyword.Render("Shift+PgUp") + "/" + styleKeyword.Render("Shift+PgDn") + "  older/newer session\n")
-	b.WriteString("  " + styleKeyword.Render("e") + " / " + styleKeyword.Render("E") + " / " + styleKeyword.Render("c") + "      expand last foldable · expand all · collapse (empty input)\n")
-	b.WriteString("  " + styleKeyword.Render("Enter") + "          complete slash once, then execute; open picker item\n")
-	b.WriteString("  " + styleKeyword.Render("Shift+Enter") + "    newline in editor\n")
-	b.WriteString("  " + styleKeyword.Render("Esc") + "            close overlay; running → cancel; Esc Esc undo last file edit\n")
-	b.WriteString("  " + styleKeyword.Render("Ctrl+P") + "/" + styleKeyword.Render("L") + "/" + styleKeyword.Render("S") + "/" + styleKeyword.Render("T") + "   commands · models · sessions · todos\n")
-	b.WriteString("  " + styleKeyword.Render("Ctrl+C") + "         clear input (exit via /quit only)\n")
-	b.WriteString("\n")
-	b.WriteString(styleTitle.Render("Modes") + styleDim.Render(" (input rule color)") + "\n")
-	b.WriteString("  " + styleModeAgent.Render("agent") + "  build/write; ungranted tests/git wait on /perm\n")
-	b.WriteString("  " + styleModePlan.Render("plan") + "   read-only analysis\n")
-	b.WriteString("  " + styleModeAuto.Render("auto") + "   this session pre-grants process+git (leave to end)\n")
-	b.WriteString("\n")
-	b.WriteString(styleTitle.Render("Chat") + "\n")
-	b.WriteString("  Plain text continues the current session (or starts one).\n")
-	b.WriteString("  While a turn is running, Enter steers the next step (does not cancel tools).\n")
-	b.WriteString("  " + paintKeywords("/new") + " leaves to ready and cancels a running turn. Type to start a session. Tab sets agent|plan|auto.\n")
-	b.WriteString("  " + paintKeywords("/skills preloads instruction skills for the next submit (explicit snapshot).") + "\n")
-	b.WriteString("  Other skills: model calls skills_list then skill_view. " + paintKeywords("/<skill-id>") + " toggles preload.\n")
-	b.WriteString("  chat.commands templates: " + paintKeywords("/<cmd>") + " [args] expand $ARGUMENTS and submit (instruction only).\n")
-	b.WriteString("  Priority: built-in > chat.commands > skill ids.\n")
-	b.WriteString("  " + paintKeywords("/perm opens pending tool permissions in Agent (ungranted high-risk).") + "\n")
-	b.WriteString("  " + paintKeywords("/retry resubmits the last user message on the focused session.") + "\n")
-	b.WriteString("  " + paintKeywords("/edit hides the last turn and fills the editor; /editundo also restores that turn's files.") + "\n")
-	return b.String()
+	return matches
 }
-
-func paintKeywords(s string) string {
-	var b strings.Builder
-	runes := []rune(s)
-	for i := 0; i < len(runes); {
-		if runes[i] == '/' && (i == 0 || !slashNameRune(runes[i-1])) {
-			j := i + 1
-			if j < len(runes) && runes[j] == '<' {
-				for j < len(runes) && runes[j] != '>' {
-					j++
+func (m *model) openModels() {
+	m.picker = "model"
+	m.choice = 0
+	m.choices = nil
+	m.choiceIDs = nil
+	for _, ref := range m.engine.Models {
+		m.choices = append(m.choices, ref.ID+" "+ref.Name)
+		m.choiceIDs = append(m.choiceIDs, ref.ID)
+	}
+}
+func (m *model) openSessions() {
+	items, err := m.engine.Store.List(m.ctx, m.engine.Workspace)
+	if err != nil {
+		m.status = err.Error()
+		return
+	}
+	m.picker = "session"
+	m.choice = 0
+	m.choices = nil
+	m.choiceIDs = nil
+	for _, s := range items {
+		m.choices = append(m.choices, s.ID[:min(8, len(s.ID))]+" · "+s.Title)
+		m.choiceIDs = append(m.choiceIDs, s.ID)
+	}
+}
+func (m model) pickerKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.picker = ""
+	case "up":
+		m.choice = max(0, m.choice-1)
+	case "down":
+		m.choice = min(max(0, len(m.choices)-1), m.choice+1)
+	case "enter":
+		if len(m.choiceIDs) > 0 {
+			id := m.choiceIDs[m.choice]
+			if m.picker == "session" {
+				if err := m.load(id); err != nil {
+					m.status = err.Error()
 				}
-				if j < len(runes) {
-					j++
+			} else {
+				if m.session.ID == "" {
+					m.modelRef = id
+				} else if err := m.engine.SetModel(m.ctx, m.session, id); err != nil {
+					m.status = err.Error()
+				} else {
+					m.modelRef = id
+					m.session.Model = id
 				}
-				b.WriteString(styleKeyword.Render(string(runes[i:j])))
-				i = j
-				continue
-			}
-			for j < len(runes) && slashNameRune(runes[j]) {
-				j++
-			}
-			if j > i+1 {
-				b.WriteString(styleKeyword.Render(string(runes[i:j])))
-				i = j
-				continue
 			}
 		}
-		b.WriteRune(runes[i])
-		i++
+		m.picker = ""
 	}
-	return b.String()
-}
-
-func slashNameRune(r rune) bool {
-	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') ||
-		(r >= '0' && r <= '9') || r == '-' || r == '_'
-}
-
-func parseSlash(line string) (name, arg string) {
-	line = strings.TrimSpace(line)
-	if line == "" {
-		return "", ""
-	}
-	if !strings.HasPrefix(line, "/") {
-		return "", line
-	}
-	parts := strings.SplitN(line, " ", 2)
-	name = canonicalSlash(parts[0])
-	if len(parts) == 2 {
-		arg = strings.TrimSpace(parts[1])
-	}
-	return name, arg
+	m.refresh(false)
+	return m, nil
 }

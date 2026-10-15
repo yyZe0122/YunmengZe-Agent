@@ -1,134 +1,263 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
+	"io"
+	"log/slog"
 	"os"
+	"os/signal"
+	"path/filepath"
+	"strings"
+	"syscall"
 
+	"github.com/yyZe0122/yunmengze-agent/internal/agent"
+	"github.com/yyZe0122/yunmengze-agent/internal/modelcatalog"
+	"github.com/yyZe0122/yunmengze-agent/internal/providerconfig"
+	"github.com/yyZe0122/yunmengze-agent/internal/session"
+	"github.com/yyZe0122/yunmengze-agent/internal/store/sqlite"
+	"github.com/yyZe0122/yunmengze-agent/internal/tui"
 	"github.com/yyZe0122/yunmengze-agent/internal/version"
 )
 
 func main() {
-	if err := run(os.Args[1:]); err != nil {
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+	if err := run(ctx, os.Args[1:], os.Stdout, os.Stderr); err != nil {
 		fmt.Fprintln(os.Stderr, "ymz:", err)
 		os.Exit(1)
 	}
 }
+func homeDir() (string, error) {
+	if dir := strings.TrimSpace(os.Getenv("YMZ_HOME")); dir != "" {
+		return filepath.Abs(dir)
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".yunmengze"), nil
+}
 
-func run(args []string) error {
-	command, rest := commandFromArgs(args)
+const usage = `ymz — local coding agent
+
+  ymz [--mode agent|plan] [--model provider/model] [--session ID|--continue]
+  ymz run [same flags] [--json] "objective"
+  ymz sessions
+  ymz models [refresh]
+  ymz config validate
+  ymz db check
+  ymz paths
+  ymz version
+
+Configuration: $YMZ_HOME or ~/.yunmengze. No daemon is required.
+agent executes tools directly; plan is read-only. /help lists TUI commands.
+`
+
+func run(ctx context.Context, args []string, out, errOut io.Writer) error {
+	command := "tui"
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+		command = args[0]
+		args = args[1:]
+	}
+	if command == "help" || len(args) > 0 && (args[0] == "--help" || args[0] == "-h") {
+		_, err := fmt.Fprint(out, usage)
+		return err
+	}
+	if command == "version" {
+		_, err := fmt.Fprintf(out, "ymz %s (%s, %s)\n", version.Version, version.Commit, version.Date)
+		return err
+	}
+	dir, err := homeDir()
+	if err != nil {
+		return err
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
 	switch command {
-	case "tui":
-		return runTUI(rest)
-	case "version":
-		if len(rest) != 0 {
-			return errors.New("version does not accept arguments")
-		}
-		fmt.Printf("ymz %s commit=%s date=%s\n", version.Version, version.Commit, version.Date)
-		return nil
 	case "paths":
-		return runPaths(rest)
+		return json.NewEncoder(out).Encode(map[string]string{"config": dir, "database": filepath.Join(dir, "core.db"), "workspace": cwd})
 	case "config":
-		if len(rest) < 1 {
-			return errors.New("use ymz config validate|import-opencode ...")
+		if len(args) != 1 || args[0] != "validate" {
+			return errors.New("usage: ymz config validate")
 		}
-		switch rest[0] {
-		case "validate":
-			return runConfigValidate(rest[1:])
-		case "import-opencode":
-			return runConfigImportOpenCode(rest[1:])
-		default:
-			return errors.New("use ymz config validate|import-opencode ...")
+		if _, err = providerconfig.EnsureConfig(dir); err != nil {
+			return err
 		}
-	case "health":
-		return runHealth(rest)
-	case "logs":
-		return runLogs(rest)
-	case "start", "stop", "restart", "status":
-		return runDaemonAction(command, rest)
-	case "daemon":
-		return runDaemon(rest)
-	case "run":
-		return runWorkflow(rest)
-	case "task":
-		if len(rest) < 1 {
-			return errors.New("use ymz task status|pause|resume|cancel ...")
+		modelcatalog.Init(dir)
+		if _, err = providerconfig.LoadSnapshot(dir); err != nil {
+			return err
 		}
-		switch rest[0] {
-		case "status":
-			return runTaskStatus(rest[1:])
-		case "pause", "resume", "cancel":
-			return runTaskAction(rest[0], rest[1:])
-		default:
-			return errors.New("use ymz task status|pause|resume|cancel ...")
-		}
-	case "job":
-		if len(rest) < 1 {
-			return errors.New("use ymz job create|list|status|pause|resume|cancel ...")
-		}
-		switch rest[0] {
-		case "create":
-			return runJobCreate(rest[1:])
-		case "list":
-			return runJobList(rest[1:])
-		case "status":
-			return runJobStatus(rest[1:])
-		case "pause", "resume", "cancel":
-			return runJobAction(rest[0], rest[1:])
-		default:
-			return errors.New("use ymz job create|list|status|pause|resume|cancel ...")
-		}
-	case "db":
-		if len(rest) < 1 || rest[0] != "check" {
-			return errors.New("use ymz db check [--mode user|system]")
-		}
-		return runDBCheck(rest[1:])
-	case "help":
-		printUsage()
+		fmt.Fprintln(out, "configuration valid")
 		return nil
+	case "models":
+		if len(args) > 1 || len(args) == 1 && args[0] != "refresh" {
+			return errors.New("usage: ymz models [refresh]")
+		}
+		if len(args) == 1 {
+			if err = modelcatalog.Refresh(ctx, dir); err != nil {
+				return err
+			}
+		}
+		_, items, err := providerconfig.ListModelRefs(dir)
+		if err != nil {
+			return err
+		}
+		return json.NewEncoder(out).Encode(items)
+	case "sessions", "db":
+		if command == "db" && (len(args) != 1 || args[0] != "check") {
+			return errors.New("usage: ymz db check")
+		}
+		if command == "sessions" && len(args) != 0 {
+			return errors.New("usage: ymz sessions")
+		}
+		db, err := sqlite.Open(ctx, filepath.Join(dir, "core.db"))
+		if err != nil {
+			return err
+		}
+		defer db.Close()
+		if command == "db" {
+			if err = db.Health(ctx); err != nil {
+				return err
+			}
+			fmt.Fprintln(out, "database OK")
+			return nil
+		}
+		items, err := session.New(db.SQL()).List(ctx, cwd)
+		if err != nil {
+			return err
+		}
+		return json.NewEncoder(out).Encode(items)
+	case "tui", "run":
 	default:
-		return errors.New("unknown command; use ymz help")
+		return fmt.Errorf("unknown command %q; use ymz help", command)
 	}
-}
-
-// commandFromArgs maps CLI argv to a command name and remaining args.
-// Empty argv defaults to the interactive TUI (same as opencode/crush).
-func commandFromArgs(args []string) (command string, rest []string) {
-	if len(args) == 0 {
-		return "tui", nil
+	flags := flag.NewFlagSet("ymz "+command, flag.ContinueOnError)
+	flags.SetOutput(errOut)
+	modeFlag := flags.String("mode", "agent", "agent or plan")
+	modelFlag := flags.String("model", "", "provider/model")
+	id := flags.String("session", "", "saved session ID")
+	resume := flags.Bool("continue", false, "continue the latest session in this workspace")
+	jsonMode := flags.Bool("json", false, "emit JSON events")
+	if err = flags.Parse(args); err != nil {
+		return err
 	}
-	switch args[0] {
-	case "help", "--help", "-h":
-		return "help", args[1:]
-	default:
-		return args[0], args[1:]
+	mode, err := session.ParseMode(*modeFlag)
+	if err != nil {
+		return err
 	}
-}
+	if *id != "" && *resume {
+		return errors.New("use only one of --session and --continue")
+	}
+	input := strings.TrimSpace(strings.Join(flags.Args(), " "))
+	if command == "run" && input == "" {
+		return errors.New("usage: ymz run [flags] objective")
+	}
+	if command == "tui" && flags.NArg() != 0 {
+		return errors.New("use ymz run for a command-line objective")
+	}
+	engine, err := agent.Open(ctx, dir, cwd)
+	if err != nil {
+		return err
+	}
+	defer engine.Close()
+	var s session.Session
+	if *resume {
+		items, err := engine.Store.List(ctx, cwd)
+		if err != nil {
+			return err
+		}
+		if len(items) > 0 {
+			*id = items[0].ID
+		}
+	}
+	explicitMode := false
+	flags.Visit(func(f *flag.Flag) {
+		if f.Name == "mode" {
+			explicitMode = true
+		}
+	})
+	if *id != "" {
+		s, err = engine.Store.Get(ctx, *id)
+		if err != nil {
+			return err
+		}
+		if s.ParentID != "" {
+			return errors.New("child session must be resumed through task")
+		}
+		if !explicitMode {
+			mode = s.Mode
+		}
+		model := s.Model
+		if *modelFlag != "" {
+			model = *modelFlag
+		}
+		s.Mode = mode
+		if err = engine.SetModel(ctx, s, model); err != nil {
+			return err
+		}
+		s.Model = model
+	}
+	ref := *modelFlag
+	if ref == "" {
+		ref = engine.Main
+	}
+	if s.ID != "" {
+		ref = s.Model
+	}
+	if command == "tui" {
+		logFile, err := os.OpenFile(filepath.Join(dir, "ymz.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+		if err != nil {
+			return err
+		}
+		defer logFile.Close()
+		previous := slog.Default()
+		slog.SetDefault(slog.New(slog.NewJSONHandler(logFile, nil)))
+		defer slog.SetDefault(previous)
+		return tui.Run(ctx, engine, s, mode, ref)
+	}
+	if s.ID == "" {
+		s, err = engine.NewSession(ctx, mode, ref)
+		if err != nil {
+			return err
+		}
+	}
 
-func printUsage() {
-	fmt.Println("YunmengZe Agent local client")
-	fmt.Println()
-	fmt.Println("With no arguments, starts the interactive TUI.")
-	fmt.Println("TUI and run auto-start the unique local daemon; stop only with ymz stop.")
-
-	fmt.Println()
-	fmt.Println("Usage:")
-	fmt.Println("  ymz")
-	fmt.Println("  ymz start|stop|restart|status [--mode user|system]")
-	fmt.Println("  ymz daemon start|stop|restart|status [--mode user|system]   # long form")
-	fmt.Println("  ymz tui [--mode user|system]")
-	fmt.Println("  ymz version")
-	fmt.Println("  ymz paths [user|system]")
-	fmt.Println("  ymz config validate [--mode user|system]")
-	fmt.Println("  ymz config import-opencode [path] [--mode user|system] [--dry-run] [--output path]")
-	fmt.Println("  ymz health [--mode user|system]")
-	fmt.Println("  ymz logs [--mode user|system] [--tail 200] [--level error] [--component agent] [--run run-id] [--session session-id] [--task task-id]")
-	fmt.Println("  ymz run [--mode user|system] [--execution-mode agent|plan] \"task objective\"")
-
-	fmt.Println("  ymz task status <task-id> [--mode user|system]")
-	fmt.Println("  ymz task pause|resume|cancel <task-id> [--reason <text>] [--mode user|system]")
-	fmt.Println("  ymz job create ...  (secondary; prefer TUI /cron)")
-	fmt.Println("  ymz job list|status|pause|resume|cancel ...")
-	fmt.Println("  ymz db check [--mode user|system]")
-	fmt.Println("  ymz help")
+	encoder := json.NewEncoder(out)
+	if *jsonMode {
+		if err = encoder.Encode(map[string]string{"type": "session", "id": s.ID}); err != nil {
+			return err
+		}
+	}
+	var writeErr error
+	_, err = engine.Run(ctx, s.ID, input, agent.RunOptions{Emit: func(event agent.Event) {
+		if writeErr != nil {
+			return
+		}
+		if *jsonMode {
+			writeErr = encoder.Encode(event)
+		} else if event.Type == "delta" && event.TaskID == "" {
+			_, writeErr = fmt.Fprint(out, event.Text)
+		} else if event.Type == "tool_start" {
+			fmt.Fprintf(errOut, "[%s]\n", event.Tool)
+		}
+	}})
+	if !*jsonMode {
+		fmt.Fprintln(out)
+	} else if writeErr == nil {
+		final := map[string]string{"type": "done", "session_id": s.ID}
+		if err != nil {
+			final["error"] = err.Error()
+		}
+		writeErr = encoder.Encode(final)
+	}
+	if writeErr != nil {
+		return writeErr
+	}
+	return err
 }

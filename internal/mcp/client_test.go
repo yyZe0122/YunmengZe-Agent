@@ -11,7 +11,7 @@ import (
 )
 
 func TestStartListCallFakeServer(t *testing.T) {
-	// stdio path (Content-Length framing)
+	// stdio path (newline-delimited JSON)
 	dir := t.TempDir()
 	script := filepath.Join(dir, "fake_mcp.py")
 	// Minimal MCP stdio server: initialize, tools/list, tools/call echo.
@@ -19,25 +19,12 @@ func TestStartListCallFakeServer(t *testing.T) {
 import json, sys
 
 def read_msg():
-    headers = {}
-    while True:
-        line = sys.stdin.buffer.readline()
-        if not line:
-            return None
-        line = line.decode("utf-8").rstrip("\r\n")
-        if line == "":
-            break
-        if ":" in line:
-            k, v = line.split(":", 1)
-            headers[k.strip().lower()] = v.strip()
-    n = int(headers.get("content-length", "0"))
-    body = sys.stdin.buffer.read(n)
-    return json.loads(body.decode("utf-8"))
+    line = sys.stdin.buffer.readline()
+    return json.loads(line) if line else None
 
 def write_msg(obj):
     data = json.dumps(obj).encode("utf-8")
-    sys.stdout.buffer.write(f"Content-Length: {len(data)}\r\n\r\n".encode("ascii"))
-    sys.stdout.buffer.write(data)
+    sys.stdout.buffer.write(data + b"\n")
     sys.stdout.buffer.flush()
 
 while True:

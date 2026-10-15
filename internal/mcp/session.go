@@ -1,4 +1,4 @@
-// Package mcp implements MCP clients for Tool Broker registration (ADR-040).
+// Package mcp implements on-demand stdio and remote MCP clients.
 package mcp
 
 import (
@@ -16,8 +16,6 @@ type ToolDesc struct {
 
 // Session is one connected MCP server (stdio or remote).
 type Session interface {
-	Name() string
-	Transport() string
 	ListTools(ctx context.Context) ([]ToolDesc, error)
 	CallTool(ctx context.Context, name string, arguments json.RawMessage) (json.RawMessage, error)
 	Close() error

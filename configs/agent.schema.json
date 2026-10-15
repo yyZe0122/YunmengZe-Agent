@@ -1,375 +1,324 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ymz.local/schema/agent.json",
-  "title": "YunmengZe Agent provider configuration",
+  "title": "YunmengZe local agent configuration",
   "type": "object",
   "additionalProperties": false,
-  "required": ["model", "provider"],
   "properties": {
-    "$schema": {"type": "string"},
-    "model": {"type": "string", "pattern": "^[^/\\s]+/.+$"},
+    "$schema": {
+      "type": "string"
+    },
+    "model": {
+      "type": "string"
+    },
     "models": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Optional role → provider/model overrides (ADR-045). Unset roles fall back to top-level model. Do not set models.main.",
       "properties": {
         "subagent": {
-          "type": "string",
-          "pattern": "^[^/\\s]+/.+$",
-          "description": "Model for task tool child runs. Omit → main model."
+          "type": "string"
         },
         "compact": {
-          "type": "string",
-          "pattern": "^[^/\\s]+/.+$",
-          "description": "Model for session head compaction summaries. Omit → main model."
+          "type": "string"
         },
         "web": {
-          "type": "string",
-          "pattern": "^[^/\\s]+/.+$",
-          "description": "Model for task(kind=web) child runs. Omit → models.subagent then main."
+          "type": "string"
         },
         "vision": {
-          "type": "string",
-          "pattern": "^[^/\\s]+/.+$",
-          "description": "Auxiliary vision model for vision_analyze / video_analyze. Omit → tools not advertised."
+          "type": "string"
         },
-        "speech": {
+        "memory": {
           "type": "string",
-          "pattern": "^[^/\\s]+/.+$",
-          "description": "OpenAI-compatible Whisper model for audio_transcribe. Omit → tool not advertised."
+          "description": "Preference curation model; defaults to the current session model."
         }
       }
     },
     "provider": {
       "type": "object",
-      "minProperties": 1,
-      "additionalProperties": {"$ref": "#/$defs/provider"}
-    },
-    "mcp": {"$ref": "#/$defs/mcp"},
-    "chat": {"$ref": "#/$defs/chat"}
-  },
-  "$defs": {
-    "provider": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["options"],
-      "properties": {
-        "type": {"$ref": "#/$defs/protocol"},
-        "protocol": {"$ref": "#/$defs/protocol"},
-        "options": {"$ref": "#/$defs/options"},
-        "models": {
-          "type": "object",
-          "additionalProperties": {"$ref": "#/$defs/model"}
-        }
-      }
-    },
-    "protocol": {
-      "type": "string",
-      "enum": [
-        "openai-chat", "openai-chat-completions", "chat-completions", "openai-compatible", "openai-compat",
-        "ollama", "lmstudio", "llamacpp", "vllm", "litellm",
-        "openai-responses", "openai", "responses",
-        "anthropic-messages", "anthropic", "anthropic-compatible", "claude",
-        "gemini-generate-content", "gemini", "google", "google-generative-ai"
-      ]
-    },
-    "options": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["baseURL"],
-      "properties": {
-        "baseURL": {"type": "string", "format": "uri"},
-        "apiKey": {"type": "string"},
-        "completionPath": {"type": "string", "pattern": "^/"},
-        "modelsPath": {"type": "string", "pattern": "^/"},
-        "responseFormat": {"enum": ["auto", "json_schema", "json_object"]},
-        "anthropicVersion": {"type": "string"},
-        "headers": {
-          "type": "object",
-          "additionalProperties": {"type": "string"}
-        }
-      }
-    },
-    "model": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "name": {"type": "string"},
-        "id": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Wire/API model id (OpenCode model.id). When omitted, the catalog key / selection model segment is sent upstream."
-        },
-        "responseFormat": {"enum": ["auto", "json_schema", "json_object"]},
-        "temperature": {"type": "number", "minimum": 0, "maximum": 2},
-        "maxTokens": {
-          "type": "integer",
-          "minimum": 0,
-          "description": "Model-level output-token cap (not context length)."
-        },
-        "contextWindow": {
-          "type": "integer",
-          "minimum": 0,
-          "description": "Model context length in tokens for packing/UI. Omit or 0 to fill from models.dev (or 1M default)."
-        },
-        "limit": {
-          "type": "object",
-          "additionalProperties": false,
-          "description": "OpenCode-style alias. Explicit contextWindow/maxTokens win when set.",
-          "properties": {
-            "context": {"type": "integer", "minimum": 0},
-            "output": {"type": "integer", "minimum": 0}
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "protocol": {
+            "enum": [
+              "openai-chat",
+              "openai-responses",
+              "anthropic-messages",
+              "gemini-generate-content"
+            ]
+          },
+          "type": {
+            "type": "string"
+          },
+          "options": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "baseURL": {
+                "type": "string"
+              },
+              "apiKey": {
+                "type": "string"
+              },
+              "completionPath": {
+                "type": "string"
+              },
+              "responseFormat": {
+                "type": "string"
+              },
+              "anthropicVersion": {
+                "type": "string"
+              },
+              "headers": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "baseURL"
+            ]
+          },
+          "models": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "responseFormat": {
+                  "enum": [
+                    "auto",
+                    "json_schema",
+                    "json_object"
+                  ]
+                },
+                "temperature": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 2
+                },
+                "maxTokens": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "contextWindow": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "limit": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "context": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "output": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  }
+                },
+                "reasoningEffort": {
+                  "type": "string"
+                },
+                "supportsImages": {
+                  "type": "boolean",
+                  "description": "Explicit image-input capability; otherwise use exact catalog metadata."
+                },
+                "nativeCompaction": {
+                  "type": "boolean",
+                  "default": false,
+                  "description": "Opt in to the Responses /compact endpoint when supported by this service and model."
+                }
+              }
+            }
           }
         },
-        "reasoningEffort": {"type": "string", "minLength": 1}
-      }
-    },
-    "mcp": {
-      "type": "object",
-      "additionalProperties": false,
-      "description": "MCP servers registered through the Tool Broker (ADR-040). Not hot-reloaded.",
-      "properties": {
-        "servers": {
-          "type": "object",
-          "additionalProperties": {"$ref": "#/$defs/mcpServer"},
-          "description": "Map of server id → transport. Tool names become mcp_<id>_<tool>."
-        }
-      }
-    },
-    "mcpServer": {
-      "type": "object",
-      "additionalProperties": false,
-      "description": "One MCP server. Omit type: command → stdio; url only → remote.",
-      "properties": {
-        "type": {
-          "type": "string",
-          "enum": ["stdio", "local", "http", "sse", "remote"],
-          "description": "stdio|local = subprocess; http = Streamable HTTP; sse = legacy HTTP+SSE; remote = streamable then SSE fallback."
-        },
-        "command": {
-          "type": "string",
-          "minLength": 1,
-          "description": "stdio executable. Required when type is stdio/local or when type is omitted and url is absent."
-        },
-        "args": {
-          "type": "array",
-          "items": {"type": "string"},
-          "description": "stdio argv after command"
-        },
-        "env": {
-          "type": "object",
-          "additionalProperties": {"type": "string"},
-          "description": "stdio child env. Values may use {env:VAR} / {file:…}."
-        },
-        "url": {
-          "type": "string",
-          "format": "uri",
-          "description": "Absolute http(s) URL for remote transports"
-        },
-        "headers": {
-          "type": "object",
-          "additionalProperties": {"type": "string"},
-          "description": "Remote request headers. Values may use {env:VAR} / {file:…}. Never served on Gateway status."
-        }
+        "required": [
+          "options"
+        ]
       }
     },
     "chat": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Session chat workspace. Tab agent=build (write) vs plan=read-only. allow_write is agent ceiling only.",
       "properties": {
-        "workspace": {
-          "type": "object",
-          "additionalProperties": false,
-          "description": "Session workspace binding (ADR-046). Client cwd is default session root.",
-          "properties": {
-            "default": {
-              "type": "string",
-              "description": "client_cwd (default) | daemon_cwd | absolute path"
-            },
-            "allow": {
-              "type": "array",
-              "items": {"type": "string", "minLength": 1},
-              "description": "Extra absolute roots always on the path ceiling"
-            },
-            "allow_all": {
-              "type": "boolean",
-              "default": false,
-              "description": "Disable path-root containment (local single-user only; high risk)"
-            }
-          }
-        },
-        "allow_write": {
-          "type": "boolean",
-          "default": true,
-          "description": "Ceiling for agent (build) write tools. Omit = true. Plan mode is always read-only."
-        },
-        "tools": {
-          "type": "object",
-          "additionalProperties": false,
-          "description": "Opt-in high-risk tools for agent mode only (default all false). Plan never receives these.",
-          "properties": {
-            "git": {
-              "type": "boolean",
-              "default": false,
-              "description": "Pre-authorize git_status/diff/add/commit under chat roots (agent only)."
-            },
-            "process": {
-              "type": "boolean",
-              "default": false,
-              "description": "Pre-authorize process_exec under chat roots (agent only)."
-            }
-          }
-        },
         "compaction": {
           "type": "object",
           "additionalProperties": false,
-          "description": "Session head summarization (ADR-041). Omit = enabled.",
           "properties": {
             "enabled": {
-              "type": "boolean",
-              "default": true,
-              "description": "Enable session compaction. Omit = true."
+              "type": "boolean"
             }
           }
         },
         "max_iterations": {
           "type": "integer",
           "minimum": 0,
-          "maximum": 256,
-          "default": 0,
-          "description": "Agent tool-loop cap per turn (1–256). Omit or 0 = no hard cap (ADR-052)."
-        },
-        "permission": {
-          "type": "object",
-          "additionalProperties": false,
-          "description": "Remembered high-risk families (ADR-043). Auto is a TUI session stance, not a config mode. permission.mode is load-only compatibility and ignored at runtime.",
-          "properties": {
-            "mode": {
-              "type": "string",
-              "enum": ["preauth", "ask"],
-              "description": "Accepted for old configs; ignored. Wait is TUI interactive; CLI/cron stay fail-closed."
-            },
-            "allow": {
-              "type": "array",
-              "items": { "type": "string", "enum": ["process", "git"] },
-              "description": "Remember process and/or git so Agent does not prompt. OR with chat.tools.*"
-            }
-          }
+          "maximum": 256
         },
         "memory": {
           "type": "object",
           "additionalProperties": false,
-          "description": "In-process layered memory (ADR-044). Omit = enabled defaults.",
           "properties": {
             "enabled": {
-              "type": "boolean",
-              "default": true,
-              "description": "Enable memory manager. Omit = true."
+              "type": "boolean"
             },
             "max_inject_runes": {
-              "type": "integer",
-              "minimum": 200,
-              "maximum": 16000,
-              "default": 2000,
-              "description": "Cap frozen system memory inject block."
-            },
-            "inject_mode": {
-              "type": "string",
-              "enum": ["session_start"],
-              "default": "session_start",
-              "description": "Frozen snapshot at session start; refresh via /refresh-memory."
-            },
-            "session_search": {
-              "type": "boolean",
-              "default": true,
-              "description": "Enable transcript FTS session_search tool."
+              "anyOf": [
+                {
+                  "const": 0
+                },
+                {
+                  "type": "integer",
+                  "minimum": 200,
+                  "maximum": 16000
+                }
+              ]
             },
             "default_ttl": {
-              "type": "string",
-              "description": "Go duration applied to session/detail writes that omit expires_at (e.g. 168h). Empty or omit = no automatic expiry. Global curated never receives this TTL."
+              "type": "string"
             },
             "curator": {
               "type": "object",
               "additionalProperties": false,
-              "description": "H1-lite post-turn LLM fact extraction (uses models.compact when set).",
               "properties": {
                 "enabled": {
-                  "type": "boolean",
-                  "default": true,
-                  "description": "Enable curator when memory is on. Omit = true."
+                  "type": "boolean"
                 },
                 "max_facts": {
                   "type": "integer",
-                  "minimum": 1,
-                  "maximum": 8,
-                  "default": 3,
-                  "description": "Max facts written per successful turn."
+                  "minimum": 0,
+                  "maximum": 8
                 },
                 "timeout_ms": {
+                  "anyOf": [
+                    {
+                      "const": 0
+                    },
+                    {
+                      "type": "integer",
+                      "minimum": 1000,
+                      "maximum": 120000
+                    }
+                  ]
+                },
+                "min_turns": {
                   "type": "integer",
-                  "minimum": 1000,
-                  "maximum": 120000,
-                  "default": 15000,
-                  "description": "Aux completion timeout in milliseconds."
+                  "minimum": 0,
+                  "maximum": 64,
+                  "default": 8
+                },
+                "min_interval": {
+                  "type": "string",
+                  "default": "30m",
+                  "description": "Minimum interval between curation attempts, 1m..720h."
                 }
               }
             }
           }
         },
-        "skills": {
-          "type": "object",
-          "additionalProperties": false,
-          "description": "H5-skill unused soft-archive (ADR-050). Omit = no automatic archive.",
-          "properties": {
-            "unused_ttl": {
-              "type": "string",
-              "description": "Go duration; skills with last_used_at older than this are soft-archived (e.g. 720h). Empty or omit = no automatic archive. Never-used skills are not archived."
-            }
-          }
-        },
         "commands": {
           "type": "object",
+          "propertyNames": {
+            "pattern": "^[a-zA-Z0-9_-]+$"
+          },
           "additionalProperties": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["template"],
             "properties": {
               "description": {
-                "type": "string",
-                "description": "Short help for completer / list API"
+                "type": "string"
               },
               "template": {
                 "type": "string",
                 "minLength": 1,
-                "description": "User-message body; optional $ARGUMENTS or $0 placeholder"
+                "maxLength": 8000
               }
-            }
-          },
-          "description": "User slash templates (O3). Keys are slash names without /. Instruction only — no grants. Injectscan at load."
+            },
+            "required": [
+              "template"
+            ]
+          }
         },
         "web": {
           "type": "object",
           "additionalProperties": false,
-          "description": "Web search backend for web_search (Phase W). Omit = ddg. Not hot-reloaded.",
           "properties": {
             "search": {
-              "type": "string",
-              "enum": ["ddg", "searxng", "tavily"],
-              "default": "ddg",
-              "description": "Search backend. ddg needs no key. searxng requires searxng_url; tavily requires tavily_key."
+              "enum": [
+                "ddg",
+                "searxng",
+                "tavily"
+              ]
             },
             "searxng_url": {
-              "type": "string",
-              "description": "SearXNG instance URL. Supports {env:VAR} / {file:…}. Required when search is searxng."
+              "type": "string"
             },
             "tavily_key": {
-              "type": "string",
-              "description": "Tavily API key. Supports {env:VAR} / {file:…}. Required when search is tavily. Never logged."
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "mcp": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "servers": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "enum": [
+                  "stdio",
+                  "http",
+                  "sse",
+                  "remote"
+                ]
+              },
+              "command": {
+                "type": "string"
+              },
+              "args": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "env": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "url": {
+                "type": "string"
+              },
+              "headers": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              }
             }
           }
         }
       }
     }
-  }
+  },
+  "required": [
+    "model",
+    "provider"
+  ]
 }

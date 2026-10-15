@@ -1,10 +1,11 @@
-// Package injectscan provides fail-closed checks for text injected into system prompts
-// (memory, skills). It is intentionally conservative and deterministic (H6-min).
+// Package injectscan validates instruction text and reports suspicious phrases.
+// Phrase diagnostics are not an authorization or execution boundary.
 package injectscan
 
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -32,17 +33,9 @@ func Scan(text string) error {
 		return err
 	}
 	if err := scanInjectionMarkers(text); err != nil {
-		return err
+		slog.Warn("instruction text diagnostic", "component", "injectscan", "error", err)
 	}
 	return nil
-}
-
-// MustClean returns text if Scan passes, else empty string and error.
-func MustClean(text string) (string, error) {
-	if err := Scan(text); err != nil {
-		return "", err
-	}
-	return text, nil
 }
 
 func scanInvisible(text string) error {

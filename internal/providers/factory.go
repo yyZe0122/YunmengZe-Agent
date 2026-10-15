@@ -28,22 +28,22 @@ func NewConfigured(config providerconfig.Resolved) (providerapi.Provider, error)
 	case providerconfig.ProtocolOpenAIChat:
 		provider, err = openai.New(openai.Config{
 			Name: config.ProviderID, BaseURL: config.BaseURL, APIKeyRef: apiKeyRef, Resolver: resolver,
-			CompletionPath: config.CompletionPath, ModelsPath: config.ModelsPath, ResponseFormat: config.ResponseFormat, Headers: config.Headers,
+			CompletionPath: config.CompletionPath, ResponseFormat: config.ResponseFormat, Headers: config.Headers,
 		})
 	case providerconfig.ProtocolAnthropicMessages:
 		provider, err = anthropic.New(anthropic.Config{
 			Name: config.ProviderID, BaseURL: config.BaseURL, APIKeyRef: apiKeyRef, Resolver: resolver,
-			MessagesPath: config.CompletionPath, ModelsPath: config.ModelsPath, AnthropicVersion: config.AnthropicVersion, Headers: config.Headers,
+			MessagesPath: config.CompletionPath, AnthropicVersion: config.AnthropicVersion, Headers: config.Headers,
 		})
 	case providerconfig.ProtocolOpenAIResponses:
 		provider, err = openairesponses.New(openairesponses.Config{
 			Name: config.ProviderID, BaseURL: config.BaseURL, APIKeyRef: apiKeyRef, Resolver: resolver,
-			ResponsesPath: config.CompletionPath, ModelsPath: config.ModelsPath, Headers: config.Headers,
+			ResponsesPath: config.CompletionPath, Headers: config.Headers,
 		})
 	case providerconfig.ProtocolGeminiGenerate:
 		provider, err = gemini.New(gemini.Config{
 			Name: config.ProviderID, BaseURL: config.BaseURL, APIKeyRef: apiKeyRef, Resolver: resolver,
-			GeneratePath: config.CompletionPath, ModelsPath: config.ModelsPath, Headers: config.Headers,
+			GeneratePath: config.CompletionPath, Headers: config.Headers,
 		})
 	default:
 		return nil, fmt.Errorf("unsupported provider protocol %q", config.Protocol)
@@ -99,4 +99,14 @@ func (r staticSecretResolver) ResolveSecret(_ context.Context, reference string)
 		return "", errors.New("secret reference is unavailable")
 	}
 	return r.value, nil
+}
+
+func (p *modelConfiguredProvider) Compact(ctx context.Context, request providerapi.CompletionRequest, focus string) (*providerapi.Replay, providerapi.Usage, error) {
+	compactor, ok := p.Provider.(interface {
+		Compact(context.Context, providerapi.CompletionRequest, string) (*providerapi.Replay, providerapi.Usage, error)
+	})
+	if !ok {
+		return nil, providerapi.Usage{}, errors.New("native compaction is unavailable")
+	}
+	return compactor.Compact(ctx, request, focus)
 }

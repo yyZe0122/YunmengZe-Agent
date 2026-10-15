@@ -101,7 +101,7 @@ func Load(configDir string) (*Resolved, error) {
 }
 
 // LoadChat reads the optional chat section from the first resolvable config file.
-// Missing file or missing chat block returns a zero ChatConfig (empty roots; agent write allowed).
+// Missing file or missing chat block returns a zero ChatConfig (feature defaults).
 // chat.web.searxng_url / tavily_key resolve {env:}/{file:} like MCP secrets.
 func LoadChat(configDir string) (ChatConfig, error) {
 	if err := LoadEnvFromConfigDir(configDir); err != nil {
@@ -293,6 +293,3 @@ func ValidMCPServerName(name string) bool {
 	}
 	return true
 }
-
-// EffectiveRoots returns configured absolute roots, or fallback when roots are empty.
-// Prefer WorkspaceCeiling / ResolveSessionWorkspace for ADR-046 session binding.

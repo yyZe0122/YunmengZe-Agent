@@ -29,7 +29,7 @@ func loadFile(path string) (Resolved, error) {
 	return resolveFromFile(path, config, providerID, modelID)
 }
 
-// validateModelsMap checks optional top-level models role map (ADR-045).
+// validateModelsMap checks optional top-level models role map.
 func validateModelsMap(config File) error {
 	if len(config.Models) == 0 {
 		return nil
@@ -76,23 +76,6 @@ func loadFileWithModel(path, providerID, modelID string) (Resolved, error) {
 		return Resolved{}, err
 	}
 	return resolveFromFile(path, config, providerID, modelID)
-}
-
-func validateModelInFile(path, providerID, modelID string) error {
-	config, err := decodeConfigFile(path)
-	if err != nil {
-		return err
-	}
-	provider, ok := config.Provider[providerID]
-	if !ok {
-		return fmt.Errorf("selected provider %q is not configured", providerID)
-	}
-	if len(provider.Models) > 0 {
-		if _, ok := lookupModel(provider.Models, providerID, modelID); !ok {
-			return errModelNotInCatalog(providerID, modelID, provider.Models)
-		}
-	}
-	return nil
 }
 
 // lookupModel finds a model entry under provider.models (OpenCode-style).
@@ -165,6 +148,20 @@ func resolveFromFile(path string, config File, providerID, modelID string) (Reso
 	if !ok {
 		return Resolved{}, fmt.Errorf("selected provider %q is not configured", providerID)
 	}
+	var err error
+	provider.Options.APIKey, err = resolveValue(provider.Options.APIKey, filepath.Dir(path))
+	if err != nil {
+		return Resolved{}, fmt.Errorf("resolve provider %q apiKey: %w", providerID, err)
+	}
+	provider.Options.Headers, err = resolveValues(provider.Options.Headers, filepath.Dir(path))
+	if err != nil {
+		return Resolved{}, fmt.Errorf("resolve provider %q headers: %w", providerID, err)
+	}
+	return resolveProvider(path, providerID, modelID, provider)
+}
+
+// resolveProvider consumes credentials already resolved by the config loader.
+func resolveProvider(path, providerID, modelID string, provider Provider) (Resolved, error) {
 	protocol, err := resolveProtocol(provider.Protocol, provider.Type)
 	if err != nil {
 		return Resolved{}, fmt.Errorf("provider %q: %w", providerID, err)
@@ -185,10 +182,6 @@ func resolveFromFile(path string, config File, providerID, modelID string) (Reso
 	if baseURL == "" {
 		return Resolved{}, fmt.Errorf("provider %q baseURL is required", providerID)
 	}
-	apiKey, err := resolveValue(provider.Options.APIKey, filepath.Dir(path))
-	if err != nil {
-		return Resolved{}, fmt.Errorf("resolve provider %q apiKey: %w", providerID, err)
-	}
 	responseFormat := strings.TrimSpace(modelConfig.ResponseFormat)
 	if responseFormat == "" {
 		responseFormat = strings.TrimSpace(provider.Options.ResponseFormat)
@@ -206,16 +199,19 @@ func resolveFromFile(path string, config File, providerID, modelID string) (Reso
 	if reasoningEffort != "" && protocol != ProtocolOpenAIChat && protocol != ProtocolOpenAIResponses {
 		return Resolved{}, fmt.Errorf("model %q reasoningEffort is only supported by OpenAI-compatible protocols", modelID)
 	}
-	headers, err := resolveValues(provider.Options.Headers, filepath.Dir(path))
-	if err != nil {
-		return Resolved{}, fmt.Errorf("resolve provider %q headers: %w", providerID, err)
+	if modelConfig.NativeCompaction && protocol != ProtocolOpenAIResponses {
+		return Resolved{}, fmt.Errorf("model %q nativeCompaction requires openai-responses", modelID)
+	}
+	images, known := modelcatalog.ImageCapability(wireID)
+	if modelConfig.SupportsImages != nil {
+		images, known = *modelConfig.SupportsImages, true
 	}
 	return Resolved{
+		NativeCompaction: modelConfig.NativeCompaction, SupportsImages: images, ImageCapabilityKnown: known,
 		Source: path, SelectionRef: providerID + "/" + modelID,
 		ProviderID: providerID, Protocol: protocol, ModelID: wireID,
-		BaseURL: baseURL, APIKey: apiKey,
+		BaseURL: baseURL, APIKey: provider.Options.APIKey,
 		CompletionPath:  strings.TrimSpace(provider.Options.CompletionPath),
-		ModelsPath:      strings.TrimSpace(provider.Options.ModelsPath),
 		ResponseFormat:  responseFormat,
 		Temperature:     modelConfig.Temperature,
 		MaxTokens:       modelConfig.MaxTokens,
@@ -223,7 +219,7 @@ func resolveFromFile(path string, config File, providerID, modelID string) (Reso
 		ReasoningEffort: reasoningEffort,
 
 		AnthropicVersion: strings.TrimSpace(provider.Options.AnthropicVersion),
-		Headers:          headers,
+		Headers:          provider.Options.Headers,
 	}, nil
 }
 
@@ -248,14 +244,25 @@ func applyModelLimits(modelConfig *Model, modelID string) error {
 			modelConfig.MaxTokens = modelConfig.Limit.Output
 		}
 	}
-	if modelConfig.ContextWindow > 0 {
-		return nil
-	}
+
 	query := strings.TrimSpace(modelConfig.ID)
 	if query == "" {
 		query = modelID
 	}
-	modelConfig.ContextWindow = modelcatalog.Lookup(query).Context
+	limits := modelcatalog.Lookup(query)
+	if modelConfig.ContextWindow == 0 {
+		modelConfig.ContextWindow = limits.Context
+	}
+	if modelConfig.MaxTokens == 0 {
+		output := limits.Output
+		if output <= 0 {
+			output = modelcatalog.DefaultMaxOutput
+		}
+		modelConfig.MaxTokens = min(output, 16384, max(1, modelConfig.ContextWindow/4))
+	}
+	if modelConfig.MaxTokens >= modelConfig.ContextWindow {
+		return fmt.Errorf("model %q maxTokens must be smaller than contextWindow", modelID)
+	}
 	return nil
 }
 

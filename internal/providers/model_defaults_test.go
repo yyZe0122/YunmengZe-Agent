@@ -11,7 +11,6 @@ type requestCaptureProvider struct {
 	request providerapi.CompletionRequest
 }
 
-func (p *requestCaptureProvider) Name() string { return "capture" }
 func (p *requestCaptureProvider) Complete(_ context.Context, request providerapi.CompletionRequest) (providerapi.CompletionResponse, error) {
 	p.request = request
 	return providerapi.CompletionResponse{}, nil
@@ -20,10 +19,6 @@ func (p *requestCaptureProvider) Stream(_ context.Context, request providerapi.C
 	p.request = request
 	return providerapi.EmitResponse(providerapi.CompletionResponse{}, handler)
 }
-func (p *requestCaptureProvider) Health(context.Context) providerapi.HealthStatus {
-	return providerapi.HealthStatus{Healthy: true}
-}
-
 func TestModelConfiguredProviderAppliesDefaultsAndTokenCap(t *testing.T) {
 	temperature := 0.25
 	capture := &requestCaptureProvider{}

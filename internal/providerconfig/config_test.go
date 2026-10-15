@@ -281,53 +281,6 @@ func TestLoadTwoProvidersSameModelID(t *testing.T) {
 	}
 }
 
-func TestWriteSelectedModelUpdatesTopLevelOnly(t *testing.T) {
-	root := t.TempDir()
-	path := filepath.Join(root, LocalFilename)
-	content := `{
-  "model": "deepseek/deepseek-v4-flash",
-  "provider": {
-    "deepseek": {
-      "options": {
-        "baseURL": "https://api.deepseek.com",
-        "apiKey": "{env:TEST_KEY}"
-      },
-      "models": {
-        "deepseek-v4-flash": {},
-        "deepseek-chat": {"name": "chat"}
-      }
-    }
-  }
-}
-`
-	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	written, err := WriteSelectedModel(root, "deepseek/deepseek-chat")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if written != path {
-		t.Fatalf("written = %q want %q", written, path)
-	}
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(raw), `"model": "deepseek/deepseek-chat"`) {
-		t.Fatalf("model not updated: %s", raw)
-	}
-	if !strings.Contains(string(raw), `{env:TEST_KEY}`) {
-		t.Fatalf("apiKey placeholder lost: %s", raw)
-	}
-	if err := validateModelInFile(path, "deepseek", "deepseek-chat"); err != nil {
-		t.Fatal(err)
-	}
-	if err := validateModelInFile(path, "deepseek", "missing"); err == nil {
-		t.Fatal("expected missing model error")
-	}
-}
-
 func TestEnsureConfigDoesNotCopyFromOtherDirs(t *testing.T) {
 	root := t.TempDir()
 	configDir := filepath.Join(root, "config")
@@ -366,19 +319,19 @@ func TestEnsureConfigWritesDefaultWhenEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(rawCfg), `"subagent"`) || !strings.Contains(string(rawCfg), `"compact"`) {
-		t.Fatalf("default template missing models.subagent/compact: %s", rawCfg)
+	if strings.Contains(string(rawCfg), `"permission"`) || len(models) != 1 {
+		t.Fatalf("default template must contain one model and no permission settings: %s", rawCfg)
 	}
 	agents := filepath.Join(root, AgentsFilename)
 	raw, err := os.ReadFile(agents)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(raw), "用户没要求的不要做") {
+	if !strings.Contains(string(raw), "plan 只读分析") {
 		t.Fatalf("default AGENTS.md missing rules: %s", raw)
 	}
-	if !strings.Contains(string(raw), "拿不准的先问用户") {
-		t.Fatalf("default AGENTS.md missing conservative cleanup: %s", raw)
+	if !strings.Contains(string(raw), "agent 直接执行工具") {
+		t.Fatalf("default AGENTS.md missing direct execution semantics: %s", raw)
 	}
 	if strings.Contains(string(raw), "\t4.") || strings.Contains(string(raw), "\t5.") {
 		t.Fatalf("default AGENTS.md has indented list items: %s", raw)
@@ -493,90 +446,6 @@ func TestLoadResolvesHeaderPlaceholders(t *testing.T) {
 	}
 }
 
-func TestLoadChatDefaults(t *testing.T) {
-	root := t.TempDir()
-	chat, err := LoadChat(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if chat.AllowWrite != nil || chat.Workspace != nil {
-		t.Fatalf("empty dir chat = %+v", chat)
-	}
-	if !chat.AgentWriteCeiling() {
-		t.Fatal("missing chat must allow agent write by default")
-	}
-	writeConfig(t, filepath.Join(root, Filename), "p/m", "https://example.com")
-	chat, err = LoadChat(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !chat.AgentWriteCeiling() {
-		t.Fatal("missing chat block must default agent write ceiling true")
-	}
-	if roots := chat.EffectiveRoots("/fallback"); len(roots) != 1 || roots[0] != "/fallback" {
-		t.Fatalf("EffectiveRoots = %v", roots)
-	}
-}
-
-func TestLoadChatParsesAndValidates(t *testing.T) {
-	root := t.TempDir()
-	config := `{
-  "model": "deepseek/deepseek-chat",
-  "provider": {
-    "deepseek": {
-      "type": "openai-compatible",
-      "options": {"baseURL": "https://api.deepseek.com"},
-      "models": {"deepseek-chat": {}}
-    }
-  },
-  "chat": {
-    "workspace": {"allow": ["/abs/workspace"]},
-    "allow_write": true,
-    "tools": {"git": true, "process": false}
-  }
-}`
-	if err := os.WriteFile(filepath.Join(root, Filename), []byte(config), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	chat, err := LoadChat(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if chat.AllowWrite == nil || !*chat.AllowWrite || chat.Workspace == nil || len(chat.Workspace.Allow) != 1 || chat.Workspace.Allow[0] != "/abs/workspace" {
-		t.Fatalf("chat = %+v", chat)
-	}
-	if !chat.AgentWriteCeiling() {
-		t.Fatal("allow_write true must raise ceiling")
-	}
-	if !chat.AgentGitEnabled() || chat.AgentProcessEnabled() {
-		t.Fatalf("tools flags: git=%v process=%v", chat.AgentGitEnabled(), chat.AgentProcessEnabled())
-	}
-	if roots := chat.EffectiveRoots("/fallback"); len(roots) != 1 || roots[0] != "/abs/workspace" {
-		t.Fatalf("EffectiveRoots = %v", roots)
-	}
-	if !chat.CompactionEnabled() || chat.MaxIterationsOrDefault() != 0 {
-		t.Fatalf("defaults: compaction=%v max_iter=%d", chat.CompactionEnabled(), chat.MaxIterationsOrDefault())
-	}
-
-	bad := `{
-  "model": "deepseek/deepseek-chat",
-  "provider": {
-    "deepseek": {
-      "type": "openai-compatible",
-      "options": {"baseURL": "https://api.deepseek.com"},
-      "models": {"deepseek-chat": {}}
-    }
-  },
-   "chat": {"workspace": {"allow": ["relative/path"]}}
-}`
-	if err := os.WriteFile(filepath.Join(root, Filename), []byte(bad), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := LoadChat(root); err == nil {
-		t.Fatal("expected relative workspace.allow error")
-	}
-}
-
 func TestLoadChatCompactionAndMaxIterations(t *testing.T) {
 	root := t.TempDir()
 	config := `{
@@ -603,8 +472,8 @@ func TestLoadChatCompactionAndMaxIterations(t *testing.T) {
 	if chat.CompactionEnabled() {
 		t.Fatal("expected compaction disabled")
 	}
-	if chat.MaxIterationsOrDefault() != 32 {
-		t.Fatalf("max_iterations = %d", chat.MaxIterationsOrDefault())
+	if chat.MaxIterations != 32 {
+		t.Fatalf("max_iterations = %d", chat.MaxIterations)
 	}
 
 	badIter := `{
@@ -623,55 +492,6 @@ func TestLoadChatCompactionAndMaxIterations(t *testing.T) {
 	}
 	if _, err := LoadChat(root); err == nil {
 		t.Fatal("expected max_iterations range error")
-	}
-}
-
-func TestLoadChatPermissionMode(t *testing.T) {
-	root := t.TempDir()
-	base := `{
-  "model": "deepseek/deepseek-chat",
-  "provider": {
-    "deepseek": {
-      "type": "openai-compatible",
-      "options": {"baseURL": "https://api.deepseek.com"},
-      "models": {"deepseek-chat": {}}
-    }
-  },
-  "chat": %s
-}`
-	write := func(chatJSON string) {
-		t.Helper()
-		if err := os.WriteFile(filepath.Join(root, Filename), []byte(fmt.Sprintf(base, chatJSON)), 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	write(`{"permission": {"mode": "ask"}}`)
-	if _, err := LoadChat(root); err != nil {
-		t.Fatalf("legacy ask mode must still load: %v", err)
-	}
-	write(`{"permission": {"mode": "preauth"}}`)
-	if _, err := LoadChat(root); err != nil {
-		t.Fatalf("legacy preauth mode must still load: %v", err)
-	}
-	write(`{"permission": {"mode": "auto"}}`)
-	if _, err := LoadChat(root); err == nil {
-		t.Fatal("expected auto permission mode error")
-	}
-	write(`{"permission": {"mode": "wide-open"}}`)
-	if _, err := LoadChat(root); err == nil {
-		t.Fatal("expected invalid permission mode error")
-	}
-	write(`{"permission": {"allow": ["process"]}}`)
-	chat, err := LoadChat(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !chat.AgentProcessEnabled() || chat.AgentGitEnabled() {
-		t.Fatalf("allow process: process=%v git=%v", chat.AgentProcessEnabled(), chat.AgentGitEnabled())
-	}
-	write(`{"permission": {"allow": ["http"]}}`)
-	if _, err := LoadChat(root); err == nil {
-		t.Fatal("expected invalid permission.allow error")
 	}
 }
 
@@ -822,27 +642,5 @@ func TestLoadModelRolesAndValidation(t *testing.T) {
 	write(`{"compact": "not-a-ref"}`)
 	if _, err := Load(root); err == nil {
 		t.Fatal("expected bad ref format rejection")
-	}
-}
-
-func TestAppendWorkspaceAllowCreatesLocal(t *testing.T) {
-	root := t.TempDir()
-	writeConfig(t, filepath.Join(root, Filename), "deepseek/deepseek-chat", "https://api.deepseek.com")
-	path, err := AppendWorkspaceAllow(root, "/tmp/extra-root")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if filepath.Base(path) != LocalFilename {
-		t.Fatalf("path = %s", path)
-	}
-	chat, err := LoadChat(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if chat.Workspace == nil || len(chat.Workspace.Allow) != 1 || chat.Workspace.Allow[0] != "/tmp/extra-root" {
-		t.Fatalf("allow = %#v", chat.Workspace)
-	}
-	if _, err := AppendWorkspaceAllow(root, "/"); err == nil {
-		t.Fatal("filesystem root must be rejected")
 	}
 }

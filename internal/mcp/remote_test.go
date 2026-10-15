@@ -90,8 +90,8 @@ func TestDialStreamableJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = client.Close() })
-	if client.Transport() != "http" {
-		t.Fatalf("transport=%s", client.Transport())
+	if client.transport != "http" {
+		t.Fatalf("transport=%s", client.transport)
 	}
 	tools, err := client.ListTools(ctx)
 	if err != nil {
@@ -247,8 +247,8 @@ func TestDialLegacySSE(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = client.Close() })
-	if client.Transport() != "sse" {
-		t.Fatalf("transport=%s", client.Transport())
+	if client.transport != "sse" {
+		t.Fatalf("transport=%s", client.transport)
 	}
 	tools, err := client.ListTools(ctx)
 	if err != nil {
@@ -335,7 +335,7 @@ func TestDialRemoteAutoFallback(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = client.Close() })
-	if client.Transport() != "sse" {
-		t.Fatalf("want sse fallback, got %s", client.Transport())
+	if client.transport != "sse" {
+		t.Fatalf("want sse fallback, got %s", client.transport)
 	}
 }

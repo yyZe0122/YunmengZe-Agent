@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 
 	"github.com/yyZe0122/yunmengze-agent/internal/providers/internal/providerhttp"
 	"github.com/yyZe0122/yunmengze-agent/pkg/providerapi"
@@ -24,7 +23,6 @@ type Config struct {
 	HTTPClient    *http.Client
 	MaxBodyBytes  int64
 	ResponsesPath string
-	ModelsPath    string
 	Headers       map[string]string
 }
 
@@ -36,7 +34,6 @@ type Provider struct {
 	client        *http.Client
 	maxBodyBytes  int64
 	responsesPath string
-	modelsPath    string
 	headers       http.Header
 }
 
@@ -54,7 +51,7 @@ func New(config Config) (*Provider, error) {
 	}
 	client := config.HTTPClient
 	if client == nil {
-		client = &http.Client{Timeout: 60 * time.Second}
+		client = providerhttp.NewClient()
 	}
 	maxBody := config.MaxBodyBytes
 	if maxBody == 0 {
@@ -67,14 +64,7 @@ func New(config Config) (*Provider, error) {
 	if responsesPath == "" {
 		responsesPath = "/v1/responses"
 	}
-	modelsPath := strings.TrimSpace(config.ModelsPath)
-	if modelsPath == "" {
-		modelsPath = "/v1/models"
-	}
 	if _, err := providerhttp.Endpoint(baseURL, responsesPath); err != nil {
-		return nil, err
-	}
-	if _, err := providerhttp.Endpoint(baseURL, modelsPath); err != nil {
 		return nil, err
 	}
 	headers, err := providerhttp.Headers(config.Headers)
@@ -83,11 +73,9 @@ func New(config Config) (*Provider, error) {
 	}
 	return &Provider{
 		name: name, baseURL: baseURL, apiKeyRef: strings.TrimSpace(config.APIKeyRef), resolver: config.Resolver,
-		client: client, maxBodyBytes: maxBody, responsesPath: responsesPath, modelsPath: modelsPath, headers: headers,
+		client: client, maxBodyBytes: maxBody, responsesPath: responsesPath, headers: headers,
 	}, nil
 }
-
-func (p *Provider) Name() string { return p.name }
 
 func (p *Provider) Complete(ctx context.Context, request providerapi.CompletionRequest) (providerapi.CompletionResponse, error) {
 	body, err := p.requestBody(request)
@@ -102,87 +90,152 @@ func (p *Provider) Complete(ctx context.Context, request providerapi.CompletionR
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return providerapi.CompletionResponse{}, providerhttp.StatusError(p.name, response)
 	}
-	payload, err := providerhttp.ReadLimited(response.Body, p.maxBodyBytes)
+	raw, err := providerhttp.ReadLimited(response.Body, p.maxBodyBytes)
 	if err != nil {
 		return providerapi.CompletionResponse{}, providerhttp.Protocol(p.name, err)
 	}
+	return p.decode(raw, request.Model)
+}
+
+func (p *Provider) decode(raw []byte, model string) (providerapi.CompletionResponse, error) {
 	var decoded responsesResponse
-	if err := json.Unmarshal(payload, &decoded); err != nil {
-		return providerapi.CompletionResponse{}, providerhttp.Protocol(p.name, errors.New("invalid JSON response"))
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		return providerapi.CompletionResponse{}, providerhttp.Protocol(p.name, err)
+	}
+	if decoded.Status == "failed" {
+		return providerapi.CompletionResponse{}, providerhttp.StreamError(p.name, decoded.Error)
 	}
 	result := providerapi.CompletionResponse{FinishReason: decoded.Status, Usage: usageFromResponses(decoded.Usage)}
-	for index, item := range decoded.Output {
+	if decoded.IncompleteDetails.Reason == "max_output_tokens" {
+		result.FinishReason = "length"
+	}
+	for _, rawItem := range decoded.Output {
+		var item struct {
+			Type      string `json:"type"`
+			ID        string `json:"id"`
+			CallID    string `json:"call_id"`
+			Name      string `json:"name"`
+			Arguments string `json:"arguments"`
+			Content   []struct {
+				Type    string `json:"type"`
+				Text    string `json:"text"`
+				Refusal string `json:"refusal"`
+			} `json:"content"`
+			Summary []struct {
+				Text string `json:"text"`
+			} `json:"summary"`
+		}
+		if err := json.Unmarshal(rawItem, &item); err != nil {
+			return result, providerhttp.Protocol(p.name, err)
+		}
 		switch item.Type {
 		case "message":
-			for _, content := range item.Content {
-				if content.Type == "output_text" {
-					result.Content += content.Text
-				}
+			for _, part := range item.Content {
+				result.Content += part.Text + part.Refusal
 			}
 		case "reasoning":
-			// Best-effort: some Responses API builds emit reasoning summaries.
-			for _, content := range item.Content {
-				if text := strings.TrimSpace(content.Text); text != "" {
-					if result.Thinking != "" {
-						result.Thinking += "\n"
-					}
-					result.Thinking += text
-				}
-			}
-			if summary := strings.TrimSpace(item.Summary); summary != "" {
-				if result.Thinking != "" {
-					result.Thinking += "\n"
-				}
-				result.Thinking += summary
+			for _, part := range item.Summary {
+				result.Thinking += part.Text
 			}
 		case "function_call":
-			id := strings.TrimSpace(item.CallID)
-			if id == "" {
-				id = strings.TrimSpace(item.ID)
+			if item.CallID == "" || item.Name == "" || !json.Valid([]byte(item.Arguments)) {
+				return result, providerhttp.Protocol(p.name, errors.New("invalid function_call"))
 			}
-			if id == "" || strings.TrimSpace(item.Name) == "" || !json.Valid([]byte(item.Arguments)) {
-				return providerapi.CompletionResponse{}, providerhttp.Protocol(p.name, fmt.Errorf("invalid function_call output item %d", index))
-			}
-			result.ToolCalls = append(result.ToolCalls, providerapi.ToolCall{ID: id, Name: item.Name, Arguments: item.Arguments})
+			result.ToolCalls = append(result.ToolCalls, providerapi.ToolCall{ID: item.CallID, Name: item.Name, Arguments: item.Arguments})
 		}
 	}
-	if result.Content == "" && len(result.ToolCalls) == 0 {
-		return providerapi.CompletionResponse{}, providerhttp.Protocol(p.name, errors.New("response has no text or tool calls"))
-	}
+	data, _ := json.Marshal(decoded.Output)
+	result.Replay = &providerapi.Replay{Provider: p.name + "/openai-responses", Model: model, Data: data}
 	return result, nil
 }
 
 func (p *Provider) Stream(ctx context.Context, request providerapi.CompletionRequest, handler providerapi.StreamHandler) error {
-	if handler == nil {
-		return providerhttp.Invalid(p.name, errors.New("stream handler is required"))
+	body, err := p.requestBody(request)
+	if err != nil {
+		return providerhttp.Invalid(p.name, err)
 	}
-	response, err := p.Complete(ctx, request)
+	body, err = providerhttp.SetStream(body)
 	if err != nil {
 		return err
 	}
-	return providerapi.EmitResponse(response, handler)
-}
-
-func (p *Provider) Health(ctx context.Context) providerapi.HealthStatus {
-	request, err := p.newRequest(ctx, http.MethodGet, p.modelsPath, nil)
+	response, err := p.do(ctx, http.MethodPost, p.responsesPath, body)
 	if err != nil {
-		return healthError(err)
+		return err
 	}
-	return providerhttp.HealthStatus(p.name, ctx, p.client, request)
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return providerhttp.StatusError(p.name, response)
+	}
+	var text, thinking string
+	return providerhttp.SSE(response.Body, p.maxBodyBytes, func(_ string, raw []byte) (bool, error) {
+		var event struct {
+			Type     string          `json:"type"`
+			Delta    string          `json:"delta"`
+			Response json.RawMessage `json:"response"`
+			Error    json.RawMessage `json:"error"`
+			Message  string          `json:"message"`
+		}
+		if err := json.Unmarshal(raw, &event); err != nil {
+			return false, providerhttp.Protocol(p.name, err)
+		}
+		switch event.Type {
+		case "response.output_text.delta", "response.refusal.delta":
+			if event.Delta != "" {
+				text += event.Delta
+				return false, handler(providerapi.StreamEvent{Type: providerapi.StreamDelta, ContentDelta: event.Delta})
+			}
+		case "response.reasoning_summary_text.delta":
+			if event.Delta != "" {
+				thinking += event.Delta
+				return false, handler(providerapi.StreamEvent{Type: providerapi.StreamThinking, ThinkingDelta: event.Delta})
+			}
+		case "response.completed", "response.incomplete":
+			result, err := p.decode(event.Response, request.Model)
+			if err != nil {
+				return false, err
+			}
+			if text != "" && !strings.HasPrefix(result.Content, text) {
+				return false, providerhttp.Protocol(p.name, errors.New("stream text differs from final response"))
+			}
+			result.Content = strings.TrimPrefix(result.Content, text)
+			if strings.HasPrefix(result.Thinking, thinking) {
+				result.Thinking = strings.TrimPrefix(result.Thinking, thinking)
+			} else {
+				result.Thinking = ""
+			}
+			return true, providerapi.EmitResponse(result, handler)
+		case "response.failed":
+			_, err := p.decode(event.Response, request.Model)
+			if err == nil {
+				err = providerhttp.Protocol(p.name, errors.New("response failed"))
+			}
+			return false, err
+		case "error":
+			if len(event.Error) == 0 {
+				event.Error = raw
+			}
+			return false, providerhttp.StreamError(p.name, event.Error)
+		}
+		return false, nil
+	})
 }
 
 func (p *Provider) requestBody(request providerapi.CompletionRequest) ([]byte, error) {
 	if strings.TrimSpace(request.Model) == "" || len(request.Messages) == 0 {
 		return nil, errors.New("model and at least one message are required")
 	}
-	if len(request.Images) > 0 {
-		return nil, errors.New("openai-responses does not support auxiliary images")
-	}
+
 	payload := responsesRequest{
-		Model: request.Model, MaxOutputTokens: request.MaxOutputTokens, Temperature: request.Temperature,
+		Model: request.Model, MaxOutputTokens: request.MaxOutputTokens, Temperature: request.Temperature, Include: []string{"reasoning.encrypted_content"},
 	}
 	if effort := strings.TrimSpace(request.ReasoningEffort); effort != "" {
 		payload.Reasoning = &reasoningConfig{Effort: effort}
+	}
+	lastUser := -1
+	for i, m := range request.Messages {
+		if m.Role == providerapi.RoleUser {
+			lastUser = i
+		}
 	}
 	for index, message := range request.Messages {
 		switch message.Role {
@@ -190,8 +243,26 @@ func (p *Provider) requestBody(request providerapi.CompletionRequest) ([]byte, e
 			if message.ToolCallID != "" || len(message.ToolCalls) > 0 {
 				return nil, fmt.Errorf("message %d cannot contain tool calls", index)
 			}
-			payload.Input = append(payload.Input, inputItem{Role: string(message.Role), Content: message.Content})
+			images := message.Images
+			if index == lastUser {
+				images = append(append([]providerapi.ImagePart(nil), images...), request.Images...)
+			}
+			var content any = message.Content
+			if len(images) > 0 {
+				content = imageContent(message.Content, images)
+			}
+			payload.Input = append(payload.Input, inputItem{Role: string(message.Role), Content: content})
 		case providerapi.RoleAssistant:
+			if raw := message.ReplayFor(p.name+"/openai-responses", request.Model); raw != nil {
+				var items []json.RawMessage
+				if err := json.Unmarshal(raw, &items); err != nil {
+					return nil, err
+				}
+				for _, item := range items {
+					payload.Input = append(payload.Input, item)
+				}
+				continue
+			}
 			if message.ToolCallID != "" {
 				return nil, fmt.Errorf("assistant message %d cannot contain a tool call ID", index)
 			}
@@ -211,7 +282,11 @@ func (p *Provider) requestBody(request providerapi.CompletionRequest) ([]byte, e
 			if strings.TrimSpace(message.ToolCallID) == "" || len(message.ToolCalls) > 0 {
 				return nil, fmt.Errorf("tool message %d requires a tool call ID and cannot contain tool calls", index)
 			}
-			payload.Input = append(payload.Input, inputItem{Type: "function_call_output", CallID: message.ToolCallID, Output: message.Content})
+			var output any = message.Content
+			if len(message.Images) > 0 {
+				output = imageContent(message.Content, message.Images)
+			}
+			payload.Input = append(payload.Input, inputItem{Type: "function_call_output", CallID: message.ToolCallID, Output: output})
 		default:
 			return nil, fmt.Errorf("message %d has invalid role", index)
 		}
@@ -221,7 +296,7 @@ func (p *Provider) requestBody(request providerapi.CompletionRequest) ([]byte, e
 			return nil, fmt.Errorf("tool %d requires a name and valid input schema", index)
 		}
 		payload.Tools = append(payload.Tools, responseTool{
-			Type: "function", Name: tool.Name, Description: tool.Description, Parameters: tool.InputSchema, Strict: true,
+			Type: "function", Name: tool.Name, Description: tool.Description, Parameters: tool.InputSchema, Strict: false,
 		})
 	}
 	if request.ResponseSchema != nil {
@@ -260,7 +335,7 @@ func (p *Provider) newRequest(ctx context.Context, method, endpoint string, body
 	if err != nil {
 		return nil, providerhttp.Invalid(p.name, errors.New("cannot create HTTP request"))
 	}
-	request.Header.Set("Accept", "application/json")
+	request.Header.Set("Accept", "application/json, text/event-stream")
 	if body != nil {
 		request.Header.Set("Content-Type", "application/json")
 	}
@@ -275,18 +350,11 @@ func (p *Provider) newRequest(ctx context.Context, method, endpoint string, body
 	return request, nil
 }
 
-func healthError(err error) providerapi.HealthStatus {
-	status := providerapi.HealthStatus{CheckedAt: time.Now().UTC()}
-	var providerError *providerapi.ProviderError
-	if errors.As(err, &providerError) {
-		status.ErrorKind = providerError.Kind
-	}
-	return status
-}
-
 type responsesRequest struct {
+	Store           bool             `json:"store"`
+	Include         []string         `json:"include,omitempty"`
 	Model           string           `json:"model"`
-	Input           []inputItem      `json:"input"`
+	Input           []any            `json:"input"`
 	Tools           []responseTool   `json:"tools,omitempty"`
 	Text            *responseText    `json:"text,omitempty"`
 	MaxOutputTokens int64            `json:"max_output_tokens,omitempty"`
@@ -301,11 +369,11 @@ type reasoningConfig struct {
 type inputItem struct {
 	Type      string `json:"type,omitempty"`
 	Role      string `json:"role,omitempty"`
-	Content   string `json:"content,omitempty"`
+	Content   any    `json:"content,omitempty"`
 	CallID    string `json:"call_id,omitempty"`
 	Name      string `json:"name,omitempty"`
 	Arguments string `json:"arguments,omitempty"`
-	Output    string `json:"output,omitempty"`
+	Output    any    `json:"output,omitempty"`
 }
 
 type responseTool struct {
@@ -329,20 +397,21 @@ type responseFormat struct {
 }
 
 type responsesResponse struct {
-	Status string `json:"status"`
-	Output []struct {
-		Type      string `json:"type"`
-		ID        string `json:"id"`
-		CallID    string `json:"call_id"`
-		Name      string `json:"name"`
-		Arguments string `json:"arguments"`
-		Summary   string `json:"summary,omitempty"`
-		Content   []struct {
-			Type string `json:"type"`
-			Text string `json:"text"`
-		} `json:"content"`
-	} `json:"output"`
-	Usage responsesUsage `json:"usage"`
+	Status            string            `json:"status"`
+	Output            []json.RawMessage `json:"output"`
+	Usage             responsesUsage    `json:"usage"`
+	Error             json.RawMessage   `json:"error"`
+	IncompleteDetails struct {
+		Reason string `json:"reason"`
+	} `json:"incomplete_details"`
+}
+
+func imageContent(text string, images []providerapi.ImagePart) []any {
+	out := []any{map[string]string{"type": "input_text", "text": text}}
+	for _, img := range images {
+		out = append(out, map[string]string{"type": "input_image", "image_url": "data:" + img.MIME + ";base64," + img.Base64})
+	}
+	return out
 }
 
 type responsesUsage struct {

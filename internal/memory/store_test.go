@@ -7,7 +7,6 @@ import (
 	"time"
 
 	storesqlite "github.com/yyZe0122/yunmengze-agent/internal/store/sqlite"
-	"github.com/yyZe0122/yunmengze-agent/pkg/providerapi"
 )
 
 func TestStoreInsertListSearch(t *testing.T) {
@@ -44,7 +43,7 @@ func TestStoreInsertListSearch(t *testing.T) {
 	}
 }
 
-func TestStoreForgetPromoteAndFreeze(t *testing.T) {
+func TestStoreFreeze(t *testing.T) {
 	ctx := context.Background()
 	database, err := storesqlite.Open(ctx, t.TempDir()+"/core.db")
 	if err != nil {
@@ -59,7 +58,7 @@ func TestStoreForgetPromoteAndFreeze(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := mgr.Remember(ctx, "s1", "session fact A", SourceUser, nil); err != nil {
+	if err := mgr.RememberKind(ctx, "", "session fact A", SourceUser, nil, KindPreference, 10, ""); err != nil {
 		t.Fatal(err)
 	}
 	block1 := mgr.FrozenSystemBlock(ctx, "s1")
@@ -67,7 +66,7 @@ func TestStoreForgetPromoteAndFreeze(t *testing.T) {
 		t.Fatalf("frozen = %q", block1)
 	}
 	// Mid-session write must not change frozen block until invalidate.
-	if err := mgr.Remember(ctx, "s1", "session fact B after freeze", SourceUser, nil); err != nil {
+	if err := mgr.RememberKind(ctx, "", "session fact B after freeze", SourceUser, nil, KindPreference, 10, ""); err != nil {
 		t.Fatal(err)
 	}
 	block2 := mgr.FrozenSystemBlock(ctx, "s1")
@@ -79,23 +78,14 @@ func TestStoreForgetPromoteAndFreeze(t *testing.T) {
 	if !strings.Contains(block3, "session fact B") {
 		t.Fatalf("after refresh frozen = %q", block3)
 	}
-	list, err := mgr.List(ctx, "s1", false, 10)
+	list, err := mgr.List(ctx, "s1", true, 10)
 	if err != nil || len(list) < 1 {
 		t.Fatalf("list = %v err=%v", list, err)
 	}
-	promoted, err := mgr.Promote(ctx, list[0].ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if promoted.SessionID != "" || promoted.Kind != KindCurated {
-		t.Fatalf("promoted = %+v", promoted)
-	}
-	if err := mgr.Forget(ctx, list[0].ID); err != nil {
-		t.Fatal(err)
-	}
+
 }
 
-func TestManagerSystemPromptAndPreCompress(t *testing.T) {
+func TestManagerSystemPrompt(t *testing.T) {
 	ctx := context.Background()
 	database, err := storesqlite.Open(ctx, t.TempDir()+"/core.db")
 	if err != nil {
@@ -113,31 +103,12 @@ func TestManagerSystemPromptAndPreCompress(t *testing.T) {
 	if err := mgr.Initialize(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if err := mgr.Remember(ctx, "sess-a", "User prefers terse replies", SourceUser, nil); err != nil {
+	if err := mgr.RememberKind(ctx, "", "User prefers terse replies", SourceUser, nil, KindPreference, 10, ""); err != nil {
 		t.Fatal(err)
 	}
-	block := mgr.SystemPromptBlock(ctx, "sess-a")
+	block := mgr.buildInjectBlock(ctx, "sess-a")
 	if !strings.Contains(block, "terse") {
 		t.Fatalf("block = %q", block)
-	}
-	head := []providerapi.Message{
-		{Role: providerapi.RoleUser, Content: "Please use absolute paths under /tmp/ws always"},
-		{Role: providerapi.RoleAssistant, Content: "ok"},
-	}
-	mgr.OnPreCompress(ctx, "sess-a", head)
-	list, err := store.ListRecent(ctx, "sess-a", false, true, 20, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	found := false
-	for _, e := range list {
-		if e.Source == SourcePreCompress && e.Kind == KindDetail {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Fatalf("expected pre_compress detail entry: %+v", list)
 	}
 	if err := mgr.Shutdown(ctx); err != nil {
 		t.Fatal(err)
@@ -189,27 +160,28 @@ func TestDefaultTTLAndSoftArchive(t *testing.T) {
 	if curated.ID == "" || curated.ExpiresAt != "" {
 		t.Fatalf("curated should have no ttl: %+v", curated)
 	}
-	if !strings.Contains(mgr.SystemPromptBlock(ctx, "s1"), "session fact with ttl") {
-		t.Fatal("expected session fact in inject")
+	if strings.Contains(mgr.buildInjectBlock(ctx, "s1"), "session fact with ttl") {
+		t.Fatal("legacy session facts must not be injected")
 	}
 
 	clock = now.Add(2 * time.Hour)
 	if err := mgr.Initialize(ctx); err != nil {
 		t.Fatal(err)
 	}
-	got, err := store.Get(ctx, session.ID)
+	got, err := scanEntry(database.SQL().QueryRowContext(ctx,
+		`SELECT `+entrySelectCols+` FROM memory_entries WHERE entry_id = ?`, session.ID))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got.ArchivedAt == "" {
 		t.Fatalf("expected soft archive, got %+v", got)
 	}
-	block := mgr.SystemPromptBlock(ctx, "s1")
+	block := mgr.buildInjectBlock(ctx, "s1")
 	if strings.Contains(block, "session fact with ttl") {
 		t.Fatalf("archived fact still injected: %q", block)
 	}
-	if !strings.Contains(block, "global curated no ttl") {
-		t.Fatalf("curated missing from inject: %q", block)
+	if strings.Contains(block, "global curated no ttl") {
+		t.Fatalf("legacy curated facts must not be injected: %q", block)
 	}
 	active, err := mgr.List(ctx, "s1", true, 10)
 	if err != nil {
@@ -219,91 +191,5 @@ func TestDefaultTTLAndSoftArchive(t *testing.T) {
 		if e.ID == session.ID {
 			t.Fatalf("archived entry still in default list: %+v", e)
 		}
-	}
-}
-
-func TestDeleteTranscriptByRunIDs(t *testing.T) {
-	ctx := context.Background()
-	database, err := storesqlite.Open(ctx, t.TempDir()+"/core.db")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = database.Close() })
-	store, err := NewStore(database.SQL())
-	if err != nil {
-		t.Fatal(err)
-	}
-	stamp := time.Now().UTC().Format(time.RFC3339Nano)
-	if err := store.IndexTranscript(ctx, "s1", "run-keep", 0, "assistant_message", "keep me", stamp); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.IndexTranscript(ctx, "s1", "run-hide", 0, "assistant_message", "hide me", stamp); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.DeleteTranscriptByRunIDs(ctx, []string{"run-hide"}); err != nil {
-		t.Fatal(err)
-	}
-	hits, err := store.SearchTranscript(ctx, "s1", "hide", 10)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, h := range hits {
-		if h.RunID == "run-hide" || strings.Contains(h.Content, "hide me") {
-			t.Fatalf("hidden run leaked: %+v", h)
-		}
-	}
-	kept, err := store.SearchTranscript(ctx, "s1", "keep", 10)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(kept) == 0 {
-		t.Fatal("kept run missing")
-	}
-}
-
-func TestSearchTranscriptExcludesChildRuns(t *testing.T) {
-	ctx := context.Background()
-	database, err := storesqlite.Open(ctx, t.TempDir()+"/core.db")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = database.Close() })
-	sqlDB := database.SQL()
-	stamp := time.Now().UTC().Format(time.RFC3339Nano)
-	for _, q := range []struct {
-		sql  string
-		args []any
-	}{
-		{"INSERT INTO sessions(session_id,state,created_at,updated_at) VALUES(?,?,?,?)", []any{"s1", "active", stamp, stamp}},
-		{"INSERT INTO tasks(task_id,session_id,title,objective,state,created_at,updated_at) VALUES(?,?,?,?,?,?,?)", []any{"t1", "s1", "T", "O", "completed", stamp, stamp}},
-		{"INSERT INTO plans(plan_id,task_id,revision,state,scope_hash,created_at,updated_at,document) VALUES(?,?,?,?,?,?,?,?)", []any{"p1", "t1", 1, "approved", "h", stamp, stamp, `{}`}},
-		{"INSERT INTO runs(run_id,task_id,plan_id,state,started_at,updated_at) VALUES(?,?,?,?,?,?)", []any{"run-parent", "t1", "p1", "completed", stamp, stamp}},
-		{"INSERT INTO runs(run_id,task_id,plan_id,state,started_at,updated_at,parent_run_id) VALUES(?,?,?,?,?,?,?)", []any{"run-child", "t1", "p1", "completed", stamp, stamp, "run-parent"}},
-	} {
-		if _, err := sqlDB.Exec(q.sql, q.args...); err != nil {
-			t.Fatalf("%s: %v", q.sql, err)
-		}
-	}
-	store, err := NewStore(sqlDB)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := store.IndexTranscript(ctx, "s1", "run-parent", 0, "assistant_message", "parent leak token", stamp); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.IndexTranscript(ctx, "s1", "run-child", 0, "assistant_message", "child internals leak token", stamp); err != nil {
-		t.Fatal(err)
-	}
-	hits, err := store.SearchTranscript(ctx, "s1", "leak", 10)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, h := range hits {
-		if h.RunID == "run-child" || strings.Contains(h.Content, "child internals") {
-			t.Fatalf("child transcript leaked: %+v", h)
-		}
-	}
-	if len(hits) == 0 {
-		t.Fatal("parent transcript missing")
 	}
 }

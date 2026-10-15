@@ -5,7 +5,6 @@ package contextpack
 import (
 	"encoding/json"
 	"strings"
-	"time"
 	"unicode"
 
 	"github.com/yyZe0122/yunmengze-agent/pkg/providerapi"
@@ -16,15 +15,6 @@ const CharsPerToken = 4
 
 // PerMessageOverhead accounts for role/framing tokens not in content text.
 const PerMessageOverhead int64 = 6
-
-// Anti-thrash defaults for session LLM compaction (Hermes-style).
-const (
-	// DefaultAntiThrashWindow is the lookback for counting durable compactions.
-	DefaultAntiThrashWindow = 10 * time.Minute
-	// DefaultAntiThrashMax is max LLM compact calls allowed inside the window.
-	// Beyond this, session packing still runs L1–L3 + extractive, not the model.
-	DefaultAntiThrashMax = 3
-)
 
 // EstimateText returns a token estimate for plain text.
 // CJK runes count as ~1 token each; remaining runes use CharsPerToken (~4).
@@ -73,6 +63,12 @@ func EstimateMessage(msg providerapi.Message) int64 {
 	for _, tc := range msg.ToolCalls {
 		n += EstimateText(tc.ID) + EstimateText(tc.Name) + EstimateText(tc.Arguments) + 4
 	}
+	// Native state includes opaque signatures; count conservatively without duplicating visible text.
+	if msg.Replay != nil {
+		n = max(n, PerMessageOverhead+EstimateText(string(msg.Replay.Data)))
+	}
+	// Image token cost varies by model/resolution; this is a packing reserve, not billing.
+	n += int64(len(msg.Images)) * 4096
 	return n
 }
 
@@ -99,18 +95,6 @@ func EstimateTools(tools []providerapi.ToolDefinition) int64 {
 		return n
 	}
 	return EstimateText(string(raw))
-}
-
-// ShouldCompact reports whether LLM/extractive head summary should run.
-// Trigger: pressure >= 75% of usable and packing still over budget (or no budget left for tail).
-func ShouldCompact(estimate, usable int64, overBudget bool) bool {
-	if usable <= 0 {
-		return overBudget
-	}
-	if overBudget {
-		return true
-	}
-	return float64(estimate) >= DefaultPressureTrigger*float64(usable)
 }
 
 // SplitHeadTail keeps the last keepUserTurns user turns as tail; rest is head (excluding leading system).
@@ -186,11 +170,7 @@ func ExtractiveSummary(head []providerapi.Message, maxRunes int) string {
 	if budget < 64 {
 		budget = 64
 	}
-	type line struct {
-		text string
-		idx  int
-	}
-	selected := make([]line, 0, len(head))
+	selected := make([]string, 0, len(head))
 	used := 0
 	for i := len(head) - 1; i >= 0; i-- {
 		msg := head[i]
@@ -206,7 +186,7 @@ func ExtractiveSummary(head []providerapi.Message, maxRunes int) string {
 		if used+need > budget && len(selected) > 0 {
 			continue
 		}
-		selected = append(selected, line{text: text, idx: i})
+		selected = append(selected, text)
 		used += need
 		if used >= budget {
 			break
@@ -219,7 +199,7 @@ func ExtractiveSummary(head []providerapi.Message, maxRunes int) string {
 	var b strings.Builder
 	b.WriteString(preface)
 	for _, item := range selected {
-		b.WriteString(item.text)
+		b.WriteString(item)
 		b.WriteByte('\n')
 	}
 	return truncateRunes(b.String(), maxRunes)
@@ -264,4 +244,31 @@ func defaultReserve(maxOutput int64) int64 {
 		r = 8192
 	}
 	return r
+}
+
+// SplitTokenTail permits compaction inside a single long user turn. Cuts occur
+// only between complete assistant/tool batches; the newest batch is retained.
+func SplitTokenTail(messages []providerapi.Message, tailBudget int64) (head, tail []providerapi.Message) {
+	if len(messages) < 3 {
+		return nil, cloneMessages(messages)
+	}
+	var size int64
+	cut := len(messages)
+	for cut > 0 && size < tailBudget {
+		cut--
+		size += EstimateMessage(messages[cut])
+	}
+	if cut == 0 {
+		return nil, cloneMessages(messages)
+	}
+	// A cut before a tool result must include its whole originating batch.
+	if messages[cut].Role == providerapi.RoleTool {
+		for cut > 0 && messages[cut].Role == providerapi.RoleTool {
+			cut--
+		}
+	}
+	if cut <= 0 {
+		return nil, cloneMessages(messages)
+	}
+	return cloneMessages(messages[:cut]), cloneMessages(messages[cut:])
 }

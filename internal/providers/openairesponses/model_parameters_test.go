@@ -35,7 +35,7 @@ func TestRequestBodyIncludesModelParameters(t *testing.T) {
 	}
 }
 
-func TestRequestBodyRejectsImages(t *testing.T) {
+func TestRequestBodyAcceptsImages(t *testing.T) {
 	provider, err := New(Config{BaseURL: "https://example.com"})
 	if err != nil {
 		t.Fatal(err)
@@ -44,7 +44,7 @@ func TestRequestBodyRejectsImages(t *testing.T) {
 		Model: "m", Messages: []providerapi.Message{{Role: providerapi.RoleUser, Content: "x"}},
 		Images: []providerapi.ImagePart{{MIME: "image/png", Base64: "AA"}},
 	})
-	if err == nil {
-		t.Fatal("expected images rejection")
+	if err != nil {
+		t.Fatal(err)
 	}
 }

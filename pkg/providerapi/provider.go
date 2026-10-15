@@ -21,13 +21,33 @@ const (
 )
 
 type Message struct {
-	Role    Role   `json:"role"`
-	Content string `json:"content"`
+	// UserText is the original direct input; omitted for skills, child prompts and imported history.
+	UserText *string `json:"user_text,omitempty"`
+	Role     Role    `json:"role"`
+	Content  string  `json:"content"`
 	// Thinking is optional model reasoning/scratchpad (not sent back as user-visible
 	// content unless the UI chooses to show it). Provider-neutral; may be empty.
-	Thinking   string     `json:"thinking,omitempty"`
-	ToolCallID string     `json:"tool_call_id,omitempty"`
-	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
+	Thinking   string      `json:"thinking,omitempty"`
+	ToolCallID string      `json:"tool_call_id,omitempty"`
+	ToolCalls  []ToolCall  `json:"tool_calls,omitempty"`
+	Images     []ImagePart `json:"images,omitempty"`
+	Replay     *Replay     `json:"replay,omitempty"`
+}
+
+// Replay keeps provider-native assistant blocks intact, including opaque reasoning
+// signatures. Only the originating adapter/model may replay them.
+type Replay struct {
+	Canonical bool            `json:"canonical,omitempty"`
+	Provider  string          `json:"provider"`
+	Model     string          `json:"model"`
+	Data      json.RawMessage `json:"data"`
+}
+
+func (m Message) ReplayFor(provider, model string) json.RawMessage {
+	if m.Replay != nil && m.Replay.Provider == provider && m.Replay.Model == model {
+		return m.Replay.Data
+	}
+	return nil
 }
 
 type JSONSchema struct {
@@ -56,8 +76,7 @@ type CompletionRequest struct {
 	MaxOutputTokens int64            `json:"max_output_tokens,omitempty"`
 	Temperature     *float64         `json:"temperature,omitempty"`
 	ReasoningEffort string           `json:"reasoning_effort,omitempty"`
-	// Images are auxiliary vision parts (ADR-055). Only openai-chat / anthropic / gemini serialize them.
-	// The main tool loop never sets this field.
+	// Images supplements the last user message for standalone image analysis.
 	Images []ImagePart `json:"images,omitempty"`
 }
 
@@ -116,6 +135,7 @@ type CompletionResponse struct {
 	FinishReason string     `json:"finish_reason,omitempty"`
 	ToolCalls    []ToolCall `json:"tool_calls,omitempty"`
 	Usage        Usage      `json:"usage"`
+	Replay       *Replay    `json:"replay,omitempty"`
 }
 
 type StreamEventType string
@@ -134,6 +154,7 @@ type StreamEvent struct {
 	ToolCall      *ToolCall       `json:"tool_call,omitempty"`
 	Usage         *Usage          `json:"usage,omitempty"`
 	FinishReason  string          `json:"finish_reason,omitempty"`
+	Replay        *Replay         `json:"replay,omitempty"`
 }
 
 type StreamHandler func(StreamEvent) error
@@ -180,6 +201,7 @@ func (a *StreamAccumulator) Add(event StreamEvent) error {
 		}
 		a.response.Usage = *event.Usage
 		a.response.FinishReason = event.FinishReason
+		a.response.Replay = event.Replay
 		a.completed = true
 	default:
 		return fmt.Errorf("%w: unknown event type %q", ErrInvalidStream, event.Type)
@@ -228,40 +250,17 @@ func EmitResponse(response CompletionResponse, handler StreamHandler) error {
 		}
 	}
 	usage := response.Usage
-	return handler(StreamEvent{Type: StreamComplete, Usage: &usage, FinishReason: response.FinishReason})
+	return handler(StreamEvent{Type: StreamComplete, Usage: &usage, FinishReason: response.FinishReason, Replay: response.Replay})
 }
 
-// TeeStreamHandler calls primary then optional side-effect handlers (UI fan-out).
-// Side-effect errors are ignored so model collection is not aborted by a lagging UI.
-func TeeStreamHandler(primary StreamHandler, side ...StreamHandler) StreamHandler {
-	return func(event StreamEvent) error {
-		if primary != nil {
-			if err := primary(event); err != nil {
-				return err
-			}
-		}
-		for _, h := range side {
-			if h == nil {
-				continue
-			}
-			_ = h(event)
-		}
-		return nil
-	}
-}
-
-type HealthStatus struct {
-	Healthy   bool          `json:"healthy"`
-	CheckedAt time.Time     `json:"checked_at"`
-	Latency   time.Duration `json:"latency"`
-	ErrorKind ErrorKind     `json:"error_kind,omitempty"`
+// Partial contains only displayable output; unfinished tool calls must never run.
+func (a *StreamAccumulator) Partial() CompletionResponse {
+	return CompletionResponse{Content: a.response.Content, Thinking: a.response.Thinking}
 }
 
 type Provider interface {
-	Name() string
 	Complete(context.Context, CompletionRequest) (CompletionResponse, error)
 	Stream(context.Context, CompletionRequest, StreamHandler) error
-	Health(context.Context) HealthStatus
 }
 
 type SecretResolver interface {
@@ -307,9 +306,4 @@ func (e *ProviderError) Unwrap() error {
 		return nil
 	}
 	return e.Err
-}
-
-func IsRetryable(err error) bool {
-	var providerErr *ProviderError
-	return errors.As(err, &providerErr) && providerErr.Retryable
 }

@@ -5,7 +5,7 @@ import (
 )
 
 // Lookup returns catalog limits for a model query (selection model segment or wire id).
-// Miss or ambiguous match returns the 2026-08 loose defaults (1M / 128k).
+// Miss or ambiguous match returns conservative defaults (32K context / 4K output).
 func Lookup(query string) Limits {
 	if lim, ok := lookup(current(), query); ok {
 		return lim

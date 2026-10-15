@@ -3,14 +3,15 @@ package modelcatalog
 import (
 	"bytes"
 	"encoding/json"
+	"slices"
 	"sync/atomic"
 )
 
 const (
 	// DefaultContextWindow is used when the user did not set contextWindow and catalog lookup misses.
-	DefaultContextWindow int64 = 1_048_576
-	// DefaultMaxOutput is the packing output term (and Anthropic required max_tokens) when unset.
-	DefaultMaxOutput int64 = 128_000
+	DefaultContextWindow int64 = 32_768
+	// DefaultMaxOutput is the fallback for providers that require an output limit, such as Anthropic.
+	DefaultMaxOutput int64 = 4096
 	// MinFoldedContains is the minimum folded query length for unique-substring match.
 	MinFoldedContains = 8
 	CacheFilename     = "models.dev.json"
@@ -28,6 +29,9 @@ type Limits struct {
 }
 
 type catalogModel struct {
+	Modalities struct {
+		Input []string `json:"input"`
+	} `json:"modalities"`
 	ID    string `json:"id"`
 	Limit struct {
 		Context int64 `json:"context"`
@@ -36,10 +40,11 @@ type catalogModel struct {
 }
 
 type entry struct {
-	id      string
-	segment string
-	folded  string
-	limits  Limits
+	imageKnown, images bool
+	id                 string
+	segment            string
+	folded             string
+	limits             Limits
 }
 
 type catalog struct {
@@ -98,7 +103,8 @@ func parse(raw []byte) (*catalog, error) {
 		}
 		seg := lastSegment(id)
 		e := entry{
-			id:      id,
+			id:         id,
+			imageKnown: len(m.Modalities.Input) > 0, images: slices.Contains(m.Modalities.Input, "image"),
 			segment: seg,
 			folded:  fold(seg),
 			limits:  Limits{Context: m.Limit.Context, Output: m.Limit.Output},
@@ -183,4 +189,22 @@ func fold(s string) string {
 		}
 	}
 	return string(b)
+}
+
+// ImageCapability uses exact identifiers only; fuzzy limit matching cannot prove modalities.
+func ImageCapability(model string) (supported, known bool) {
+	e, ok := current().byID[trimLower(model)]
+	if !ok {
+		matches := current().bySegment[trimLower(model)]
+		if len(matches) == 0 {
+			return false, false
+		}
+		e = matches[0]
+		for _, candidate := range matches[1:] {
+			if candidate.imageKnown != e.imageKnown || candidate.images != e.images {
+				return false, false
+			}
+		}
+	}
+	return e.images, e.imageKnown
 }

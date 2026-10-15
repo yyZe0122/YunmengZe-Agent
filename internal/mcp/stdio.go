@@ -9,11 +9,12 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 )
+
+const maxStdioMessageBytes = 8 << 20
 
 // ServerConfig launches one MCP server over stdio.
 type ServerConfig struct {
@@ -21,6 +22,7 @@ type ServerConfig struct {
 	Command string
 	Args    []string
 	Env     map[string]string
+	Dir     string
 }
 
 // Client is one connected MCP server process (stdio).
@@ -28,7 +30,7 @@ type Client struct {
 	name   string
 	cmd    *exec.Cmd
 	stdin  io.WriteCloser
-	stdout *bufio.Reader
+	stdout *bufio.Scanner
 	mu     sync.Mutex
 	nextID atomic.Int64
 	closed atomic.Bool
@@ -44,6 +46,8 @@ func Start(ctx context.Context, config ServerConfig) (*Client, error) {
 		return nil, errors.New("mcp server name is required")
 	}
 	cmd := exec.CommandContext(ctx, config.Command, config.Args...)
+	cmd.Dir = config.Dir
+	prepareCommand(cmd)
 	if len(config.Env) > 0 {
 		cmd.Env = os.Environ()
 		for k, v := range config.Env {
@@ -59,26 +63,22 @@ func Start(ctx context.Context, config ServerConfig) (*Client, error) {
 		_ = stdin.Close()
 		return nil, err
 	}
-	cmd.Stderr = os.Stderr
+	// Protocol output is stdout. Do not let arbitrary server diagnostics write
+	// terminal control sequences into the interactive UI.
+	cmd.Stderr = io.Discard
 	if err := cmd.Start(); err != nil {
 		_ = stdin.Close()
 		return nil, fmt.Errorf("start mcp %s: %w", name, err)
 	}
-	c := &Client{
-		name: name, cmd: cmd, stdin: stdin, stdout: bufio.NewReader(stdout),
-	}
+	messages := bufio.NewScanner(stdout)
+	messages.Buffer(make([]byte, 4096), maxStdioMessageBytes+2)
+	c := &Client{name: name, cmd: cmd, stdin: stdin, stdout: messages}
 	if err := c.initialize(ctx); err != nil {
 		_ = c.Close()
 		return nil, err
 	}
 	return c, nil
 }
-
-// Name returns the configured server name.
-func (c *Client) Name() string { return c.name }
-
-// Transport returns "stdio".
-func (c *Client) Transport() string { return "stdio" }
 
 // Close terminates the process.
 func (c *Client) Close() error {
@@ -87,7 +87,7 @@ func (c *Client) Close() error {
 	}
 	_ = c.stdin.Close()
 	if c.cmd.Process != nil {
-		_ = c.cmd.Process.Kill()
+		_ = c.cmd.Cancel()
 	}
 	return c.cmd.Wait()
 }
@@ -195,45 +195,30 @@ func (c *Client) writeMessage(msg any) error {
 	if err != nil {
 		return err
 	}
-	header := fmt.Sprintf("Content-Length: %d\r\n\r\n", len(body))
-	if _, err := io.WriteString(c.stdin, header); err != nil {
-		return err
+	if len(body) > maxStdioMessageBytes {
+		return errors.New("mcp message exceeds 8 MiB")
 	}
-	_, err = c.stdin.Write(body)
+	_, err = c.stdin.Write(append(body, '\n'))
 	return err
 }
 
 func (c *Client) readMessage() (map[string]any, error) {
-	var contentLength int
-	for {
-		line, err := c.stdout.ReadString('\n')
-		if err != nil {
-			return nil, err
+	if !c.stdout.Scan() {
+		if err := c.stdout.Err(); err != nil {
+			return nil, fmt.Errorf("read mcp message (maximum 8 MiB): %w", err)
 		}
-		line = strings.TrimRight(line, "\r\n")
-		if line == "" {
-			break
-		}
-		lower := strings.ToLower(line)
-		if strings.HasPrefix(lower, "content-length:") {
-			value := strings.TrimSpace(line[strings.Index(lower, ":")+1:])
-			n, err := strconv.Atoi(value)
-			if err != nil || n < 0 {
-				return nil, fmt.Errorf("invalid Content-Length: %q", value)
-			}
-			contentLength = n
-		}
+		return nil, io.EOF
 	}
-	if contentLength <= 0 {
-		return nil, errors.New("mcp message missing Content-Length")
-	}
-	body := make([]byte, contentLength)
-	if _, err := io.ReadFull(c.stdout, body); err != nil {
-		return nil, err
+	body := c.stdout.Bytes()
+	if len(body) > maxStdioMessageBytes {
+		return nil, errors.New("mcp message exceeds 8 MiB")
 	}
 	var msg map[string]any
 	if err := json.Unmarshal(body, &msg); err != nil {
 		return nil, err
+	}
+	if msg == nil {
+		return nil, errors.New("mcp message must be a JSON object")
 	}
 	return msg, nil
 }

@@ -12,7 +12,6 @@ import (
 const (
 	DefaultToolProtectTokens int64 = 40_000
 	DefaultToolReclaimMin    int64 = 20_000
-	DefaultPressureTrigger         = 0.75
 	toolClearPlaceholderFmt        = "[cleared tool result: id=%s; full output retained in local history]"
 )
 
@@ -20,23 +19,18 @@ const (
 type PackOptions struct {
 	// Budget is the max estimated tokens for the packed message list (0 = no budget).
 	Budget int64
-	// Model is used only for documentation in Result; calibration is applied by caller.
-	Model string
 	// MaxToolResultRunes caps single tool/assistant content (L1). 0 uses 32*1024.
 	MaxToolResultRunes int
 	// ToolProtectTokens keeps newest tool result tokens before L2 clear. 0 = default.
 	ToolProtectTokens int64
 	// ToolReclaimMin requires reclaimable tokens before L2 runs. 0 = default.
 	ToolReclaimMin int64
-	// PressureTrigger is unused inside Pack; callers use it for summarize decisions.
-	PressureTrigger float64
 }
 
 // PackResult is the packed provider view plus diagnostics.
 type PackResult struct {
 	Messages        []providerapi.Message
 	EstimateTokens  int64
-	Budget          int64
 	TrimmedBodies   int
 	ClearedTools    int
 	DroppedMessages int
@@ -54,14 +48,11 @@ func Pack(messages []providerapi.Message, opt PackOptions) PackResult {
 	if opt.ToolReclaimMin <= 0 {
 		opt.ToolReclaimMin = DefaultToolReclaimMin
 	}
-	if opt.PressureTrigger <= 0 {
-		opt.PressureTrigger = DefaultPressureTrigger
-	}
 
 	out := RepairToolMessages(cloneMessages(messages))
-	result := PackResult{Budget: opt.Budget}
+	var result PackResult
 
-	// L1: per-message body trim (same policy as agent.trimMessagesForProvider).
+	// L1: per-message body trim.
 	for i := range out {
 		switch out[i].Role {
 		case providerapi.RoleTool:
@@ -71,7 +62,7 @@ func Pack(messages []providerapi.Message, opt PackOptions) PackResult {
 				result.TrimmedBodies++
 			}
 		case providerapi.RoleAssistant:
-			if len(out[i].ToolCalls) == 0 {
+			if len(out[i].ToolCalls) == 0 && out[i].Replay == nil {
 				before := out[i].Content
 				out[i].Content = trimRunes(out[i].Content, opt.MaxToolResultRunes)
 				if out[i].Content != before {
@@ -83,7 +74,10 @@ func Pack(messages []providerapi.Message, opt PackOptions) PackResult {
 
 	if opt.Budget > 0 {
 		// L2: clear older tool results if reclaim is worthwhile.
-		cleared := clearOldToolResults(out, opt.ToolProtectTokens, opt.ToolReclaimMin)
+		cleared := 0
+		if EstimateMessages(out) > opt.Budget {
+			cleared = clearOldToolResults(out, min(opt.ToolProtectTokens, opt.Budget/3), min(opt.ToolReclaimMin, opt.Budget/4))
+		}
 		result.ClearedTools = cleared
 
 		// L3: drop oldest complete turns while over budget (keep system prefix).
@@ -162,6 +156,7 @@ func clearOldToolResults(messages []providerapi.Message, protect, reclaimMin int
 			continue
 		}
 		messages[i].Content = placeholder
+		messages[i].Images = nil
 		cleared++
 	}
 	return cleared
@@ -175,7 +170,7 @@ func dropOldestTurn(messages []providerapi.Message) ([]providerapi.Message, bool
 	}
 	// Keep leading system messages.
 	start := 0
-	for start < len(messages) && messages[start].Role == providerapi.RoleSystem {
+	for start < len(messages) && (messages[start].Role == providerapi.RoleSystem || messages[start].Replay != nil && messages[start].Replay.Canonical) {
 		start++
 	}
 	if start >= len(messages) {
@@ -184,12 +179,7 @@ func dropOldestTurn(messages []providerapi.Message) ([]providerapi.Message, bool
 	// Find first user after system, or first message if no user.
 	turnStart := start
 	if messages[turnStart].Role != providerapi.RoleUser {
-		// Drop a single non-system message if structure is odd.
-		if len(messages)-start <= 1 {
-			return messages, false
-		}
-		out := append(append([]providerapi.Message{}, messages[:start]...), messages[start+1:]...)
-		return out, true
+		return messages, false
 	}
 	// End of turn = next user (exclusive) or EOF; always keep at least the last user turn.
 	turnEnd := turnStart + 1

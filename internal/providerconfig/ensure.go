@@ -103,21 +103,17 @@ func EnsureAgentsFile(configDir string) (created bool, err error) {
 
 const defaultAgentsMarkdown = `# Agent rules
 
-1. 用户没要求的不要做；要做先问清楚并得到允许。
-2. 只在当前项目/工作区目录内操作；需要出界先征得同意。
-3. 少废话，直接做事。
-4. 仅删除本轮自己产生、且 100% 可确认是垃圾的文件（如自己写的临时/失败草稿）；拿不准的先问用户，未允许不删。
-5. 专项流程先 skills_list 再 skill_view；已配置的 mcp_* 优先于自己写脚本或 process_exec。
+1. 按用户目标完成工作，先查看现有实现，再做必要的修改。
+2. plan 只读分析；agent 直接执行工具，不逐次请求授权。
+3. 简洁说明结果、验证方法和仍未解决的问题。
+4. 不覆盖用户已有改动；遇到影响任务方向的信息缺口，用 ask_user 澄清。
+5. 专项流程可用 skills_list / skill_view 加载；文件操作优先使用 read / write / edit，命令使用 shell。
 `
 
 // defaultConfigTemplate is written when ConfigDir has no config and nothing to migrate.
 // Keys use {env:…}; no literal secrets.
 const defaultConfigTemplate = `{
   "model": "deepseek1/deepseek-chat",
-  "models": {
-    "subagent": "deepseek1/deepseek-chat",
-    "compact": "deepseek1/deepseek-chat"
-  },
   "provider": {
     "deepseek1": {
       "type": "openai-compatible",
@@ -128,22 +124,6 @@ const defaultConfigTemplate = `{
       "models": {
         "deepseek-chat": {
           "name": "DeepSeek Chat"
-        }
-      }
-    },
-    "deepseek2": {
-      "type": "openai-compatible",
-      "options": {
-        "baseURL": "https://llm.example.com/v1",
-        "apiKey": "{env:DEEPSEEK2_API_KEY}"
-      },
-      "models": {
-        "deepseek/deepseek-v4-flash": {
-          "name": "Nested wire id (select deepseek2/deepseek/deepseek-v4-flash)"
-        },
-        "flash": {
-          "name": "Short key + id override (select deepseek2/flash)",
-          "id": "deepseek/deepseek-v4-flash"
         }
       }
     }

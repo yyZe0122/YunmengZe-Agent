@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestListAndReadLinked(t *testing.T) {
+func TestReadLinked(t *testing.T) {
 	root := t.TempDir()
 	writeSkillMD(t, root, "demo", `---
 name: Demo
@@ -21,19 +21,9 @@ Main instructions.
 	if err := os.WriteFile(filepath.Join(refDir, "api.md"), []byte("# api\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, "demo", "SKILL.md.draft"), []byte("draft"), 0o600); err != nil {
-		t.Fatal(err)
-	}
 	cat, diags := Discover([]Root{{Path: root, Source: SourceUser}})
 	if len(diags) > 0 {
 		t.Fatalf("discover: %v", diags)
-	}
-	files, err := cat.ListLinked("demo")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(files) != 1 || files[0] != "references/api.md" {
-		t.Fatalf("linked = %v", files)
 	}
 	body, err := cat.ReadLinked("demo", "references/api.md")
 	if err != nil {
@@ -47,5 +37,16 @@ Main instructions.
 	}
 	if _, err := cat.ReadLinked("demo", "SKILL.md"); err == nil {
 		t.Fatal("expected SKILL.md reject")
+	}
+}
+
+func writeSkillMD(t *testing.T, root, id, body string) {
+	t.Helper()
+	dir := filepath.Join(root, id)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, SkillFileName), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
 	}
 }

@@ -142,12 +142,6 @@ func dialLegacySSE(ctx context.Context, name, sseURL string, headers map[string]
 var _ Session = (*RemoteClient)(nil)
 var _ Session = (*Client)(nil)
 
-// Name returns the configured server name.
-func (c *RemoteClient) Name() string { return c.name }
-
-// Transport returns "http" or "sse".
-func (c *RemoteClient) Transport() string { return c.transport }
-
 // Close ends the remote session.
 func (c *RemoteClient) Close() error {
 	if !c.closed.CompareAndSwap(false, true) {

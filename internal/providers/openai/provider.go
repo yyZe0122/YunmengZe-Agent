@@ -40,7 +40,6 @@ type Config struct {
 	HTTPClient     *http.Client
 	MaxBodyBytes   int64
 	CompletionPath string
-	ModelsPath     string
 	ResponseFormat string
 	Headers        map[string]string
 }
@@ -53,7 +52,6 @@ type Provider struct {
 	client          *http.Client
 	maxBodyBytes    int64
 	completionPath  string
-	modelsPath      string
 	responseFormat  string
 	responseFormats sync.Map
 	headers         http.Header
@@ -76,7 +74,7 @@ func New(config Config) (*Provider, error) {
 	}
 	client := config.HTTPClient
 	if client == nil {
-		client = &http.Client{Timeout: 60 * time.Second}
+		client = providerhttp.NewClient()
 	}
 	maxBody := config.MaxBodyBytes
 	if maxBody == 0 {
@@ -89,14 +87,7 @@ func New(config Config) (*Provider, error) {
 	if completionPath == "" {
 		completionPath = "/v1/chat/completions"
 	}
-	modelsPath := strings.TrimSpace(config.ModelsPath)
-	if modelsPath == "" {
-		modelsPath = "/v1/models"
-	}
 	if _, err := providerhttp.Endpoint(parsed, completionPath); err != nil {
-		return nil, err
-	}
-	if _, err := providerhttp.Endpoint(parsed, modelsPath); err != nil {
 		return nil, err
 	}
 	responseFormat := strings.TrimSpace(config.ResponseFormat)
@@ -113,11 +104,9 @@ func New(config Config) (*Provider, error) {
 	return &Provider{
 		name: name, baseURL: parsed, apiKeyRef: strings.TrimSpace(config.APIKeyRef),
 		resolver: config.Resolver, client: client, maxBodyBytes: maxBody,
-		completionPath: completionPath, modelsPath: modelsPath, responseFormat: responseFormat, headers: headers,
+		completionPath: completionPath, responseFormat: responseFormat, headers: headers,
 	}, nil
 }
-
-func (p *Provider) Name() string { return p.name }
 
 func (p *Provider) Complete(ctx context.Context, request providerapi.CompletionRequest) (providerapi.CompletionResponse, error) {
 	response, err := p.doCompletion(ctx, request, false)
@@ -138,7 +127,7 @@ func (p *Provider) Complete(ctx context.Context, request providerapi.CompletionR
 	}
 	choice := decoded.Choices[0]
 	result := providerapi.CompletionResponse{
-		Content: choice.Message.Content, FinishReason: choice.FinishReason,
+		Content: choice.Message.Content, Thinking: choice.Message.ReasoningContent, Replay: p.replay(request.Model, choice.Message.ReasoningContent), FinishReason: choice.FinishReason,
 		Usage: usageFrom(decoded.Usage),
 	}
 	for _, call := range choice.Message.ToolCalls {
@@ -162,7 +151,7 @@ func (p *Provider) Stream(ctx context.Context, request providerapi.CompletionReq
 	bufferSize := int(min(p.maxBodyBytes, int64(64<<10)))
 	reader.Buffer(make([]byte, bufferSize), int(p.maxBodyBytes))
 	var toolCalls []providerapi.ToolCall
-	var finishReason string
+	var finishReason, thinking string
 	var usage providerapi.Usage
 	for reader.Scan() {
 		line := strings.TrimSpace(reader.Text())
@@ -184,7 +173,7 @@ func (p *Provider) Stream(ctx context.Context, request providerapi.CompletionReq
 				}
 			}
 			return handler(providerapi.StreamEvent{
-				Type: providerapi.StreamComplete, FinishReason: finishReason, Usage: &usage,
+				Type: providerapi.StreamComplete, FinishReason: finishReason, Usage: &usage, Replay: p.replay(request.Model, thinking),
 			})
 		}
 		var chunk streamResponse
@@ -202,6 +191,7 @@ func (p *Provider) Stream(ctx context.Context, request providerapi.CompletionReq
 		}
 		choice := chunk.Choices[0]
 		if choice.Delta.ReasoningContent != "" {
+			thinking += choice.Delta.ReasoningContent
 			if err := handler(providerapi.StreamEvent{
 				Type: providerapi.StreamThinking, ThinkingDelta: choice.Delta.ReasoningContent,
 			}); err != nil {
@@ -244,31 +234,6 @@ func (p *Provider) Stream(ctx context.Context, request providerapi.CompletionReq
 	}
 	return p.protocol(errors.New("stream ended before [DONE]"))
 }
-func (p *Provider) Health(ctx context.Context) providerapi.HealthStatus {
-	started := time.Now()
-	status := providerapi.HealthStatus{CheckedAt: started.UTC()}
-	response, err := p.do(ctx, http.MethodGet, p.modelsPath, nil)
-	status.Latency = time.Since(started)
-	if err != nil {
-		var providerErr *providerapi.ProviderError
-		if errors.As(err, &providerErr) {
-			status.ErrorKind = providerErr.Kind
-		}
-		return status
-	}
-	defer response.Body.Close()
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		err := p.statusError(response)
-		var providerErr *providerapi.ProviderError
-		if errors.As(err, &providerErr) {
-			status.ErrorKind = providerErr.Kind
-		}
-		return status
-	}
-	status.Healthy = true
-	return status
-}
-
 func (p *Provider) doCompletion(ctx context.Context, request providerapi.CompletionRequest, stream bool) (*http.Response, error) {
 	format := p.responseFormatFor(request.Model)
 	fellBack := false
@@ -332,7 +297,8 @@ func (p *Provider) requestBodyWithFormat(request providerapi.CompletionRequest, 
 			lastUser = i
 		}
 	}
-	messages := make([]chatMessage, len(request.Messages))
+	messages := make([]chatMessage, 0, len(request.Messages))
+	var pendingImages []providerapi.ImagePart
 	for i, message := range request.Messages {
 		if message.Role != providerapi.RoleSystem && message.Role != providerapi.RoleUser &&
 			message.Role != providerapi.RoleAssistant && message.Role != providerapi.RoleTool {
@@ -349,9 +315,20 @@ func (p *Provider) requestBodyWithFormat(request providerapi.CompletionRequest, 
 			return nil, fmt.Errorf("non-assistant message %d cannot contain tool calls", i)
 		}
 		converted := chatMessage{Role: string(message.Role), Content: message.Content, ToolCallID: message.ToolCallID}
-		if i == lastUser && len(request.Images) > 0 && message.Role == providerapi.RoleUser {
+		images := append([]providerapi.ImagePart(nil), message.Images...)
+		if i == lastUser {
+			images = append(images, request.Images...)
+		}
+		if message.Role == providerapi.RoleTool {
+			pendingImages = append(pendingImages, images...)
+			images = nil
+		}
+		if replay := message.ReplayFor(p.name+"/openai-chat", request.Model); len(replay) > 0 {
+			_ = json.Unmarshal(replay, &converted.ReasoningContent)
+		}
+		if len(images) > 0 && message.Role == providerapi.RoleUser {
 			parts := []chatContentPart{{Type: "text", Text: message.Content}}
-			for _, img := range request.Images {
+			for _, img := range images {
 				parts = append(parts, chatContentPart{
 					Type:     "image_url",
 					ImageURL: &chatImageURL{URL: "data:" + strings.TrimSpace(img.MIME) + ";base64," + img.Base64},
@@ -369,7 +346,15 @@ func (p *Provider) requestBodyWithFormat(request providerapi.CompletionRequest, 
 				Function: chatFunction{Name: call.Name, Arguments: call.Arguments},
 			})
 		}
-		messages[i] = converted
+		messages = append(messages, converted)
+		if len(pendingImages) > 0 && (i+1 == len(request.Messages) || request.Messages[i+1].Role != providerapi.RoleTool) {
+			parts := []chatContentPart{{Type: "text", Text: "Images returned by the preceding tool results:"}}
+			for _, img := range pendingImages {
+				parts = append(parts, chatContentPart{Type: "image_url", ImageURL: &chatImageURL{URL: "data:" + img.MIME + ";base64," + img.Base64}})
+			}
+			messages = append(messages, chatMessage{Role: "user", Content: parts})
+			pendingImages = nil
+		}
 	}
 	payload := chatRequest{
 		Model: request.Model, Messages: messages, Stream: stream,
@@ -605,10 +590,11 @@ type chatRequest struct {
 }
 
 type chatMessage struct {
-	Role       string         `json:"role"`
-	Content    any            `json:"content"`
-	ToolCallID string         `json:"tool_call_id,omitempty"`
-	ToolCalls  []chatToolCall `json:"tool_calls,omitempty"`
+	ReasoningContent string         `json:"reasoning_content,omitempty"`
+	Role             string         `json:"role"`
+	Content          any            `json:"content"`
+	ToolCallID       string         `json:"tool_call_id,omitempty"`
+	ToolCalls        []chatToolCall `json:"tool_calls,omitempty"`
 }
 
 type chatContentPart struct {
@@ -658,8 +644,9 @@ type responseJSONSchema struct {
 type chatResponse struct {
 	Choices []struct {
 		Message struct {
-			Content   string `json:"content"`
-			ToolCalls []struct {
+			ReasoningContent string `json:"reasoning_content"`
+			Content          string `json:"content"`
+			ToolCalls        []struct {
 				Index    int    `json:"index"`
 				ID       string `json:"id"`
 				Function struct {
@@ -718,4 +705,12 @@ func usageFrom(value tokenUsage) providerapi.Usage {
 		TotalTokens:     providerapi.TokenCount(value.TotalTokens),
 		CacheReadTokens: providerapi.TokenCount(cacheRead),
 	}
+}
+
+func (p *Provider) replay(model, thinking string) *providerapi.Replay {
+	if thinking == "" {
+		return nil
+	}
+	raw, _ := json.Marshal(thinking)
+	return &providerapi.Replay{Provider: p.name + "/openai-chat", Model: model, Data: raw}
 }

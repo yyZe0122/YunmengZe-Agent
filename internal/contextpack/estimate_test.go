@@ -37,21 +37,6 @@ func TestUsableWindow(t *testing.T) {
 	}
 }
 
-func TestCalibratorEMA(t *testing.T) {
-	c := NewCalibrator()
-	c.Observe("m", 100, 150) // ratio 1.5
-	if r := c.Ratio("m"); r < 1.4 || r > 1.6 {
-		t.Fatalf("ratio=%v", r)
-	}
-	applied := c.Apply("m", 100)
-	if applied < 140 || applied > 160 {
-		t.Fatalf("applied=%d", applied)
-	}
-	if c.Ratio("other") != 1 {
-		t.Fatal("unknown model")
-	}
-}
-
 func TestPackClearsOldToolsAndDropsTurns(t *testing.T) {
 	// Build history: system + several user/assistant/tool rounds with large tools.
 	msgs := []providerapi.Message{
