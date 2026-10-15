@@ -81,6 +81,15 @@ The workflow uses its automatic GITHUB_TOKEN with contents write permission for 
 
 Homebrew Cask and Scoop updates are optional. To enable them, configure the repository's Actions secret PACKAGE_GITHUB_TOKEN with Contents write access to both yyZe0122/homebrew-tap and yyZe0122/scoop-bucket. Without that secret, GoReleaser skips those two uploads and still publishes the GitHub archives. It never reuses the repository-scoped GITHUB_TOKEN for other repositories. Tags with a prerelease suffix also skip package updates.
 
+To configure automatic package updates:
+
+1. Create a [fine-grained personal access token](https://github.com/settings/personal-access-tokens/new) owned by yyZe0122, with an expiration date and access to only homebrew-tap and scoop-bucket.
+2. Grant repository Contents: Read and write; keep the automatically required Metadata read access. No additional account or workflow permissions are needed for these manifest updates.
+3. In YunmengZe-Agent, open Settings → Secrets and variables → Actions → New repository secret. Use PACKAGE_GITHUB_TOKEN as the name and the token as its value.
+4. Renew the token and update that secret before it expires. The existing Release workflow supplies it to GoReleaser; do not put its value in Git, release notes or chat.
+
+The package files are Casks/ymz.rb in homebrew-tap and ymz.json in scoop-bucket. After a stable release, verify their version, asset URLs and hashes against that release's checksums.txt before announcing package-manager availability. Adding the secret alone does not update an already published package; do not rerun a completed release just to change package metadata.
+
 Plain vX.Y.Z tags publish as stable GitHub releases; tags with a prerelease suffix such as -rc.1 publish as prereleases. The script passes the exact versioned file as release notes and verifies the uploaded body and all seven nonempty assets. Installers verify SHA-256 before copying and preserve existing configuration; see [installation](wiki/installation.md).
 
 ## Failure and retry

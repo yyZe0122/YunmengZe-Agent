@@ -9,6 +9,29 @@
 
 包内附带 README、许可证、配置示例、schema 和安装脚本。发布包应配合对应标签的文档使用；本 Wiki 跟随当前分支代码。[发布配置](../../.goreleaser.yaml)
 
+## 包管理器
+
+Windows 安装 [Scoop](https://scoop.sh) 后添加本项目的 bucket：
+
+```powershell
+scoop bucket add ymz https://github.com/yyZe0122/scoop-bucket
+scoop install ymz/ymz
+ymz version
+```
+
+后续更新执行 `scoop update`，再执行 `scoop update ymz`；卸载程序执行 `scoop uninstall ymz`。
+
+macOS 安装 [Homebrew](https://brew.sh) 后执行：
+
+```sh
+brew install --cask yyZe0122/tap/ymz
+ymz version
+```
+
+后续更新执行 `brew update`，再执行 `brew upgrade --cask yyZe0122/tap/ymz`；卸载程序执行 `brew uninstall --cask yyZe0122/tap/ymz`。Linux 可使用下方用户安装器或直接下载发布包。
+
+两个包管理器均安装发布的 `ymz`，不需要本地 Go；配置与会话位于 `$YMZ_HOME` 或 `~/.yunmengze`。清单：[Scoop](https://github.com/yyZe0122/scoop-bucket/blob/main/ymz.json)、[Homebrew](https://github.com/yyZe0122/homebrew-tap/blob/main/Casks/ymz.rb)。
+
 ## 从源码构建
 
 需要 Go 1.26+，构建使用 `CGO_ENABLED=0`。在仓库根目录执行：
@@ -26,7 +49,21 @@
 
 ## 下载发布包的安装器
 
-在仓库根目录运行 `sh packaging/scripts/install-user.sh` 或 `./packaging/scripts/install.ps1`。安装器下载并校验 SHA-256，创建缺失的配置和 env，保留已有文件。
+无需克隆仓库即可安装最新正式版。
+
+Linux / macOS：
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/yyZe0122/YunmengZe-Agent/main/packaging/scripts/install-user.sh | sh
+```
+
+Windows PowerShell：
+
+```powershell
+irm https://raw.githubusercontent.com/yyZe0122/YunmengZe-Agent/main/packaging/scripts/install.ps1 | iex
+```
+
+若已克隆仓库，也可在仓库根目录运行 `sh packaging/scripts/install-user.sh` 或 `./packaging/scripts/install.ps1`。安装器下载并校验 SHA-256，创建缺失的配置和 env，保留已有文件。再次运行会安装当前选定版本，可用于更新。
 
 | 设置 | Unix | Windows |
 | --- | --- | --- |
@@ -36,6 +73,8 @@
 | 配置目录 | `YMZ_CONFIG_DIR` → `YMZ_HOME` → `~/.yunmengze` | `-ConfigDir` / `YMZ_CONFIG_DIR` → `YMZ_HOME` → `%USERPROFILE%\.yunmengze` |
 
 版本默认 `latest`，无正式版时回退到发布列表。Unix 安装器更新 shell rc 的 PATH；Windows 更新用户 PATH，可用 `YMZ_NO_PATH_UPDATE=1` 禁用。修改后重新打开终端。
+
+需要指定版本时，在运行安装器前设置 `YMZ_VERSION`，例如 Unix 的 `export YMZ_VERSION=v1.0.0` 或 PowerShell 的 `$env:YMZ_VERSION = 'v1.0.0'`。不再固定版本时，分别执行 `unset YMZ_VERSION` 或 `Remove-Item Env:YMZ_VERSION`。
 
 `YMZ_CONFIG_DIR` / `-ConfigDir` 只用于安装器；程序运行时只识别 `YMZ_HOME`，自定义配置目录时应同时设置它。
 

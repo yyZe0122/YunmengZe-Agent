@@ -17,7 +17,39 @@
 
 ## 安装
 
-在 [Releases](https://github.com/yyZe0122/YunmengZe-Agent/releases) 下载对应系统和 CPU 的压缩包，使用 `checksums.txt` 校验后，将 `ymz`（Windows 为 `ymz.exe`）放入 `PATH`。发布构建覆盖三个系统的 amd64 和 arm64。
+发布包支持 Windows、Linux、macOS 的 amd64 和 arm64 架构；仅从源码构建时需要安装 Go。
+
+**Windows — [Scoop](https://scoop.sh)：**
+
+```powershell
+scoop bucket add ymz https://github.com/yyZe0122/scoop-bucket
+scoop install ymz/ymz
+```
+
+**macOS — [Homebrew](https://brew.sh)：**
+
+```sh
+brew install --cask yyZe0122/tap/ymz
+```
+
+**Linux / macOS — 用户安装脚本：**
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/yyZe0122/YunmengZe-Agent/main/packaging/scripts/install-user.sh | sh
+```
+
+**Windows PowerShell — 不使用 Scoop 的安装方式：**
+
+```powershell
+irm https://raw.githubusercontent.com/yyZe0122/YunmengZe-Agent/main/packaging/scripts/install.ps1 | iex
+```
+
+用户安装脚本下载最新正式版、校验 SHA-256，并保留已有配置。安装后重新打开终端，运行 `ymz version` 确认版本。
+
+也可以在 [Releases](https://github.com/yyZe0122/YunmengZe-Agent/releases) 下载压缩包，使用 `checksums.txt` 校验后，将 `ymz`（Windows 为 `ymz.exe`）放入 `PATH`。
+
+<details>
+<summary>从源码构建</summary>
 
 从当前源码构建需要 **Go 1.26+**。先克隆仓库：
 
@@ -40,7 +72,9 @@ Windows PowerShell：
 ./bin/ymz.exe
 ```
 
-用户安装器、安装目录和源码安装方法见[安装说明](docs/wiki/installation.md)。
+</details>
+
+更新命令、安装目录和版本选择见[安装说明](docs/wiki/installation.md)。升级已有安装前，请先阅读对应版本的发布说明。
 
 ## 快速开始
 

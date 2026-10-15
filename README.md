@@ -17,7 +17,39 @@ Conversation storage is local. Model calls and enabled web, image and MCP tools 
 
 ## Installation
 
-Download the archive for your OS and CPU from [Releases](https://github.com/yyZe0122/YunmengZe-Agent/releases), verify it against `checksums.txt`, and place `ymz` (`ymz.exe` on Windows) on your `PATH`. Release builds target amd64 and arm64 on all three platforms.
+Prebuilt releases support Windows, Linux and macOS on amd64 and arm64. Go is only required when building from source.
+
+**Windows — [Scoop](https://scoop.sh):**
+
+```powershell
+scoop bucket add ymz https://github.com/yyZe0122/scoop-bucket
+scoop install ymz/ymz
+```
+
+**macOS — [Homebrew](https://brew.sh):**
+
+```sh
+brew install --cask yyZe0122/tap/ymz
+```
+
+**Linux / macOS — user installer:**
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/yyZe0122/YunmengZe-Agent/main/packaging/scripts/install-user.sh | sh
+```
+
+**Windows PowerShell — user installer without Scoop:**
+
+```powershell
+irm https://raw.githubusercontent.com/yyZe0122/YunmengZe-Agent/main/packaging/scripts/install.ps1 | iex
+```
+
+The user installers download the latest stable release, verify SHA-256 and preserve existing configuration. Reopen your terminal after installation, then run `ymz version`.
+
+You can also download an archive from [Releases](https://github.com/yyZe0122/YunmengZe-Agent/releases), verify it against `checksums.txt`, and place `ymz` (`ymz.exe` on Windows) on your `PATH`.
+
+<details>
+<summary>Build from source</summary>
 
 To build the current checkout, install **Go 1.26+** and clone the repository:
 
@@ -40,7 +72,9 @@ Windows PowerShell:
 ./bin/ymz.exe
 ```
 
-See [installation](docs/wiki/installation.md) for user installers, install locations and source installation.
+</details>
+
+See [installation](docs/wiki/installation.md) for updates, install locations and version selection. Check the version's release notes before upgrading an existing installation.
 
 ## Quick start
 
