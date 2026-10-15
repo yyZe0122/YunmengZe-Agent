@@ -7,7 +7,7 @@ set -eu
 REPOSITORY=${YMZ_REPOSITORY:-yyZe0122/YunmengZe-Agent}
 VERSION=${YMZ_VERSION:-latest}
 INSTALL_DIR=${YMZ_INSTALL_DIR:-"${HOME}/.local/bin"}
-# Flat home root (same as paths.Layout user mode). YMZ_HOME overrides whole root.
+# Flat home root (same as ymz). YMZ_HOME overrides whole root.
 if [ -n "${YMZ_HOME:-}" ]; then
   CONFIG_DIR=${YMZ_CONFIG_DIR:-"${YMZ_HOME}"}
 else
@@ -75,7 +75,6 @@ resolve_tag() {
 append_path_rc() {
   install_dir=$1
   marker="# YunmengZe PATH"
-  env_marker="# YunmengZe env file"
   shell_name=$(basename "${SHELL:-}")
   case "$shell_name" in
     zsh) rc="${HOME}/.zshrc" ;;
@@ -93,13 +92,6 @@ append_path_rc() {
       echo "export PATH=\"${install_dir}:\$PATH\""
     } >>"$rc"
     echo "  PATH: appended to $rc"
-  fi
-  if ! grep -qF "$env_marker" "$rc" 2>/dev/null; then
-    {
-      echo "$env_marker"
-      echo "if [ -f \"${CONFIG_DIR}/env\" ]; then set -a; . \"${CONFIG_DIR}/env\"; set +a; fi"
-    } >>"$rc"
-    echo "  env: source block appended to $rc (optional file ${CONFIG_DIR}/env)"
   fi
 }
 
@@ -128,33 +120,10 @@ seed_config() {
       },
       "models": {
         "deepseek-chat": {
-          "name": "DeepSeek Chat",
-          "maxTokens": 4096,
-          "contextWindow": 65536
-        }
-      }
-    },
-    "deepseek2": {
-      "type": "openai-compatible",
-      "options": {
-        "baseURL": "https://llm.example.com/v1",
-        "apiKey": "{env:DEEPSEEK2_API_KEY}"
-      },
-      "models": {
-        "deepseek/deepseek-v4-flash": {
-          "name": "Nested wire id (select deepseek2/deepseek/deepseek-v4-flash)"
-        },
-        "flash": {
-          "name": "Short key + id override (select deepseek2/flash)",
-          "id": "deepseek/deepseek-v4-flash"
+          "name": "DeepSeek Chat"
         }
       }
     }
-  },
-  "chat": {
-    "workspace": { "default": "client_cwd", "allow": [], "allow_all": false },
-    "allow_write": true,
-    "permission": { "mode": "preauth" }
   }
 }
 EOF
@@ -166,7 +135,7 @@ EOF
   fi
   if [ ! -f "${CONFIG_DIR}/env" ]; then
     cat >"${CONFIG_DIR}/env" <<'EOF'
-# Optional KEY=value (loaded by daemon/CLI; does not override existing process env).
+# Optional KEY=value (loaded by ymz; does not override existing process env).
 # Pair with apiKey "{env:DEEPSEEK1_API_KEY}" / "{env:DEEPSEEK2_API_KEY}" in agent.json, or literal / {file:…}.
 # chmod 600 recommended. Do not commit secrets.
 #
@@ -225,8 +194,7 @@ fi
 tar -xzf "$TMP_DIR/$ASSET" -C "$TMP_DIR"
 mkdir -p "$INSTALL_DIR"
 cp "$TMP_DIR/ymz" "$INSTALL_DIR/ymz"
-cp "$TMP_DIR/ymzd" "$INSTALL_DIR/ymzd"
-chmod 0755 "$INSTALL_DIR/ymz" "$INSTALL_DIR/ymzd"
+chmod 0755 "$INSTALL_DIR/ymz"
 
 EXAMPLE=""
 if [ -f "$TMP_DIR/configs/agent.json.example" ]; then
@@ -240,17 +208,10 @@ case ":$PATH:" in
   *":$INSTALL_DIR:"*) ;;
   *) export PATH="${INSTALL_DIR}:$PATH" ;;
 esac
-if [ -f "${CONFIG_DIR}/env" ]; then
-  set -a
-  # shellcheck disable=SC1090
-  . "${CONFIG_DIR}/env"
-  set +a
-fi
 
 echo ""
 echo "Installed YunmengZe Agent ${TAG}"
 echo "  ${INSTALL_DIR}/ymz"
-echo "  ${INSTALL_DIR}/ymzd"
 echo ""
 echo "API key (pick one; nothing is forced):"
 echo "  1) Edit ${CONFIG_DIR}/env  (e.g. DEEPSEEK1_API_KEY=...) — loaded automatically"

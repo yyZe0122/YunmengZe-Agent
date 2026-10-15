@@ -2,6 +2,8 @@
 
 on:
   push:
+    branches:
+      - "**"
   pull_request:
 
 permissions:
@@ -22,24 +24,24 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - name: Static check
+      - name: Format, vet and tests
         shell: pwsh
         run: ./scripts/dev.ps1 -Action check
-      - name: Validate PowerShell installer
+      - name: Validate PowerShell scripts
         shell: pwsh
         run: |
           $tokens = $null
           $errors = $null
-          [System.Management.Automation.Language.Parser]::ParseFile(
-            (Resolve-Path './packaging/scripts/install.ps1'),
-            [ref]$tokens,
-            [ref]$errors
-          ) | Out-Null
-          if ($errors.Count -gt 0) {
-            $errors | Out-String | Write-Error
-            exit 1
+          foreach ($script in Get-ChildItem scripts, packaging/scripts -Filter *.ps1) {
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              $script.FullName, [ref]$tokens, [ref]$errors
+            ) | Out-Null
+            if ($errors.Count -gt 0) {
+              $errors | Out-String | Write-Error
+              exit 1
+            }
           }
-      - name: Build commands
+      - name: Build ymz
         shell: pwsh
         run: ./scripts/dev.ps1 -Action build
 
@@ -53,18 +55,19 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - name: Static check
+      - name: Format, vet and tests
         run: make check
       - name: Validate packaging shell scripts
         run: |
+          bash -n scripts/publish-release.sh
+          sh -n scripts/refresh-modelcatalog.sh
           for script in packaging/scripts/*.sh; do
             sh -n "$script"
           done
       - name: Dependency verification
         run: |
           go mod verify
-          go mod tidy
-          git diff --exit-code -- go.mod go.sum
+          go mod tidy -diff
       - name: CGo-free native build
         env:
           CGO_ENABLED: "0"

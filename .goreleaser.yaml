@@ -25,32 +25,10 @@ builds:
         -X github.com/yyZe0122/yunmengze-agent/internal/version.Date={{ .CommitDate }}
     mod_timestamp: "{{ .CommitTimestamp }}"
 
-  - id: ymzd
-    main: ./cmd/ymzd
-    binary: ymzd
-    env:
-      - CGO_ENABLED=0
-    goos:
-      - windows
-      - linux
-      - darwin
-    goarch:
-      - amd64
-      - arm64
-    flags:
-      - -trimpath
-    ldflags:
-      - >-
-        -s -w
-        -X github.com/yyZe0122/yunmengze-agent/internal/version.Version={{ .Version }}
-        -X github.com/yyZe0122/yunmengze-agent/internal/version.Commit={{ .Commit }}
-        -X github.com/yyZe0122/yunmengze-agent/internal/version.Date={{ .CommitDate }}
-    mod_timestamp: "{{ .CommitTimestamp }}"
 
 archives:
   - ids:
       - ymz
-      - ymzd
     # Versioned names (must match packaging/scripts/install-*.{sh,ps1}).
     # Tag v0.1.0 → .Version is 0.1.0 (no leading v).
     name_template: "ymz_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
@@ -62,15 +40,13 @@ archives:
           - zip
     files:
       - README.md
+      - README.zh.md
       - LICENSE
       - src: configs/agent.json.example
         dst: configs
         strip_parent: true
       - src: configs/agent.schema.json
         dst: configs
-        strip_parent: true
-      - src: packaging/systemd/yunmengze.service
-        dst: packaging/systemd
         strip_parent: true
       - src: packaging/scripts/*.sh
         dst: packaging/scripts
@@ -86,15 +62,13 @@ checksum:
 release:
   name_template: "YunmengZe Agent v{{ .Version }}"
   draft: false
-  # Alpha first binary: mark Pre-release on GitHub.
-  prerelease: true
+  # Plain vX.Y.Z tags are stable; suffixes such as -rc.1 are prereleases.
+  prerelease: auto
   # replace: --release-notes must overwrite an existing tag's body (keep-existing would leave empty).
   mode: replace
 
-# Homebrew Cask + Scoop. Requires PACKAGE_GITHUB_TOKEN with Contents: R/W on
-# yyZe0122/homebrew-tap and yyZe0122/scoop-bucket. Default GITHUB_TOKEN cannot
-# push to other repos (Actions or local). GoReleaser v2: use homebrew_casks
-# (legacy brews/formula is deprecated and fails `goreleaser check`).
+# Homebrew/Scoop updates are optional. PACKAGE_GITHUB_TOKEN needs Contents: R/W
+# on both package repos; the workflow's GITHUB_TOKEN only publishes this repo.
 homebrew_casks:
   - name: ymz
     repository:
@@ -103,16 +77,15 @@ homebrew_casks:
       token: "{{ .Env.PACKAGE_GITHUB_TOKEN }}"
     directory: Casks
     homepage: "https://github.com/yyZe0122/YunmengZe-Agent"
-    description: "YunmengZe Agent — local-first, policy-controlled automation agent"
+    description: "YunmengZe Agent — local coding agent with a terminal UI"
     license: "Apache-2.0"
     binaries:
       - ymz
-      - ymzd
     commit_author:
       name: goreleaserbot
       email: bot@goreleaser.com
     commit_msg_template: "Brew cask update for {{ .ProjectName }} {{ .Tag }}"
-    skip_upload: auto
+    skip_upload: '{{ if .Env.PACKAGE_GITHUB_TOKEN }}auto{{ else }}true{{ end }}'
 
 scoops:
   - name: ymz
@@ -121,14 +94,14 @@ scoops:
       name: scoop-bucket
       token: "{{ .Env.PACKAGE_GITHUB_TOKEN }}"
     homepage: "https://github.com/yyZe0122/YunmengZe-Agent"
-    description: "YunmengZe Agent — local-first, policy-controlled automation agent"
+    description: "YunmengZe Agent — local coding agent with a terminal UI"
     license: "Apache-2.0"
     commit_author:
       name: goreleaserbot
       email: bot@goreleaser.com
     commit_msg_template: "Scoop update for {{ .ProjectName }} {{ .Tag }}"
-    skip_upload: auto
+    skip_upload: '{{ if .Env.PACKAGE_GITHUB_TOKEN }}auto{{ else }}true{{ end }}'
 
 # Do NOT set changelog.disable: goreleaser Skip() then never reads --release-notes.
-# Body comes from scripts/publish-release.sh / Actions: --release-notes=docs/history/changelog/<tag>.md
-# (that flag skips git-log generation). Script also gh release edit --notes-file after upload.
+# scripts/publish-release.sh passes the versioned file via --release-notes
+# and verifies the published body and assets after upload.

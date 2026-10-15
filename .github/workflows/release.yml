@@ -8,16 +8,25 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   release:
     name: Publish GitHub Release
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
+    env:
+      CGO_ENABLED: "0"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Validate release inputs
+        run: bash scripts/publish-release.sh "$GITHUB_REF_NAME" --check
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -28,105 +37,42 @@ jobs:
       - name: Verify release commit
         run: |
           go mod verify
+          go mod tidy -diff
           make check
 
-      - name: Validate packaging shell scripts
+      - name: Validate shell scripts
         run: |
-          for script in packaging/scripts/*.sh scripts/package-vscode.sh; do
+          bash -n scripts/publish-release.sh
+          sh -n scripts/refresh-modelcatalog.sh
+          for script in packaging/scripts/*.sh; do
             sh -n "$script"
           done
 
-      - name: Validate PowerShell installer
+      - name: Validate PowerShell scripts
         shell: pwsh
         run: |
           $tokens = $null
           $errors = $null
-          [System.Management.Automation.Language.Parser]::ParseFile(
-            (Resolve-Path './packaging/scripts/install.ps1'),
-            [ref]$tokens,
-            [ref]$errors
-          ) | Out-Null
-          if ($errors.Count -gt 0) {
-            $errors | Out-String | Write-Error
-            exit 1
+          foreach ($script in Get-ChildItem scripts, packaging/scripts -Filter *.ps1) {
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              $script.FullName, [ref]$tokens, [ref]$errors
+            ) | Out-Null
+            if ($errors.Count -gt 0) {
+              $errors | Out-String | Write-Error
+              exit 1
+            }
           }
 
-      - name: Resolve release notes
-        id: notes
-        run: |
-          tag="${GITHUB_REF_NAME}"
-          notes="docs/history/changelog/${tag}.md"
-          if [ ! -f "$notes" ]; then
-            echo "Missing release notes file: $notes" >&2
-            echo "Add docs/history/changelog/${tag}.md before tagging." >&2
-            exit 1
-          fi
-          bytes=$(wc -c < "$notes" | tr -d ' ')
-          if [ "$bytes" -lt 400 ]; then
-            echo "Release notes too short ($bytes bytes): $notes" >&2
-            exit 1
-          fi
-          grep -q "^# YunmengZe Agent ${tag}$" "$notes" \
-            || { echo "Title must be '# YunmengZe Agent ${tag}'" >&2; exit 1; }
-          grep -q "## Highlights" "$notes" \
-            || { echo "Must include ## Highlights (GitHub Release body)" >&2; exit 1; }
-          echo "path=$notes" >> "$GITHUB_OUTPUT"
-          echo "Using release notes: $notes"
-
-      - name: Validate GoReleaser config
+      - name: Set up GoReleaser and validate config
         uses: goreleaser/goreleaser-action@v7
         with:
           distribution: goreleaser
-          version: "~> v2"
+          version: "v2.18.3"
           args: check
 
-      - name: Build and publish release
-        uses: goreleaser/goreleaser-action@v7
-        with:
-          distribution: goreleaser
-          version: "~> v2"
-          args: release --clean --parallelism 2 --release-notes=${{ steps.notes.outputs.path }}
+      - name: Build, publish and verify release
+        run: bash scripts/publish-release.sh "$GITHUB_REF_NAME" --ci-publish
         env:
-          # Main repo Release assets only.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Homebrew tap + Scoop bucket (Contents R/W on both affiliate repos).
+          # Optional; absent means GitHub assets only, without tap/bucket updates.
           PACKAGE_GITHUB_TOKEN: ${{ secrets.PACKAGE_GITHUB_TOKEN }}
-
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: npm
-          cache-dependency-path: extensions/vscode/package-lock.json
-
-      - name: Set GitHub Release body
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          tag="${GITHUB_REF_NAME}"
-          notes="docs/history/changelog/${tag}.md"
-          gh release edit "$tag" --notes-file "$notes"
-          body=$(gh release view "$tag" --json body --jq .body)
-          echo "$body" | grep -q "YunmengZe Agent ${tag}" \
-            || { echo "Release body does not match ${notes}" >&2; exit 1; }
-
-      - name: Package and upload VS Code VSIX
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          tag="${GITHUB_REF_NAME}"
-          ver="${tag#v}"
-          sh ./scripts/package-vscode.sh "$tag"
-          vsix="extensions/vscode/ymz-vscode_${ver}.vsix"
-          tui="extensions/vscode/ymz-vscode-tui_${ver}.vsix"
-          if [ ! -f "$vsix" ]; then
-            vsix="dist/vscode/ymz-vscode_${ver}.vsix"
-          fi
-          if [ ! -f "$tui" ]; then
-            tui="dist/vscode/ymz-vscode-tui_${ver}.vsix"
-          fi
-          if [ ! -f "$vsix" ] || [ ! -f "$tui" ]; then
-            echo "missing VSIX: gui=$vsix tui=$tui" >&2
-            exit 1
-          fi
-          gh release upload "$tag" "$vsix" "$tui" --clobber

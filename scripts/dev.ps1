@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet('format', 'check', 'build', 'install', 'uninstall', 'all')]
+    [ValidateSet('format', 'lint', 'check', 'build', 'install', 'uninstall', 'all')]
     [string]$Action = 'all',
 
     [string]$InstallDir = $env:YMZ_INSTALL_DIR
@@ -15,6 +15,10 @@ if (-not $Go) {
     if (Test-Path -LiteralPath $CommonPath) {
         $Go = $CommonPath
     }
+}
+if (-not $Go) {
+    $LocalToolchain = Join-Path $Root '.cache/toolchain/go/bin/go.exe'
+    if (Test-Path -LiteralPath $LocalToolchain) { $Go = $LocalToolchain }
 }
 if (-not $Go) {
     throw 'Go was not found in PATH or C:\Program Files\Go\bin\go.exe.'
@@ -33,12 +37,10 @@ $env:GOCACHE = Join-Path $CacheRoot 'go-build'
 $env:GOMODCACHE = Join-Path $CacheRoot 'gomod'
 $env:GOPATH = Join-Path $CacheRoot 'gopath'
 $env:GOTELEMETRY = 'off'
+$env:CGO_ENABLED = '0'
 New-Item -ItemType Directory -Force -Path $env:GOCACHE, $env:GOMODCACHE, $env:GOPATH | Out-Null
 
-$Commands = @(
-    'yunmengze',
-    'ymzd'
-)
+$Commands = @('ymz')
 
 function Invoke-Go {
     param([Parameter(Mandatory)][string[]]$Arguments)
@@ -88,17 +90,21 @@ function Invoke-GoFmt {
     }
 }
 
-function Invoke-Check {
+function Invoke-Lint {
     Invoke-GoFmt -Write $false
     Invoke-Go -Arguments @('vet', './...')
-    Invoke-Go -Arguments @('test', './...')
+}
+
+function Invoke-Check {
+    Invoke-Lint
+    Invoke-Go -Arguments @('test', './...', '-count=1')
 }
 
 function Invoke-Build {
     $binDirectory = Join-Path $Root 'bin'
     New-Item -ItemType Directory -Force -Path $binDirectory | Out-Null
     foreach ($command in $Commands) {
-        Invoke-Go -Arguments @('build', '-o', (Join-Path $binDirectory "$command.exe"), "./cmd/$command")
+        Invoke-Go -Arguments @('build', '-trimpath', '-o', (Join-Path $binDirectory "$command.exe"), "./cmd/$command")
     }
 }
 
@@ -117,10 +123,10 @@ function Invoke-Install {
     $destination = Get-InstallDirectory
     New-Item -ItemType Directory -Force -Path $destination | Out-Null
     $binDirectory = Join-Path $Root 'bin'
-    foreach ($name in @('ymz.exe', 'ymzd.exe')) {
+    foreach ($name in @('ymz.exe')) {
         Copy-Item -LiteralPath (Join-Path $binDirectory $name) -Destination (Join-Path $destination $name) -Force
     }
-    Write-Host "Installed to $destination : ymz ymzd"
+    Write-Host "Installed to $destination : ymz"
     $pathEntries = $env:PATH -split ';'
     if ($pathEntries -notcontains $destination) {
         Write-Host "Add to PATH (or open a new terminal after user install.ps1 PATH update):"
@@ -130,39 +136,13 @@ function Invoke-Install {
 
 function Invoke-Uninstall {
     $destination = Get-InstallDirectory
-    foreach ($name in @('ymz.exe', 'ymzd.exe')) {
+    foreach ($name in @('ymz.exe')) {
         $path = Join-Path $destination $name
         if (Test-Path -LiteralPath $path) {
             Remove-Item -LiteralPath $path -Force
         }
     }
-    Write-Host "Removed from $destination : ymz ymzd"
-}
-
-function Invoke-RuntimeCheck {
-    $daemon = Join-Path $Root 'bin\ymzd.exe'
-    if (-not (Test-Path -LiteralPath $daemon)) {
-        throw 'bin\ymzd.exe is missing; run the build action first.'
-    }
-
-    # Keep bootstrap state inside the workspace (YMZ_HOME = flat user root).
-    $checkRoot = Join-Path $CacheRoot 'dev-root'
-    New-Item -ItemType Directory -Force -Path $checkRoot | Out-Null
-    $previousHome = $env:YMZ_HOME
-    try {
-        $env:YMZ_HOME = $checkRoot
-        & $daemon --check
-        if ($LASTEXITCODE -ne 0) {
-            throw "ymzd --check failed with exit code $LASTEXITCODE"
-        }
-    }
-    finally {
-        if ($null -eq $previousHome) {
-            Remove-Item Env:YMZ_HOME -ErrorAction SilentlyContinue
-        } else {
-            $env:YMZ_HOME = $previousHome
-        }
-    }
+    Write-Host "Removed from $destination : ymz"
 }
 
 Push-Location $Root
@@ -170,6 +150,9 @@ try {
     switch ($Action) {
         'format' {
             Invoke-GoFmt -Write $true
+        }
+        'lint' {
+            Invoke-Lint
         }
         'check' {
             Invoke-Check
@@ -186,7 +169,8 @@ try {
         'all' {
             Invoke-Check
             Invoke-Build
-            Invoke-RuntimeCheck
+            & (Join-Path $Root 'bin/ymz.exe') version
+            if ($LASTEXITCODE -ne 0) { throw 'ymz version failed' }
         }
     }
 }

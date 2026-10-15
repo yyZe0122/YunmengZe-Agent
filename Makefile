@@ -1,19 +1,19 @@
 APP_NAME := ymz
 # Prefer PATH go; fall back when make inherits a minimal PATH.
 GO ?= $(shell if command -v go >/dev/null 2>&1; then command -v go; elif test -x /usr/local/go/bin/go; then echo /usr/local/go/bin/go; else echo go; fi)
-COMMANDS := ymz ymzd
+COMMANDS := ymz
 # User-local install (no root). Override: make install PREFIX=/usr/local
 PREFIX ?= $(HOME)/.local
 BINDIR ?= $(PREFIX)/bin
 
-.PHONY: format format-check vet test check all build build-cross build-platforms \
-	build-windows-amd64 build-linux-amd64 install uninstall systemd-check vscode clean
+.PHONY: format format-check vet test lint check all build build-cross build-platforms \
+	build-windows-amd64 build-linux-amd64 install uninstall clean
 
 format:
 	$(GO) fmt ./...
 
 format-check:
-	@files="$$(find . -type f -name '*.go' \
+	@set -e; files="$$(find . -type f -name '*.go' \
 		-not -path './.git/*' -not -path './.cache/*' -not -path './bin/*' \
 		-not -path './dist/*' -not -path './.crush/*')"; \
 	unformatted="$$(gofmt -l $$files)"; \
@@ -27,21 +27,19 @@ vet:
 	$(GO) vet ./...
 
 test:
-	$(GO) test ./...
+	$(GO) test ./... -count=1
 
-check: format-check vet test systemd-check
+lint: format-check vet
 
-systemd-check:
-	sh ./scripts/check-systemd.sh
+check: lint test
 
 all: check build
-	@test -x bin/ymzd || $(MAKE) build
-	./bin/ymzd --check
+	./bin/ymz version
 
 build:
 	mkdir -p bin
 	@set -e; for command in $(COMMANDS); do \
-		$(GO) build -o "bin/$$command" "./cmd/$$command"; \
+		CGO_ENABLED=0 $(GO) build -trimpath -o "bin/$$command" "./cmd/$$command"; \
 	done
 
 build-cross:
@@ -61,26 +59,21 @@ build-linux-amd64:
 
 build-platforms: build-windows-amd64 build-linux-amd64
 
-# Install CLI + daemon into BINDIR (default: ~/.local/bin).
+# Install the local agent into BINDIR (default: ~/.local/bin).
 install: build
 	mkdir -p "$(BINDIR)"
 	install -m 0755 bin/ymz "$(BINDIR)/ymz"
-	install -m 0755 bin/ymzd "$(BINDIR)/ymzd"
-	@echo "Installed to $(BINDIR): ymz ymzd"
+	@echo "Installed to $(BINDIR): ymz"
 	@case ":$$PATH:" in \
 		*":$(BINDIR):"*) ;; \
 		*) echo "Add to PATH: export PATH=\"$(BINDIR):$$PATH\"" ;; \
 	esac
 
 uninstall:
-	rm -f "$(BINDIR)/ymz" "$(BINDIR)/ymzd"
-	@echo "Removed from $(BINDIR): ymz ymzd"
+	rm -f "$(BINDIR)/ymz"
+	@echo "Removed from $(BINDIR): ymz"
 
-# Optional: package GUI + TUI VS Code VSIX (needs Node). Not part of check.
-vscode:
-	sh ./scripts/package-vscode.sh
 
 clean:
 	rm -rf bin dist
-	rm -rf extensions/vscode/dist extensions/vscode/node_modules extensions/vscode/*.vsix
 	$(GO) clean -cache

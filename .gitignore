@@ -1,6 +1,7 @@
 # Build outputs
 /bin/
 /dist/
+/ymz
 *.exe
 *.test
 *.out
@@ -13,24 +14,31 @@ coverage.*
 *.db
 *.db-shm
 *.db-wal
+*.db-journal
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
+*.sqlite-journal
+*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
+*.sqlite3-journal
 *.log
 *.pid
 *.sock
 
-# Runtime logs (daemon structured JSONL)
+# Runtime logs
 *.jsonl
 
 # Secrets and machine-local configuration
 .env
 .env.*
 !.env.example
-/autozeagent.local.json
-/autozeagent.*.local.json
-/zecrush.local.json
-/zecrush.*.local.json
+/env
+/agent.json
+/configs/env
+/configs/agent.json
+/.yunmengze/
 *.local.json
 *.private.json
 *.pem
@@ -75,9 +83,3 @@ Thumbs.db
 
 # Local Go caches
 /.cache/
-
-# VS Code extension (ADR-054)
-extensions/vscode/node_modules/
-extensions/vscode/dist/
-extensions/vscode/*.vsix
-extensions/vscode/.vscode-test/

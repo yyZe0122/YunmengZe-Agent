@@ -1,5 +1,5 @@
 # Installs YunmengZe Agent user-wide on Windows (no admin).
-# - Copies ymz.exe + ymzd.exe into %LOCALAPPDATA%\Programs\YunmengZe\bin
+# - Copies ymz.exe into %LOCALAPPDATA%\Programs\YunmengZe\bin
 # - Adds that directory to the user PATH
 # - Seeds %USERPROFILE%\.yunmengze\agent.json + env when missing (flat home root)
 # apiKey may use {env:}, {file:}, or a literal string — none is forced.
@@ -98,33 +98,10 @@ function Install-UserConfig {
       },
       "models": {
         "deepseek-chat": {
-          "name": "DeepSeek Chat",
-          "maxTokens": 4096,
-          "contextWindow": 65536
-        }
-      }
-    },
-    "deepseek2": {
-      "type": "openai-compatible",
-      "options": {
-        "baseURL": "https://llm.example.com/v1",
-        "apiKey": "{env:DEEPSEEK2_API_KEY}"
-      },
-      "models": {
-        "deepseek/deepseek-v4-flash": {
-          "name": "Nested wire id (select deepseek2/deepseek/deepseek-v4-flash)"
-        },
-        "flash": {
-          "name": "Short key + id override (select deepseek2/flash)",
-          "id": "deepseek/deepseek-v4-flash"
+          "name": "DeepSeek Chat"
         }
       }
     }
-  },
-  "chat": {
-    "workspace": { "default": "client_cwd", "allow": [], "allow_all": false },
-    "allow_write": true,
-    "permission": { "mode": "preauth" }
   }
 }
 '@ | Set-Content -LiteralPath $jsonPath -Encoding utf8
@@ -135,7 +112,7 @@ function Install-UserConfig {
     }
     if (-not (Test-Path -LiteralPath $envPath)) {
         @'
-# Optional KEY=value (daemon/CLI load this; does not override process env already set).
+# Optional KEY=value (ymz load this; does not override process env already set).
 # Pair with apiKey "{env:DEEPSEEK1_API_KEY}" / "{env:DEEPSEEK2_API_KEY}" in agent.json, or literal / {file:…}.
 # Do not commit secrets.
 #
@@ -194,7 +171,7 @@ try {
     Expand-Archive -LiteralPath $archivePath -DestinationPath $tempDir -Force
     New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 
-    $bins = @('ymz.exe', 'ymzd.exe')
+    $bins = @('ymz.exe')
     foreach ($name in $bins) {
         $src = Join-Path $tempDir $name
         if (-not (Test-Path -LiteralPath $src)) {
@@ -249,7 +226,6 @@ try {
     Write-Host ""
     Write-Host "Installed YunmengZe Agent $tag"
     Write-Host "  $InstallDir\ymz.exe"
-    Write-Host "  $InstallDir\ymzd.exe"
     Write-Host ""
     Write-Host "API key (pick one; nothing is forced):"
     Write-Host "  1) Edit $ConfigDir\env  (e.g. DEEPSEEK1_API_KEY=...)"
