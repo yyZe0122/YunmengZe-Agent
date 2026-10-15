@@ -63,12 +63,15 @@ jobs:
             }
           }
 
-      - name: Set up GoReleaser and validate config
+      - name: Set up GoReleaser
         uses: goreleaser/goreleaser-action@v7
         with:
           distribution: goreleaser
           version: "v2.18.3"
-          args: check
+          install-only: true
+
+      - name: Validate GoReleaser config
+        run: goreleaser check
 
       - name: Build, publish and verify release
         run: bash scripts/publish-release.sh "$GITHUB_REF_NAME" --ci-publish
