@@ -1,50 +1,15 @@
-# Security Policy
+# Execution boundaries
 
-## Supported versions
+`agent` mode executes tools with the current OS account's filesystem, process and network access. Paths may be absolute and outside the launch directory. Shell commands and MCP servers run with that access; the application has no approval prompts, capability grants or workspace allowlist. Use an externally managed account or sandbox when OS isolation is required.
 
-YunmengZe is currently in alpha development. Security fixes are applied to the latest commit on the default branch; older snapshots and unofficial builds are not supported.
+`plan` is enforced by [tools.Registry.Execute](internal/tools/registry.go) as well as the tool list sent to the model. It blocks file writes, shell, preference changes and MCP. Child sessions inherit plan, explore children always use plan, and every child is a leaf. Plan still saves conversations and summaries, may initialize the database and archive expired memory, and can contact providers, web and image services.
 
-## Reporting a vulnerability
+Each tool call receives cancellation and a deadline. The [tool reference](docs/wiki/tools.md) documents output and input limits; shell cancellation terminates the process tree. File write/edit hash preconditions detect content changes between reading and editing, but do not provide a transaction across operations or a rollback system.
 
-Please do **not** disclose suspected vulnerabilities, leaked credentials, bypasses, or exploit details in a public issue or discussion.
+Rules, skills and memory are instruction text. Injection scanning and linked-file containment apply at their respective loading paths; they do not grant tools or guarantee protection against prompt injection. Skill bodies and linked files have a 1 MiB read limit. Suspicious phrases produce diagnostics; invalid encoding and hidden control characters still fail validation. Phrase scanning is not a security boundary. Remote pages and MCP responses are external task data.
 
-After the repository is published on GitHub, use the repository's private vulnerability reporting form under **Security → Advisories → Report a vulnerability**. Include:
+Conversation messages and memory are stored in `core.db`. Provider requests include the context assembled by the engine; image tools send their inputs to the configured services. TUI diagnostics are appended to the configuration directory's `ymz.log`. Treat the configuration directory, conversation database and diagnostic output as private.
 
-- the affected version or commit;
-- the operating system and runtime mode;
-- a minimal reproduction or proof of concept;
-- the expected and observed security boundary;
-- potential impact;
-- any suggested mitigation.
+Keep keys in environment variables, the configuration directory's `env`, or referenced files. Do not commit secrets or runtime data. `ymz config validate` resolves configuration without printing resolved credentials; it does not validate remote authentication. Review tool errors and logs before sharing them because external services can include their own diagnostic text.
 
-Do not include active third-party API keys or unrelated personal data. Revoke any credential that may have been exposed before sending the report.
-
-## Security-sensitive areas
-
-Reports involving the following areas are especially useful:
-
-- policy, approval, or capability-grant bypasses;
-- filesystem traversal, symlink, or junction escapes;
-- command execution outside the Tool Broker (including MCP tools);
-- local gateway authentication or endpoint discovery;
-- secret resolution, log redaction, or configuration disclosure;
-- task/run isolation, recovery, and duplicate tool execution;
-- scheduled job create/fire that bypasses chat grants or the Tool Broker;
-- SQLite integrity, audit tampering, or unauthorized state changes;
-- denial of service caused by unbounded provider or tool behavior.
-
-## Operator responsibilities
-
-YunmengZe can execute tools and communicate with external model providers. Operators should:
-
-- run it with the least operating-system privilege required;
-- restrict filesystem access via `chat.workspace` (default session root = launch directory; avoid `allow_all` unless you accept full local-user path reach);
-- verify policy, path ceiling, and capability grants; TUI Agent decides ungranted high-risk calls via `/perm once|similar|permanent|deny` (permanent writes ConfigDir trust; not whole-plan approval); Tab Auto pre-grants process+git for this session only;
-- treat memory/skill/draft/`AGENTS.md` text as untrusted instruction content: writes and system inject are fail-closed via `injectscan` (H6); do not rely on scan alone for remote/messaging inputs until H2 staging ships; skill drafts never expand grants — apply is human-only;
-- store secrets in environment variables or protected files;
-- keep local configuration, databases, logs, runtime endpoints, and artifacts out of source control;
-- rotate credentials immediately if accidental disclosure is suspected.
-
-## Disclosure process
-
-The maintainers will acknowledge a complete report, investigate it, prepare a fix where appropriate, and coordinate disclosure after affected users have a reasonable opportunity to update. Response times are best-effort while the project remains in alpha.
+To report a vulnerability, use GitHub's private vulnerability reporting for this repository when available. Include the affected version, OS, reproduction steps and expected boundary, with credentials and private conversation data removed.

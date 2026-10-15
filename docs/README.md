@@ -1,43 +1,14 @@
-# Documentation
+# 文档
 
-Catalog for YunmengZe Agent docs. Start here.
+[Wiki](wiki/README.md) 是当前实现的完整说明入口。项目介绍与快速开始见[中文 README](../README.zh.md)或 [English README](../README.md)。
 
-| Box | Path | Role |
-| --- | --- | --- |
-| **Wiki** | [`wiki/`](wiki/) | Stable design: ADRs, `core.db` map, protocols, verify notes |
-| **History** | [`history/changelog/`](history/changelog/) | Per-tag release notes + `unreleased.md` |
-| **Backlog** | [`backlog/current.md`](backlog/current.md) | **Only** living status: in-progress / later / deferred |
-
-Ops (not a box): [`release.md`](release.md) — only publish runbook.
-
-User install/run: [`README.md`](../README.md) · [`README.zh.md`](../README.zh.md). Config fields + OpenCode import: [README · Configure](../README.md#configure) and [`wiki/provider-protocols.md`](wiki/provider-protocols.md). Agent constraints: [`AGENTS.md`](../AGENTS.md). PR norms: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
-
-There is **no** separate docs site. Product docs stay in GitHub markdown (README + this catalog).
-
-## Wiki
-
-| Page | Use when |
+| 文档 | 用途 |
 | --- | --- |
-| [`wiki/README.md`](wiki/README.md) | ADR start-here + numbered index |
-| [`wiki/database.md`](wiki/database.md) | `core.db` live tables (not column dump) |
-| [`wiki/adr/`](wiki/adr/) | Numbered decision records |
-| [`wiki/provider-protocols.md`](wiki/provider-protocols.md) | Provider / `chat.*` wire fields |
-| [`wiki/security/linux-sandbox-roadmap.md`](wiki/security/linux-sandbox-roadmap.md) | Linux isolation phases |
-| [`wiki/testing/scheduler.md`](wiki/testing/scheduler.md) | In-process job verify |
-| [`wiki/testing/skills.md`](wiki/testing/skills.md) | File-skill verify |
-| [`wiki/vscode.md`](wiki/vscode.md) | VS Code / Cursor GUI + TUI VSIX install + Release assets |
+| [Wiki](wiki/README.md) | 当前使用方式、配置字段、工具行为与代码结构 |
+| [贡献指南](../CONTRIBUTING.md) | 开发流程和修改约定 |
+| [执行边界](../SECURITY.md) | 运行权限与数据处理 |
+| [发布流程](release.md) | 发布脚本、构建产物与版本说明 |
+| [当前待办](backlog/current.md) | 唯一维护中的优化清单 |
+| [发布记录](history/changelog/) | 各版本发布说明，不作为当前功能规范 |
 
-## History
-
-Write `history/changelog/vX.Y.Z.md` before publish. Tag name must match the file. **That file is the GitHub Release body** (empty stub fails). Working notes go in [`unreleased.md`](history/changelog/unreleased.md); promote at tag time. Do not rewrite published notes.
-
-## Backlog
-
-[`backlog/current.md`](backlog/current.md) is the only living optimization file. Landed detail belongs in ADRs, changelog, and git. Do not add sibling status notes.
-
-## Conventions
-
-- New architecture decision → numbered ADR under `wiki/adr/` + update `wiki/README.md`.
-- New / changed live table → update `wiki/database.md`; SQL in `migrations/core/` stays the source of truth.
-- User-facing behavior → also update root `README.md` and `README.zh.md`.
-- Missing ADR numbers are historical gaps — do not recreate.
+Wiki 随代码原位更新，不保留历史方案和旧版升级说明。发布记录独立保存在 `history/changelog/`。

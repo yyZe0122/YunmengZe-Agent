@@ -1,212 +1,93 @@
-# Release and publication
+# Release process
 
-日常安装/运行见根 [README](../README.md)。**本页是唯一发版操作手册**。不要另写平行步骤，不要发明第二套脚本。
+[scripts/publish-release.sh](../scripts/publish-release.sh) is the publishing entry point. The [PowerShell wrapper](../scripts/publish-release.ps1) delegates to it. The script locates its own checkout, uses the current OS account and never changes Git identity.
 
-This page is the **only** release runbook.
+Publishing uses **GitHub Actions**: the local command validates the committed release, creates an annotated tag and atomically pushes main plus that tag. The [Release workflow](../.github/workflows/release.yml) builds and uploads through the same script. Only the workflow uploads, so local and Actions publishers cannot race.
 
----
+This public repository uses the standard ubuntu-latest runner, whose execution is free for public repositories under [GitHub's current runner policy](https://docs.github.com/en/actions/reference/runners/github-hosted-runners). GoReleaser's open-source distribution is used. No paid runner or GoReleaser Pro feature is configured.
 
-## Hard rules / 硬性规则
+## Prepare and publish
 
-| Rule | Detail |
-| --- | --- |
-| **Root only** | On this host, **only root** may `git commit` / `git tag` / `git push` / upload. Agent or `yyze` prepares the tree; a human (or agent via `sudo -i`) publishes as root. |
-| **One script** | Publish is **only** [`scripts/publish-release.sh`](../scripts/publish-release.sh). Delete leftover one-off publish helpers; do not add `scripts/release-*.sh`. |
-| **Clean tree** | The publish script **refuses a dirty working tree**. Batch-commit first. It will not squash a multi-feature dump. |
-| **No mega-commit** | **Never** `--commit-paths all` for a mixed dirty tree. That flag is **removed**. |
-| **Changelog first** | `docs/history/changelog/vX.Y.Z.md` must exist **before** the publish command. Tag name = file name (`v0.4.0` → `v0.4.0.md`). That file **is** the GitHub Release body (`goreleaser --release-notes`). Empty stub / git log **fails**. |
-| **VSIX required** | Every tag **must** attach `ymz-vscode_{version}.vsix` **and** `ymz-vscode-tui_{version}.vsix` (Node 18+; fail-closed). Missing Node / missing either file / failed upload **fails the publish**. |
-| **No secrets** | Never commit `agent.local.json`, `*.db`, `env` with real keys, `bin/`, `dist/`, tokens. |
+1. Review changes and commit by feature. The script does not stage, commit, stash, merge or force-push.
+2. Write and commit the chosen version's notes at docs/history/changelog/vX.Y.Z.md. The file must contain at least 400 bytes of meaningful notes and the exact headings shown below. Keep previously released notes unchanged.
+3. Move completed entries out of [unreleased.md](history/changelog/unreleased.md), leaving its heading and an empty Highlights section, and include that reset in the notes commit.
+4. Run the preview, resolve its blockers, then run the publishing command. Replace vX.Y.Z with the version you chose.
 
-### Do not / 禁止
+~~~markdown
+# YunmengZe Agent vX.Y.Z
 
-- Run `./scripts/publish-release.sh` as `yyze` or any non-root user.
-- Invent a second publisher (`make release`, CI-only tag, ad-hoc `goreleaser` + `gh release create` mix).
-- One-shot `git add -A && git commit -m "release: …"` across unrelated features.
-- Force-push `main`. `--force-tag` only moves the **tag**, and still needs `--yes`.
-- Rewrite published changelog files under `docs/history/changelog/v*.md`.
+## Highlights
 
----
+Describe the user-visible changes and any migration requirements.
 
-## Default path (this host) / 默认一键发版
+## Assets
 
-### 1) Batch-commit as root (required)
+Linux/macOS/Windows, amd64 and arm64: ymz archives and checksums.txt.
+~~~
 
-Split the dirty tree into **feature-sized commits**. Each commit must compile. Run `make check` at least once before the first push.
+Windows needs Git for Windows, including Git Bash, and working Git push credentials. The PowerShell wrapper locates Git Bash even when Git was installed through Scoop. Normal publishing does not require local Go, make, GoReleaser, gh, administrator privileges or a manually supplied upload token.
 
-```bash
-sudo -i
-cd /home/yyze/projects/AutoZeAgent
+~~~powershell
+# Preview: local checks only; no network, file writes, tags or push.
+.\scripts\publish-release.ps1 vX.Y.Z -DryRun
 
-# inspect
-git status
-git diff --stat
-git log --oneline -10
+# Publish: push main + tag, then let Actions build and upload.
+.\scripts\publish-release.ps1 vX.Y.Z
+~~~
 
-# one concern per commit — example only, adapt paths:
-git add -- path/a path/b
-git commit -m "feat(tui): …"
+Linux/macOS use Bash and Git:
 
-git add -- path/c
-git commit -m "docs: …"
+~~~sh
+bash scripts/publish-release.sh vX.Y.Z --dry-run
+bash scripts/publish-release.sh vX.Y.Z
+~~~
 
-git push origin main
-```
+The command must run from a clean main checkout whose origin push URL points to this repository. Notes must already be committed. A local tag on another commit, an existing remote tag, tracked ignored files or a CI skip marker in HEAD stops the release. The script does not run local tests. Its success means the tag was pushed; confirm the linked Release workflow finishes successfully before treating the release as published.
 
-`--commit-paths changelog` on the publish script is **only** for a leftover that is already one logical change (typically `docs/history/changelog/vX.Y.Z.md` after feature commits are on `main`).
+Do not put [skip ci], [ci skip], [skip actions], [actions skip], [no ci] or skip-checks: true in the release commit. These markers also suppress the tag-triggered workflow.
 
-### 2) Write notes, then publish
+## Checks and local snapshots
 
-```bash
-sudo -i
-cd /home/yyze/projects/AutoZeAgent
-
-# Auth once per machine (preferred):
-#   gh auth login
-# Or for this shell only:
-#   export GITHUB_TOKEN=...            # main repo Contents (+ Workflows if touching .github)
-#   export PACKAGE_GITHUB_TOKEN=...    # homebrew-tap + scoop-bucket Contents R/W
-
-# Changelog MUST exist: docs/history/changelog/vX.Y.Z.md
-# Working tree MUST be clean (or only that changelog leftover).
-
-./scripts/publish-release.sh vX.Y.Z --yes
-
-# Changelog-only leftover (one commit), then tag + upload:
-# ./scripts/publish-release.sh vX.Y.Z \
-#   --commit-paths changelog --yes \
-#   --message "docs(changelog): vX.Y.Z"
-```
-
-Replace `vX.Y.Z` (e.g. `v0.4.0`). The script **refuses** a missing or stub changelog. It runs `make check`, creates an annotated tag, pushes `main` + tag, then **local** `goreleaser release`. After Go assets upload it runs `gh release edit --notes-file docs/history/changelog/vX.Y.Z.md` (that markdown **is** the GitHub Release body), then packages and **must** upload `ymz-vscode_{version}.vsix` **and** `ymz-vscode-tui_{version}.vsix`. Missing Node / missing either VSIX / failed `gh release upload` **fails the publish** (Go archives may already be on the Release; re-run `--upload-only` after fixing Node). Details: [`wiki/vscode.md`](wiki/vscode.md).
-
-### Pre-flight checklist
-
-| Step | Action |
-| --- | --- |
-| 1 | **Batch-commit** by feature. Push those commits. |
-| 2 | Write **`docs/history/changelog/vX.Y.Z.md`** (title `# YunmengZe Agent vX.Y.Z`, bilingual Highlights, Assets, Install). This file **is** the GitHub Release body. Missing / stub / no Highlights **fails** publish. |
-| 3 | Reset `docs/history/changelog/unreleased.md` to an empty post-tag stub when promoting notes into `vX.Y.Z.md`. |
-| 4 | No secrets in tree. |
-| 5 | `make check` green (script runs it unless `--skip-check`). |
-| 6 | Node 18+ available as the repo owner (root publish `su`s to that user to pack VSIX). Missing VSIX **fails**. |
-| 7 | `gh auth login` or valid `GITHUB_TOKEN` + `PACKAGE_GITHUB_TOKEN`. |
-| 8 | As **root**, clean tree: `./scripts/publish-release.sh vX.Y.Z --yes`. Script prepends `/usr/local/go/bin` + `yyze` Go/gh bins (root login PATH is often empty). |
-
-### After publish
-
-```bash
-gh release view vX.Y.Z --repo yyZe0122/YunmengZe-Agent
-# Must list platform archives + checksums.txt + ymz-vscode_*.vsix + ymz-vscode-tui_*.vsix (not only Source code zip)
-# Body must be the changelog (title YunmengZe Agent vX.Y.Z), not empty / git log
-
-gh api repos/yyZe0122/homebrew-tap/commits --jq '.[0].commit.message'
-gh api repos/yyZe0122/scoop-bucket/commits --jq '.[0].commit.message'
-```
-
-Users:
-
-```bash
-brew upgrade --cask ymz
-# or
-export YMZ_VERSION=vX.Y.Z
-curl -fsSL "https://raw.githubusercontent.com/yyZe0122/YunmengZe-Agent/main/packaging/scripts/install-user.sh" | sh
-```
-
-### Common variants
-
-| Situation | Command |
-| --- | --- |
-| Only snapshot (no tag/upload) | `./scripts/publish-release.sh vX.Y.Z --snapshot-only` |
-| Tag already on HEAD; re-upload assets | `./scripts/publish-release.sh vX.Y.Z --upload-only` |
-| Move tag to current HEAD | `./scripts/publish-release.sh vX.Y.Z --force-tag --yes` |
-| Print steps only | `./scripts/publish-release.sh vX.Y.Z --dry-run` |
-| Push tag, let Actions publish | `./scripts/publish-release.sh vX.Y.Z --via-actions` (needs billing OK) |
-| Leftover changelog commit | `./scripts/publish-release.sh vX.Y.Z --commit-paths changelog --yes --message "docs(changelog): vX.Y.Z"` |
-
-Script: [`scripts/publish-release.sh`](../scripts/publish-release.sh).
-
----
-
-## User install channels / 用户安装渠道
-
-| Channel | Platforms | Command |
+| Purpose | Linux/macOS | Windows |
 | --- | --- | --- |
-| **Homebrew** (recommended) | macOS, Linux | `brew install --cask yyZe0122/tap/ymz` |
-| **Scoop** (recommended) | Windows | `scoop bucket add ymz https://github.com/yyZe0122/scoop-bucket` then `scoop install ymz` |
-| One-line scripts (fallback) | Win / Linux / macOS | `install.ps1` / `install-user.sh` |
-| Manual / source | all | Release zip/tar or `make install` |
-| **VS Code VSIX** | editor | `ymz-vscode_{version}.vsix` (GUI) + `ymz-vscode-tui_{version}.vsix` (TUI) on the same Release — [`docs/wiki/vscode.md`](wiki/vscode.md) |
+| Format check and vet; no tests | make lint | ./scripts/dev.ps1 -Action lint |
+| Format check, vet and tests, when requested | make check | ./scripts/dev.ps1 -Action check |
+| Validate committed release inputs only | bash scripts/publish-release.sh vX.Y.Z --check | ./scripts/publish-release.ps1 vX.Y.Z -Check |
+| Build snapshot archives without publishing | bash scripts/publish-release.sh --snapshot-only | ./scripts/publish-release.ps1 -SnapshotOnly |
 
-Affiliate repos (auto-updated by GoReleaser on each tag):
+Snapshot mode needs Go 1.26+ and GoReleaser v2. It accepts a dirty checkout, does not need versioned notes, and replaces the generated dist/ directory. Its version comes from the current Git state; omit the version argument. GORELEASER_PARALLELISM controls build parallelism and defaults to 1.
 
-- [`yyZe0122/homebrew-tap`](https://github.com/yyZe0122/homebrew-tap) → `Casks/ymz.rb`
-- [`yyZe0122/scoop-bucket`](https://github.com/yyZe0122/scoop-bucket)
+The Release workflow checks notes, dependency hashes, module consistency, formatting, vet, tests, script syntax and GoReleaser configuration before publishing. Its GoReleaser version is pinned in the workflow. General CI runs for branch pushes and pull requests; a tag uses the Release workflow instead of duplicating general CI.
 
-## Asset naming / 资产命名
+Coding agents must run or add tests only when explicitly requested. The workflow's configured checks do not authorize running tests locally.
 
-GoReleaser builds **one archive per OS/arch**. Each archive contains **two binaries** (`ymz`, `ymzd`) plus configs and packaging scripts.
+## Assets and authentication
 
-| Pattern | Example (tag `v0.3.0`) |
-| --- | --- |
-| `ymz_{version}_{os}_{arch}.tar.gz` | `ymz_0.3.0_linux_amd64.tar.gz` |
-| `ymz_{version}_windows_{arch}.zip` | `ymz_0.3.0_windows_amd64.zip` |
-| `checksums.txt` | SHA-256 of all archives (fixed name) |
-| `ymz-vscode_{version}.vsix` | VS Code / Cursor Webview GUI — **required** on every tag |
-| `ymz-vscode-tui_{version}.vsix` | VS Code / Cursor TUI launcher — **required** on every tag |
+GoReleaser builds only cmd/ymz with CGO_ENABLED=0:
 
-- `{version}` = tag **without** leading `v` (GoReleaser `.Version`).
-- Prefer `YMZ_VERSION=vX.Y.Z` when the release is **Pre-release** (GitHub `latest` may skip it).
+~~~text
+ymz_VERSION_linux_amd64.tar.gz
+ymz_VERSION_linux_arm64.tar.gz
+ymz_VERSION_darwin_amd64.tar.gz
+ymz_VERSION_darwin_arm64.tar.gz
+ymz_VERSION_windows_amd64.zip
+ymz_VERSION_windows_arm64.zip
+checksums.txt
+~~~
 
-## Release notes / 更新日志
+Each archive contains ymz (or ymz.exe), both READMEs, LICENSE, config example/schema and user installers. Snapshot/build output stays ignored under dist/ and bin/. Archives use an explicit file list so local configs, data, caches and private release plans are not packaged.
 
-GitHub Release **必须**有更新日志正文。来源只有一份：`docs/history/changelog/vX.Y.Z.md`。
+The workflow uses its automatic GITHUB_TOKEN with contents write permission for this repository's Release. Local Git push access is separate; a credential used to push workflow changes must also allow those changes.
 
-1. 发版前写好该文件（中英 Highlights、Assets、Install、Verify）。标题：`# YunmengZe Agent vX.Y.Z`。
-2. Tag 名 = 文件名：`v0.4.0` → `docs/history/changelog/v0.4.0.md`。
-3. `publish-release.sh` 上传资产后执行 `gh release edit --notes-file=该文件`（goreleaser `--release-notes` 在 `changelog.disable` 时会被 Skip，不可单独依赖）。脚本校验：文件存在、≥400 字节、标题、`## Highlights`、`## Assets`；再 `gh release view` 核对 body 非空且含标题。
-4. 缺文件 / 空 stub / 无 Highlights → **拒绝发版**。不要用 git log 当 Release body。
-5. 工作笔记在 [`unreleased.md`](history/changelog/unreleased.md)；打 tag 时 promote，并把 unreleased 重置为空 stub。已发布的 `v*.md` 不改写。
+Homebrew Cask and Scoop updates are optional. To enable them, configure the repository's Actions secret PACKAGE_GITHUB_TOKEN with Contents write access to both yyZe0122/homebrew-tap and yyZe0122/scoop-bucket. Without that secret, GoReleaser skips those two uploads and still publishes the GitHub archives. It never reuses the repository-scoped GITHUB_TOKEN for other repositories. Tags with a prerelease suffix also skip package updates.
 
-## Auth / 鉴权
+Plain vX.Y.Z tags publish as stable GitHub releases; tags with a prerelease suffix such as -rc.1 publish as prereleases. The script passes the exact versioned file as release notes and verifies the uploaded body and all seven nonempty assets. Installers verify SHA-256 before copying and preserve existing configuration; see [installation](wiki/installation.md).
 
-**推荐（root）：`gh auth login`**，脚本会自动 `gh auth token` → `GITHUB_TOKEN`。
+## Failure and retry
 
-| Token | Required access |
-| --- | --- |
-| **`GITHUB_TOKEN`** | **YunmengZe-Agent**: Contents R/W; Workflows R/W if commit touches `.github/workflows` |
-| **`PACKAGE_GITHUB_TOKEN`** | **homebrew-tap** + **scoop-bucket**: Contents R/W |
-| **Classic** (one token) | **`repo` + `workflow`** |
+- A failed atomic push leaves the remote main and tag unchanged by that push. A new local tag may remain; after fixing access or branch divergence, retry only if it still points at the reviewed HEAD.
+- Once a remote tag exists, the script refuses to push it again. Open [Release workflow runs](https://github.com/yyZe0122/YunmengZe-Agent/actions/workflows/release.yml) and rerun the failed job for that tag. Re-pushing an unchanged tag does not start another run.
+- Workflow retries use the code and notes at the original tag. Code changes need a new version. No force-tag or tag-deletion option is provided.
+- Release and package uploads are not one transaction. A failure may leave partial remote results; inspect the job and release before retrying. GitHub release immutability or other repository policies may prevent replacing published assets.
 
-If the Release page only shows **Source code** zip/tar.gz, binaries never uploaded — fix PAT and use default local upload (not `--via-actions` while billing is broken).
-
-### Optional: GitHub Actions
-
-[`.github/workflows/release.yml`](../.github/workflows/release.yml) runs on `v*` tags when Actions + billing are healthy. Prefer **local upload** when runners are unavailable. Repo secret `PACKAGE_GITHUB_TOKEN` required for brew/scoop from CI.
-
-### Local snapshot only
-
-```bash
-export PACKAGE_GITHUB_TOKEN=dummy
-goreleaser release --snapshot --clean --parallelism 1 --skip=publish
-```
-
-## Private-to-public audit checklist / 转公开清单
-
-- Reachable branch/tag history is intentional; no legacy secrets in history.
-- Secrets, local config, `*.db`, logs, caches untracked (root `.gitignore`).
-- Full tests, `go mod verify`, installer checks, GoReleaser six-platform snapshot.
-- Scan history, Actions logs, release notes, archives, `checksums.txt`.
-- Authorized tester downloads every asset and smoke-tests.
-- Review visibility settings before going public.
-
-## Linux system install (brief)
-
-```bash
-sudo sh packaging/scripts/install.sh .
-sudo install -m 0640 -o root -g ymz \
-  configs/agent.json.example /etc/yunmengze/agent.json
-sudo systemctl enable --now ymz
-```
-
-Details: [`packaging/install/systemd.md`](../packaging/install/systemd.md).
+Keep personal plans, unpublished notes, temporary files and backups under .cache/. Existing local helpers there are not the supported publishing entry point. Never commit tokens or real configs. Root env, agent.json, .yunmengze/, databases and sidecars are ignored; sanitized config examples remain under configs/.

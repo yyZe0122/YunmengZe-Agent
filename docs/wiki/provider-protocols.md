@@ -1,412 +1,55 @@
-﻿# Provider protocol configuration
+# Provider 协议
 
-YunmengZe selects a wire protocol from each provider's JSON configuration. The provider ID and URL do not imply a protocol, so the same gateway URL can expose different adapters by changing only `type` or `protocol`.
+源码：[工厂](../../internal/providers/factory.go)、[统一接口](../../pkg/providerapi/provider.go)、[HTTP 路径与请求头](../../internal/providers/internal/providerhttp/http.go)。配置字段见[配置与模型](configuration.md)。
 
-Configuration is loaded **only** from the OS config directory (`paths.Layout.ConfigDir`):
+## 支持范围
 
-1. `<config-dir>/agent.local.json` (machine-local; preferred)
-2. `<config-dir>/agent.json`
-3. Optional `<config-dir>/env` — `KEY=value` lines loaded into the process before resolving `{env:…}` (does **not** override variables already set in the environment)
+| protocol / 实现 | 默认路径 | apiKey 认证 | 实际流式输出 | 图像输入 |
+| --- | --- | --- | --- | --- |
+| [openai-chat](../../internal/providers/openai/provider.go) | `/v1/chat/completions` | Bearer | SSE：正文 / 思考增量，工具调用收齐后交付 | 支持 |
+| [openai-responses](../../internal/providers/openairesponses/provider.go) | `/v1/responses` | Bearer | SSE：正文 / 推理摘要增量，终态确认工具调用 | 支持 |
+| [anthropic-messages](../../internal/providers/anthropic/provider.go) | `/v1/messages` | x-api-key | SSE：内容块 / 思考增量，终态确认工具调用 | 支持 |
+| [gemini-generate-content](../../internal/providers/gemini/provider.go) | `/v1beta/models/{model}:generateContent` | x-goog-api-key | streamGenerateContent SSE：文本 / 思考增量 | 支持 |
 
-| Mode | Path |
+四者均支持工具调用转换，默认响应头等待上限 60 秒、请求总时限 10 分钟，调用方可设更短期限；非流式响应上限 4 MiB。统一事件为 delta、thinking_delta、tool_call、complete，由 Engine 转成[前端事件](usage.md)；用量包含输入、输出、总 token 及服务返回的缓存读写量。
+
+protocol 推荐使用上表规范名，与 JSON Schema 一致。运行时 protocol / type 也接受以下别名，不区分大小写；都省略时默认 Chat，同时填写必须等价：
+
+| 协议 | 别名 |
 | --- | --- |
-| user (all OS) | `~/.yunmengze` (`%USERPROFILE%\.yunmengze` on Windows); override with `YMZ_HOME` |
-| system | Linux `/etc/yunmengze` · Windows `ProgramData\YunmengZe\config` · macOS system path from `paths` |
+| Chat | `openai-chat-completions`、`chat-completions`、`openai-compatible`、`openai-compat`、`ollama`、`lmstudio`、`llamacpp`、`vllm`、`litellm` |
+| Responses | `openai`、`responses` |
+| Anthropic | `anthropic`、`anthropic-compatible`、`claude` |
+| Gemini | `gemini`、`google`、`google-generative-ai` |
 
-On first start, if ConfigDir has no file, the daemon writes a default template with `{env:…}` placeholders (no secrets), top-level `models.subagent` / `models.compact` pointing at the same ref as `model`, and may seed an empty `env` template plus `AGENTS.md`. It does **not** copy project/cwd configs and does **not** write a `chat` / `mcp` block (runtime defaults apply). Installers do the same without overwriting existing files.
+## 路径与请求参数
 
-`agent.local.json` **replaces** `agent.json` (not a merge). Project directories are not searched for JSON. User-facing field table: [README · Configure](../../README.md#configure). JSON Schema: [`configs/agent.schema.json`](../../configs/agent.schema.json).
+baseURL 必须为绝对 HTTP(S)，不得带 userinfo、查询参数或 fragment。completionPath 是以 `/` 开头的路径，可带查询参数；与基址路径拼接时只消除重复的 `/v1`。Gemini 基址通常只写服务根，自定义路径必须含 `{model}` 和 `:generateContent`；流式调用替换为 `:streamGenerateContent?alt=sse`。
 
-### Import from OpenCode
+headers 覆盖同名默认头。Anthropic 默认版本头为 `2023-06-01`，可用 anthropicVersion 覆盖。
 
-```bash
-ymz config import-opencode [path] [--mode user|system] [--dry-run] [--output path]
-```
+| 模型设置 | Chat | Responses | Anthropic | Gemini |
+| --- | --- | --- | --- | --- |
+| temperature | temperature | temperature | temperature | generationConfig.temperature |
+| maxTokens | max_tokens | max_output_tokens | max_tokens | generationConfig.maxOutputTokens |
+| reasoningEffort | reasoning_effort | reasoning.effort | 不支持 | 不支持 |
 
-Default path (when omitted): `~/.config/opencode/opencode.json` then `~/.opencode/opencode.json` (and `.jsonc`). Writes `<config-dir>/agent.local.json` (`0600`). YunmengZe does **not** merge OpenCode global + project files — pass the file you want.
+配置的 maxTokens 是调用方输出请求的上限，取两者较小值。配置未指定输出上限时，Engine 取目录输出上限、16384、窗口四分之一的最小值；未知输出上限采用 4096 再受窗口约束。达到输出上限会保留已生成文本并报告截断，不能当作完整成功。
 
-| Mapped | Notes |
-| --- | --- |
-| `model`, `provider.*` | Nested catalog; `npm` → `type` heuristic; options `baseURL` / `apiKey` / `headers` kept |
-| `models.subagent` / `compact` / `web` / `vision` / `speech` | YMZ role map (provider/model strings). `models.main` and unknown keys dropped with warnings |
-| Local stdio MCP | `command` string or argv array → `mcp.servers` (`type` stdio/local) |
-| Remote MCP | `type` remote/sse/http or `url` → `mcp.servers` with `url` (+ `headers`); oauth block not imported |
-| OC `command` map | → `chat.commands` (template / prompt / message + description) |
-| `compaction` | Top-level OC `compaction.auto` / `enabled` → `chat.compaction.enabled` |
+Chat 的 responseFormat 只在内部请求带 ResponseSchema 时生效：auto 先用 json_schema，遇到对应不支持错误再回退 json_object。当前主循环、压缩、记忆整理均不传该 schema；它不强制普通回复为 JSON，CLI --json 只控制事件封装。
 
-**Dropped with warnings:** plugins, LSP, theme/keybinds/tui, agent/mode maps, top-level `permission`/`tools`, `small_model` (use `models.compact`), `instructions`, MCP oauth, and other unknown top-level fields.
+## 原始状态、压缩与错误
 
-**Hand-fill after import:** `chat.workspace`, `chat.tools` / `chat.permission.allow`, extra role refs. Then `ymz config validate` and `ymz restart`. Implementation: `internal/opencodeimport`.
+统一消息分别保存正文、可展示思考、工具调用、图片和协议原始回传块。Responses 保留 reasoning 的 encrypted_content 与完整 output；Anthropic 保留 thinking / redacted_thinking / signature；Gemini 保留 thoughtSignature 和完整 parts；Chat 保留兼容服务的 reasoning_content。原始块只回传给原 provider / 协议和实际模型，不能把思考文本当成签名的替代品。
 
-### Chat fields (`chat.*`)
+Responses 使用 `store=false`。模型项显式设 `nativeCompaction=true` 时，调用对应 `/responses/compact`，把完整返回窗口作为下一次输入，不裁剪其中的保留项；使用该模型自身压缩。调用失败回退通用摘要。切换 provider 或模型时仅使用本地抽取文字摘要，可能损失细节；完整原始对话仍在数据库。默认关闭，不能从“兼容 Responses”推断服务支持原生压缩。
 
-Omit the whole `chat` object to keep defaults. Changing any `chat.*` key needs `ymz restart` (exception: interactive extra-root `/perm` permanent writes `chat.workspace.allow` in-memory).
+仅在尚未向前端交付任何事件时重试可恢复错误，最多额外两次；等待遵循 Retry-After，超过 30 秒则返回错误供用户后续处理。已输出的中断响应保存为部分文本，不重放已执行的工具。流必须收到协议终态才算完成；错误保留有界的服务诊断。
 
-| Field | Default | Notes |
-| --- | --- | --- |
-| `workspace.default` | `client_cwd` | `client_cwd` \| `daemon_cwd` \| absolute path. Session root = client launch cwd on submit |
-| `workspace.allow` | `[]` | Extra absolute roots on the path ceiling |
-| `workspace.allow_all` | `false` | Disables path-root containment (local single-user only) |
-| `allow_write` | `true` | Agent write ceiling. Plan is always read-only |
-| `tools.git` / `tools.process` | `false` | OR with `permission.allow`. Plan / cron never get these |
-| `permission.mode` | — | Load-only `preauth`\|`ask`; ignored at runtime. Wait is TUI interactive |
-| `permission.allow` | `[]` | Remember `process` and/or `git` so Agent does not prompt |
-| `compaction.enabled` | `true` | Session head summarization |
-| `max_iterations` | `0` | `0` = no hard step cap; `1`–`256` = last step is text-only soft landing |
-| `memory.enabled` | `true` | In-process layered memory |
-| `memory.max_inject_runes` | `2000` | Frozen system inject cap |
-| `memory.session_search` | `true` | Transcript FTS tool |
-| `memory.default_ttl` | off | Go duration for session/detail writes that omit `expires_at` |
-| `memory.curator` | on when memory on | Post-turn LLM facts; `max_facts` 3; `timeout_ms` 15000; uses `models.compact` |
-| `skills.unused_ttl` | off | Go duration; unused-but-once-used skills are soft-archived |
-| `commands` | none | Slash templates; `$ARGUMENTS`; instruction only — no grants |
-| `web.search` | `ddg` | `ddg` \| `searxng` \| `tavily`. searxng needs `searxng_url`; tavily needs `tavily_key` |
+## 图片
 
-### MCP servers (`mcp.servers`)
+四种协议均可承载图片，具体模型能力由精确元数据或 `supportsImages` 确认。未配置 vision 时，`vision_analyze` 把图片作为当前会话的工具观察交给模型，不另做一次同模型“看图转述”。Chat 通过工具结果之后的用户图片消息承载；Responses / Anthropic / Gemini 使用各自支持的内容块。
 
-| Transport | Config | Notes |
-| --- | --- | --- |
-| stdio | `command` + optional `args` / `env` | Default when `command` set; `type: "stdio"` or `"local"` |
-| Streamable HTTP | `type: "http"`, `url`, optional `headers` | MCP 2025-03-26 streamable endpoint |
-| Legacy SSE | `type: "sse"`, `url` | HTTP+SSE (2024-11-05) |
-| Auto remote | `type: "remote"` or only `url` | Try streamable, fallback legacy SSE |
+显式配置 `models.vision` 时，[图像后端](../../internal/providers/vision.go)调用该模型，再把分析文字返回主会话并报告用量。当前模型能力未知或不支持且没有 vision 配置时，工具返回设置提示；不会静默丢弃图片。
 
-Header/env values support `{env:VAR}` / `{file:…}`. Gateway MCP status never returns URL or headers. MCP is **not** hot-reloaded (restart daemon). Schema: `mcp` in [`configs/agent.schema.json`](../../configs/agent.schema.json). Example: [`configs/agent.json.example`](../../configs/agent.json.example).
-
-### Chat slash templates (`chat.commands`, O3)
-
-```json
-"chat": {
-  "commands": {
-    "review": {
-      "description": "Code review focus",
-      "template": "Review with security and API design in mind.\n\n$ARGUMENTS"
-    }
-  }
-}
-```
-
-| Rule | Detail |
-| --- | --- |
-| Key | Slash name without `/`; `[a-zA-Z0-9_-]+`; must not clash with built-in TUI commands |
-| `template` | Required; optional `$ARGUMENTS` / `$0`; injectscan at load; max 8000 runes |
-| Effect | TUI expands → user message submit only — **no** grants / skills / policy |
-| API | `GET /v1/config/commands` → `{commands:[{id,description,template}]}` |
-| Reload | Not hot-reloaded (`chat.*`); `ymz restart` after edit |
-
-### Chat loop cap (`chat.max_iterations`, ADR-052)
-
-Omit or `0` = no hard step cap (Esc / 30min / token / loop-detect). `1`–`256` = last step is a text-only soft landing. Default is no hard cap.
-
-### Chat web search (`chat.web`, Phase W)
-
-```json
-"chat": {
-  "web": {
-    "search": "ddg",
-    "searxng_url": "{env:SEARXNG_URL}",
-    "tavily_key": "{env:TAVILY_API_KEY}"
-  }
-}
-```
-
-| Field | Detail |
-| --- | --- |
-| `search` | `ddg` (default) \| `searxng` \| `tavily`. Omit `chat.web` → ddg |
-| `searxng_url` | Required when `search` is searxng. `{env:}`/`{file:}` resolved at load. Host is the only SSRF exception, and only for `web_search` |
-| `tavily_key` | Required when `search` is tavily. Never logged or served on Gateway |
-| Tools | Interactive agent: `web_search` / `web_extract` / `http_get` wait `/perm` (similar = host). Plan / cron never advertise |
-| Reload | `chat.*` — `ymz restart` |
-
-## API keys (choose any; nothing is forced)
-
-`options.apiKey` supports three forms:
-
-| Form | Example | Notes |
-| --- | --- | --- |
-| Environment placeholder | `"{env:DEEPSEEK1_API_KEY}"` | **Recommended.** Value from process env and/or ConfigDir `env` file |
-| File reference | `"{file:secrets/key.txt}"` | Path relative to ConfigDir, or absolute |
-| Literal string | `"sk-..."` | Allowed for local convenience; protect file permissions; never commit |
-
-Examples:
-
-```json
-"apiKey": "{env:DEEPSEEK1_API_KEY}"
-```
-
-```json
-"apiKey": "{file:secrets/deepseek.key}"
-```
-
-```json
-"apiKey": "sk-your-key-here"
-```
-
-Optional ConfigDir `env` file:
-
-```bash
-# ~/.yunmengze/env  (chmod 600)
-DEEPSEEK1_API_KEY=sk-...
-DEEPSEEK2_API_KEY=sk-...
-```
-
-See also [`configs/agent.json.example`](../../configs/agent.json.example) (includes env / file / literal illustrations).
-
-## Multi-provider catalog (OpenCode-style nesting)
-
-Each entry under `provider` is one **supplier** (endpoint + wire protocol + credentials). Its **model catalog is nested** under that entry.
-
-Selection and wire ids follow **OpenCode** rules:
-
-1. Top-level `model` is `providerID/modelID…` — only the **first** `/` separates supplier from model segment.
-2. The model segment **may contain `/`** (OpenRouter / NewAPI style: `deepseek/deepseek-v4-flash`).
-3. Catalog keys under `provider.<id>.models` must equal that model segment (exact match; may contain `/`).
-4. The HTTP body `model` field is the **wire id**: `models.<key>.id` if set, otherwise the model segment (never the full selection string, never a stripped-down bare rewrite of a nested id).
-
-| Concept | JSON path | Example |
-| --- | --- | --- |
-| Active selection | top-level `model` | `"deepseek1/deepseek-chat"` or `"deepseek2/deepseek/deepseek-v4-flash"` |
-| Supplier deepseek1 | `provider.deepseek1` | official bare model ids |
-| Supplier deepseek2 | `provider.deepseek2` | gateway nested wire ids / `id` override |
-| Catalog key | `provider.<id>.models` | `"deepseek-chat"` or `"deepseek/deepseek-v4-flash"` |
-| Wire override | `models.<key>.id` | `"flash": { "id": "deepseek/deepseek-v4-flash" }` |
-| Role overrides | top-level `models` | `subagent` / `compact` / `web` / `vision` / `speech` → selection ref (ADR-045) — **not** the catalog |
-
-Same model segment on two suppliers is fine; selection disambiguates. Templates use **`deepseek1`** / **`deepseek2`**:
-
-```json
-{
-  "model": "deepseek1/deepseek-chat",
-  "provider": {
-    "deepseek1": {
-      "type": "openai-compatible",
-      "options": { "baseURL": "https://api.deepseek.com/v1", "apiKey": "{env:DEEPSEEK1_API_KEY}" },
-      "models": { "deepseek-chat": { "name": "DeepSeek Chat" } }
-    },
-    "deepseek2": {
-      "type": "openai-compatible",
-      "options": { "baseURL": "https://llm.example.com/v1", "apiKey": "{env:DEEPSEEK2_API_KEY}" },
-      "models": {
-        "deepseek/deepseek-v4-flash": { "name": "Nested wire id" },
-        "flash": { "name": "Flash alias", "id": "deepseek/deepseek-v4-flash" }
-      }
-    }
-  }
-}
-```
-
-- Prefer catalog keys equal to the upstream model id (including `/` when the gateway requires it). Optional `id` overrides the wire name while keeping a short selection key.
-- Mistyped keys of the form `providerID/modelID` when the selection model segment is bare are still accepted as a convenience; wire id remains the bare segment (or `id`).
-- Empty `models` under a provider allows any model id (pass-through; API may still reject unknown ids).
-- TUI `/model` lists `providerId/modelId…` refs and sets **this session** (`PATCH` / submit `preferred_model`). `/model main provider/model` changes top-level **global** `model` (`PUT /v1/config/model`). TUI has no clear-prefer command (empty string only via `PATCH`).
-- Session **preference** (O4): `PATCH /v1/sessions/{id}` `{preferred_model}` stores `metadata.model`. Ready-page pick is a **sticky** TUI draft (`/new` does not clear it; every new session from ready is written via `POST /v1/tasks` `{preferred_model}` before `StartChat`; not persisted across TUI restart). Chat runs resolve **job pin (H7) → prefer → main** via `internal/modelresolve` (invalid prefer falls back to main; invalid job pin fails start).
-- **`ready`:** true only when config load succeeded **and** agent/chat was bound at daemon start. Otherwise `error` explains (fix config, or `ymz restart` if chat never started). Secrets never appear in `error`.
-
-### Hot-reload (ADR-048)
-
-While `ymzd` runs, edits to `agent.json` / `agent.local.json` / `env` rebuild the **main** provider client after ~500ms (`internal/providerruntime`). Fingerprint includes a hash of API key and headers (not plaintext in logs).
-
-| Change | Hot-reload? |
-| --- | --- |
-| `model`, baseURL, protocol, maxTokens, contextWindow | Yes |
-| models.dev catalog cache (window fill) | Background; next resolve / reload |
-| Literal `apiKey` or `{file:…}` content | Yes |
-| `{env:VAR}` via `env` file when process VAR is empty | Yes |
-| Process env already set for `{env:VAR}` | **No** — change process env + restart |
-| `chat.*`, MCP, `models.*` (`subagent` / `compact` / `web` / `vision` / `speech`) | **No** — `ymz restart` |
-| Daemon started without agent (bad config) | Fix file then **`ymz restart`** (no late-bind) |
-
-In-flight runs keep the previous client until the next turn.
-
-### Role map (optional)
-
-Top-level `models` maps roles to other **selection** refs (ADR-045). Unset roles fall back to `model`:
-
-```json
-{
-  "model": "deepseek1/deepseek-chat",
-  "models": {
-    "subagent": "deepseek2/flash",
-    "compact": "deepseek2/flash",
-    "web": "deepseek2/flash"
-  }
-}
-```
-
-Allowed keys: `subagent`, `compact`, `web`, `vision`, `speech`. Do not set `models.main` or `models.video`. Unknown keys fail load. Changing `models.*` requires a daemon restart. The chat Prefix lists extra configured roles and does not hard-code “No vision”. `task.kind` advertises `general`/`explore`/`web` always; `vision`/`speech`/`video` only when the matching role is configured. Auxiliary media: see ADR-055.
-
-## Protocol families and aliases
-
-| Canonical protocol | Accepted `type` / `protocol` aliases | Default completion endpoint | Default API-key header |
-| --- | --- | --- | --- |
-| `openai-chat` | `openai-compatible`, `openai-compat`, `openai-chat-completions`, `chat-completions`, `ollama`, `lmstudio`, `llamacpp`, `vllm`, `litellm` | `/v1/chat/completions` | `Authorization: Bearer ...` |
-| `openai-responses` | `openai`, `responses` | `/v1/responses` | `Authorization: Bearer ...` |
-| `anthropic-messages` | `anthropic`, `anthropic-compatible`, `claude` | `/v1/messages` | `x-api-key: ...` |
-| `gemini-generate-content` | `gemini`, `google`, `google-generative-ai` | `/v1beta/models/{model}:generateContent` | `x-goog-api-key: ...` |
-
-If neither field is present, YunmengZe keeps backward compatibility by selecting `openai-chat`. If both `type` and `protocol` are present, they must resolve to the same canonical protocol.
-
-Use `openai-compatible` for providers that expose Chat Completions. The `openai` alias intentionally selects the newer OpenAI Responses protocol.
-
-## Common options
-
-```json
-{
-  "options": {
-    "baseURL": "https://gateway.example/v1",
-    "apiKey": "{env:PROVIDER_API_KEY}",
-    "completionPath": "/v1/chat/completions?api-version=2026-01-01",
-    "modelsPath": "/v1/models",
-    "headers": {
-      "X-Organization": "{env:PROVIDER_ORG}",
-      "api-key": "{file:.secrets/azure-key}"
-    }
-  }
-}
-```
-
-- `baseURL` must be an absolute HTTP(S) URL without query parameters, fragments, or userinfo. A path prefix is allowed.
-- `completionPath` and `modelsPath` must begin with `/` and may contain query parameters.
-- If `baseURL` already ends in `/v1`, the default `/v1/...` endpoint does not duplicate that segment.
-- `headers` are applied after protocol defaults, so an explicitly configured header can override a default authorization or version header.
-- `apiKey` and every header value accept literal values, `{env:NAME}`, or `{file:path}`. Relative file paths are resolved from the JSON file's directory.
-- `responseFormat` configures structured-output behavior only for `openai-chat`. It is optional; omit it to use automatic negotiation. `auto`, `json_schema`, and `json_object` are accepted as explicit values.
-- `anthropicVersion` defaults to `2023-06-01`.
-- Gemini `completionPath` must contain `{model}` because the model ID is part of the request URL.
-
-## OpenAI-compatible Chat Completions
-
-```json
-{
-  "model": "local/qwen3",
-  "provider": {
-    "local": {
-      "type": "openai-compatible",
-      "options": {
-        "baseURL": "http://127.0.0.1:11434/v1"
-      },
-      "models": {
-        "qwen3": { "name": "Qwen 3" }
-      }
-    }
-  }
-}
-```
-
-This protocol family covers OpenAI-compatible services such as DeepSeek, OpenRouter, Ollama, LM Studio, llama.cpp, vLLM, and LiteLLM when they expose `/chat/completions` semantics.
-
-When a request includes a JSON Schema and `responseFormat` is omitted (or set to `auto`), YunmengZe first sends OpenAI's `json_schema` format. If the endpoint explicitly reports that `response_format` or `json_schema` is unsupported, YunmengZe retries once with `json_object` and remembers that choice for subsequent requests to the same model. Set `responseFormat` explicitly only when a gateway needs a fixed compatibility override or when debugging negotiation.
-
-## Per-model generation options
-
-Generation options belong to each entry in `models`, so models sharing a provider URL and API key can still use different defaults:
-
-```json
-{
-  "models": {
-    "chat-model": {
-      "name": "Chat model",
-      "temperature": 0.2,
-      "maxTokens": 4096,
-      "reasoningEffort": "high"
-    }
-  }
-}
-```
-
-- `temperature` is used when the request does not already specify a temperature.
-- `maxTokens` is a model-level output-token cap. When set it is sent on the wire and used as the packing output term. Omit it to leave OpenAI-chat / Responses / Gemini uncapped (`max_tokens` omitted); Anthropic still requires a value (catalog hit or **128_000**). It is not `plan.Budget.MaxTokens`.
-- `contextWindow` is the model context length in tokens. It is **not** `maxTokens`. Used for **provider-view packing and TUI pressure** (ADR-041/051): usable window ≈ `contextWindow − packingOutput − reserve`. Omit or `0` to fill from the embedded **models.dev** catalog (`internal/modelcatalog`, `https://models.dev/models.json`); miss → **1_048_576**.
-- `limit: { context, output }` is the OpenCode-style alias. Explicit `contextWindow` / `maxTokens` win when set.
-- `reasoningEffort` is used when the request does not already specify an effort. It currently maps to `reasoning_effort` for OpenAI-compatible Chat Completions and to `reasoning.effort` for OpenAI Responses.
-- Request-level values take precedence over model defaults, except that `maxTokens` always remains an upper bound.
-- Configure only options supported by the selected model and endpoint. YunmengZe rejects `reasoningEffort` for the Anthropic and Gemini adapters rather than silently ignoring it.
-
-## OpenAI Responses
-
-```json
-{
-  "model": "openai/gpt-model-id",
-  "provider": {
-    "openai": {
-      "type": "openai",
-      "options": {
-        "baseURL": "https://api.openai.com",
-        "apiKey": "{env:OPENAI_API_KEY}"
-      },
-      "models": {
-        "gpt-model-id": { "name": "OpenAI model" }
-      }
-    }
-  }
-}
-```
-
-## Anthropic Messages
-
-```json
-{
-  "model": "anthropic/claude-model-id",
-  "provider": {
-    "anthropic": {
-      "type": "anthropic",
-      "options": {
-        "baseURL": "https://api.anthropic.com",
-        "apiKey": "{env:ANTHROPIC_API_KEY}",
-        "anthropicVersion": "2023-06-01"
-      },
-      "models": {
-        "claude-model-id": { "name": "Claude model" }
-      }
-    }
-  }
-}
-```
-
-## Google Gemini generateContent
-
-```json
-{
-  "model": "google/gemini-model-id",
-  "provider": {
-    "google": {
-      "type": "gemini",
-      "options": {
-        "baseURL": "https://generativelanguage.googleapis.com",
-        "apiKey": "{env:GEMINI_API_KEY}"
-      },
-      "models": {
-        "gemini-model-id": { "name": "Gemini model" }
-      }
-    }
-  }
-}
-```
-
-## Azure/OpenAI-compatible gateways
-
-Use a custom endpoint query and header when the gateway does not accept bearer authentication:
-
-```json
-{
-  "model": "azure/deployment-model-id",
-  "provider": {
-    "azure": {
-      "type": "openai-compatible",
-      "options": {
-        "baseURL": "https://resource.openai.azure.com",
-        "completionPath": "/openai/deployments/deployment-name/chat/completions?api-version=2026-01-01",
-        "modelsPath": "/openai/models?api-version=2026-01-01",
-        "headers": {
-          "api-key": "{env:AZURE_OPENAI_API_KEY}"
-        }
-      },
-      "models": {
-        "deployment-model-id": { "name": "Azure deployment" }
-      }
-    }
-  }
-}
-```
-
-Do not also set `apiKey` when the service rejects the protocol's default authorization header; put the secret in `headers` instead.
+源码：[有界 SSE](../../internal/providers/internal/providerhttp/stream.go)、[原生压缩](../../internal/providers/openairesponses/compact.go)、[重试与工具调度](../../internal/agent/execution.go)。

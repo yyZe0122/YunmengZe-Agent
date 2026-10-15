@@ -1,85 +1,37 @@
-# Contributing to YunmengZe
+# Contributing
 
-Thank you for considering a contribution. YunmengZe favors small, reviewable changes that preserve explicit security boundaries and straightforward Go code.
+Read [AGENTS.md](AGENTS.md) and the [architecture guide](docs/wiki/architecture.md) before changing the runtime. CLI and TUI call the local Engine directly; features are composed through concrete services and small interfaces at their call sites.
 
-## Before you start
+## Development
 
-- Search existing issues and pull requests for related work.
-- Open an issue before a large feature, protocol change, database migration, or architectural refactor.
-- Report vulnerabilities privately according to [SECURITY.md](SECURITY.md).
-- Never include API keys, credentials, private logs, personal paths, local databases, or generated binaries in a contribution.
+Use Go 1.26+, `context.Context` for cancellable work, and explicit errors. Keep changes within the requested scope. Discuss uncertain design choices before adding abstractions or changing an agreed direction.
 
-## Development setup
+| Action | Linux / macOS | Windows PowerShell |
+| --- | --- | --- |
+| Format | `make format` | `./scripts/dev.ps1 -Action format` |
+| Build | `make build` | `./scripts/dev.ps1 -Action build` |
+| Format check and vet (no tests) | `make lint` | `./scripts/dev.ps1 -Action lint` |
+| Format check, vet and tests | `make check` | `./scripts/dev.ps1 -Action check` |
+| Check and build | `make all` | `./scripts/dev.ps1 -Action all` |
 
-Requirements are listed in [README.md](README.md).
+These commands are references. Coding agents must run or add tests only when the user explicitly requests them. The CI workflow runs its configured checks on pushes and pull requests.
 
-Windows:
+After dependency changes, keep `go.mod` and `go.sum` consistent. Append new database migrations; never rewrite released SQL. Do not commit credentials, user configs, databases, logs or build output.
 
-```powershell
-.\scripts\dev.ps1 -Action check
-.\scripts\dev.ps1 -Action build
-```
+Keep personal release plans, notes and backups under the ignored `.cache/` directory. Root `env`, `agent.json`, `.yunmengze/` and database sidecars are ignored; share sanitized examples under `configs/` instead. Before committing, use `git diff --cached --check` and `git ls-files --cached --ignored --exclude-standard` to catch whitespace errors and tracked local files. Ignore rules do not remove files already tracked by Git.
 
-Linux/macOS:
+A tool must declare its plan availability and execute through `tools.Registry.Execute`. Apply mode restrictions to child sessions and external integrations as well as the advertised tool list. Preserve cancellation, timeouts and the limits documented for each tool.
 
-```bash
-make check
-make build
-```
+## Documentation
 
-## Change guidelines
+README introduces the project: capabilities, installation, quick start, documentation links and license. Keep English and Chinese READMEs aligned.
 
-1. Keep the change focused on one problem.
-2. Add or update tests for behavior changes.
-3. Preserve existing policy, approval, capability, path, timeout, and audit boundaries.
-4. Use explicit errors and deterministic recovery behavior.
-5. Add a numbered ADR under `docs/wiki/adr/` for a significant architectural decision; update `docs/wiki/README.md` index when adding one. Schema change: also update `docs/wiki/database.md`. Same-package file splits (no new import graph) do **not** need a new ADR — update the existing ADR’s layout note and `docs/backlog/current.md`.
-6. Keep living status / optional tails only in `docs/backlog/current.md` — do not create parallel optimization notes. Large files: split in-package when a new slash / aggregate SQL / `ymzd` wire is hard to review; do not add packages or frameworks. Catalog: `docs/README.md`.
-7. Update public documentation (root `README.md` / `README.zh.md` — coding loop, TUI, `chat`) and configuration examples when user-facing behavior changes.
-8. Do not edit generated or runtime files unless the change specifically concerns their generator or format.
+The wiki describes the current code only. Update the relevant page in place when a command, configuration field, default, tool, schema or runtime behavior changes. Link concrete source files, document actual limitations, and remove descriptions of features that no longer exist. Do not retain historical ADRs, superseded alternatives, upgrade comparisons or progress logs in the wiki.
 
-## Code style
+Keep the configuration example and JSON schema consistent with the implementation. Use [docs/backlog/current.md](docs/backlog/current.md) only for outstanding work. Published changelogs remain version-specific records outside the wiki.
 
-- Run `gofmt` on changed Go files.
-- Prefer small interfaces at the point of use.
-- Avoid hidden global state and unnecessary abstractions.
-- Pass `context.Context` through cancellable or long-running operations.
-- Wrap errors with enough operation context to diagnose failures without exposing secrets.
-- Keep logs structured (`component` / `operation` / `result` + IDs) and use the existing redaction rules for sensitive fields. Field conventions: ADR-047; prefer `internal/runlog.Attrs` on new daemon stage boundaries.
+## Pull requests and releases
 
-## Tests
+Describe the concrete problem, resulting behavior, validation actually performed and remaining limitations. Split independent features into reviewable commits.
 
-At minimum, run the platform-appropriate check command before opening a pull request. Changes to concurrency, recovery, scheduling, providers, tool execution, or persistence should include focused tests for failure and restart behavior.
-
-If you change dependencies, also run:
-
-```bash
-go mod tidy
-go mod verify
-git diff -- go.mod go.sum
-```
-
-## Pull requests
-
-A pull request should include:
-
-- a concise problem statement;
-- the chosen approach and important tradeoffs;
-- tests performed;
-- security or migration implications;
-- documentation updates;
-- follow-up work that is intentionally out of scope.
-
-Before submission, inspect the staged set:
-
-```bash
-git status --short
-git diff --cached --check
-git diff --cached
-```
-
-Confirm that no local configuration, secrets, personal notes, databases, logs, runtime state, or build output are staged.
-
-## License
-
-By contributing, you agree that your contributions will be licensed under the [Apache License 2.0](LICENSE).
+Follow the [release process](docs/release.md). `scripts/publish-release.sh` owns publishing logic; Windows users call its `scripts/publish-release.ps1` wrapper. Local execution validates and pushes a tag, then GitHub Actions builds and uploads. Do not add a separate uploader or put CI skip markers in the release commit.
