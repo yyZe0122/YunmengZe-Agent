@@ -114,15 +114,25 @@ func cloneMessages(in []providerapi.Message) []providerapi.Message {
 func clearOldToolResults(messages []providerapi.Message, protect, reclaimMin int64) int {
 	// Walk newest→oldest tool messages; protect newest protect tokens; clear older if reclaim > reclaimMin.
 	type idxEst struct {
-		i   int
-		est int64
+		i           int
+		est         int64
+		reclaim     int64
+		placeholder string
 	}
 	var tools []idxEst
 	for i := len(messages) - 1; i >= 0; i-- {
 		if messages[i].Role != providerapi.RoleTool {
 			continue
 		}
-		tools = append(tools, idxEst{i: i, est: EstimateText(messages[i].Content)})
+		id := strings.TrimSpace(messages[i].ToolCallID)
+		if id == "" {
+			id = "?"
+		}
+		cleared := messages[i]
+		cleared.Content = fmt.Sprintf(toolClearPlaceholderFmt, id)
+		cleared.Images = nil
+		est := EstimateMessage(messages[i])
+		tools = append(tools, idxEst{i: i, est: est, reclaim: max(0, est-EstimateMessage(cleared)), placeholder: cleared.Content})
 	}
 	var kept int64
 	var reclaim int64
@@ -132,7 +142,9 @@ func clearOldToolResults(messages []providerapi.Message, protect, reclaimMin int
 			kept += t.est
 			continue
 		}
-		reclaim += t.est
+		if t.reclaim > 4 {
+			reclaim += t.reclaim
+		}
 		if clearFrom < 0 {
 			clearFrom = n
 		}
@@ -142,21 +154,12 @@ func clearOldToolResults(messages []providerapi.Message, protect, reclaimMin int
 	}
 	cleared := 0
 	for n := clearFrom; n < len(tools); n++ {
-		i := tools[n].i
-		id := strings.TrimSpace(messages[i].ToolCallID)
-		if id == "" {
-			id = "?"
-		}
-		placeholder := fmt.Sprintf(toolClearPlaceholderFmt, id)
-		if messages[i].Content == placeholder {
+		t := tools[n]
+		if t.reclaim <= 4 {
 			continue
 		}
-		// Skip already-short results.
-		if EstimateText(messages[i].Content) <= EstimateText(placeholder)+4 {
-			continue
-		}
-		messages[i].Content = placeholder
-		messages[i].Images = nil
+		messages[t.i].Content = t.placeholder
+		messages[t.i].Images = nil
 		cleared++
 	}
 	return cleared

@@ -27,13 +27,16 @@ type ServerConfig struct {
 
 // Client is one connected MCP server process (stdio).
 type Client struct {
-	name   string
-	cmd    *exec.Cmd
-	stdin  io.WriteCloser
-	stdout *bufio.Scanner
-	mu     sync.Mutex
-	nextID atomic.Int64
-	closed atomic.Bool
+	name      string
+	cmd       *exec.Cmd
+	stdin     io.WriteCloser
+	stdout    *bufio.Scanner
+	output    io.ReadCloser
+	mu        sync.Mutex
+	nextID    atomic.Int64
+	closed    atomic.Bool
+	closeOnce sync.Once
+	closeErr  error
 }
 
 // Start launches the server and completes initialize + initialized.
@@ -72,7 +75,7 @@ func Start(ctx context.Context, config ServerConfig) (*Client, error) {
 	}
 	messages := bufio.NewScanner(stdout)
 	messages.Buffer(make([]byte, 4096), maxStdioMessageBytes+2)
-	c := &Client{name: name, cmd: cmd, stdin: stdin, stdout: messages}
+	c := &Client{name: name, cmd: cmd, stdin: stdin, stdout: messages, output: stdout}
 	if err := c.initialize(ctx); err != nil {
 		_ = c.Close()
 		return nil, err
@@ -82,14 +85,14 @@ func Start(ctx context.Context, config ServerConfig) (*Client, error) {
 
 // Close terminates the process.
 func (c *Client) Close() error {
-	if !c.closed.CompareAndSwap(false, true) {
-		return nil
-	}
-	_ = c.stdin.Close()
-	if c.cmd.Process != nil {
+	c.closeOnce.Do(func() {
+		c.closed.Store(true)
+		_ = c.stdin.Close()
+		_ = c.output.Close()
 		_ = c.cmd.Cancel()
-	}
-	return c.cmd.Wait()
+		c.closeErr = c.cmd.Wait()
+	})
+	return c.closeErr
 }
 
 // ListTools calls tools/list.
@@ -146,48 +149,74 @@ func (c *Client) call(ctx context.Context, method string, params any, result any
 	req := map[string]any{
 		"jsonrpc": "2.0", "id": id, "method": method, "params": params,
 	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if err := c.writeMessage(req); err != nil {
-		return err
-	}
-	for {
-		if err := ctx.Err(); err != nil {
+	return c.exchange(ctx, func() error {
+		if err := c.writeMessage(req); err != nil {
 			return err
 		}
-		msg, err := c.readMessage()
-		if err != nil {
-			return err
+		for {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			msg, err := c.readMessage()
+			if err != nil {
+				return err
+			}
+			rawID, hasID := msg["id"]
+			if !hasID {
+				continue
+			}
+			if !idEqual(rawID, id) {
+				continue
+			}
+			if errObj, ok := msg["error"]; ok && errObj != nil {
+				return fmt.Errorf("mcp %s %s: %v", c.name, method, errObj)
+			}
+			if result == nil {
+				return nil
+			}
+			payload, err := json.Marshal(msg["result"])
+			if err != nil {
+				return err
+			}
+			if string(payload) == "null" {
+				return nil
+			}
+			return json.Unmarshal(payload, result)
 		}
-		rawID, hasID := msg["id"]
-		if !hasID {
-			continue
-		}
-		if !idEqual(rawID, id) {
-			continue
-		}
-		if errObj, ok := msg["error"]; ok && errObj != nil {
-			return fmt.Errorf("mcp %s %s: %v", c.name, method, errObj)
-		}
-		if result == nil {
-			return nil
-		}
-		payload, err := json.Marshal(msg["result"])
-		if err != nil {
-			return err
-		}
-		if string(payload) == "null" {
-			return nil
-		}
-		return json.Unmarshal(payload, result)
-	}
+	})
 }
 
-func (c *Client) notify(_ context.Context, method string, params any) error {
+func (c *Client) notify(ctx context.Context, method string, params any) error {
 	req := map[string]any{
 		"jsonrpc": "2.0", "method": method, "params": params,
 	}
-	return c.writeMessage(req)
+	return c.exchange(ctx, func() error { return c.writeMessage(req) })
+}
+
+// Cancellation closes this connection: stdio has no way to interrupt a blocked
+// read or write while safely retaining the in-flight JSON-RPC exchange.
+func (c *Client) exchange(ctx context.Context, f func() error) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if c.closed.Load() {
+		return errors.New("mcp connection is closed")
+	}
+	done := make(chan struct{})
+	stop := context.AfterFunc(ctx, func() {
+		defer close(done)
+		_ = c.Close()
+	})
+	err := f()
+	if !stop() {
+		<-done
+	}
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	return err
 }
 
 func (c *Client) writeMessage(msg any) error {
