@@ -24,7 +24,7 @@ Do not introduce a daemon, HTTP Gateway, module runtime, scheduler, permission s
 | --- | --- | --- |
 | Format | `make format` | `./scripts/dev.ps1 -Action format` |
 | Format check + vet (no tests) | `make lint` | `./scripts/dev.ps1 -Action lint` |
-| Format + vet + tests | `make check` | `./scripts/dev.ps1 -Action check` |
+| Format check + vet + tests | `make check` | `./scripts/dev.ps1 -Action check` |
 | Build `bin/ymz` | `make build` | `./scripts/dev.ps1 -Action build` |
 | Check + build | `make all` | `./scripts/dev.ps1 -Action all` |
 | Install | `make install` | `./scripts/dev.ps1 -Action install` |
@@ -53,6 +53,8 @@ Only `scripts/publish-release.sh` contains publishing logic; `scripts/publish-re
 | `internal/store/sqlite` + `migrations/core` | SQLite lifecycle and ordered transactional migrations |
 | `internal/injectscan` + `internal/platform/pathsecurity` | Instruction scanning and skill-linked-file containment |
 
+Engine keeps Store and Memory private; frontends call application operations. Assemble optional capabilities in feature-specific files. Providers must not depend on tools; tools receive their own configuration values. Memory consumes an evidence interface; session owns transcript SQL.
+
 Use concrete types, small interfaces at the consumer, explicit errors and `context.Context` for cancellable work. No hidden global orchestration. All model-requested effects pass through `tools.Registry.Execute`; filtering the advertised list alone is insufficient. Plan cannot write files or memory, run shell or invoke MCP. Child agents inherit plan; explore children are always read-only; all children are leaves.
 
 Timeouts, bounded file reads/tool output, process-tree cancellation and optional file hashes remain. Agent paths may be absolute and outside the launch directory; do not recreate workspace grant policy. The OS defines agent access.
@@ -61,7 +63,9 @@ Timeouts, bounded file reads/tool output, process-tree cancellation and optional
 
 - Config: `$YMZ_HOME` or `~/.yunmengze` on every OS. Prefer `agent.local.json` over `agent.json`. Never load provider configuration from the project directory.
 - `ymz` seeds missing config, `env` and `AGENTS.md`; never overwrites existing files. Nonempty process environment wins over `env`; API keys may use `{env:NAME}` or `{file:path}`.
-- Configuration and secret values are snapshotted together at startup. Restart `ymz` after changing it; no file watcher or reload service.
+- Configuration, resolved secrets and credential errors are snapshotted together at startup. Only main-model and enabled-capability dependency errors block startup; other affected models remain unavailable and fail clearly when selected. Adapters receive resolved keys directly. Restart `ymz` after changing it; no file watcher or reload service.
+- Optional switches default on: `chat.skills.enabled`, `chat.memory.enabled`, `chat.task.enabled`, `chat.web.enabled`, `chat.vision.enabled`, `mcp.enabled`. Disabled features do not initialize or register tools; disabled skills do not scan or expand. Web also disables web child tasks, not OS networking. `chat.compaction.enabled` controls automatic compaction only. Preserve data and migrations when disabling or removing a capability.
+- Preference expiry uses expires_at without archiving; fresh evidence may relearn expired preferences. Explicit forget and existing archives remain tombstones. Session runs and manual compaction both renew and release leases.
 - Model refs split on the first slash: `provider/model/with/slashes`. Optional `models` roles: `subagent`, `compact`, `web`, `vision`, `memory`. `/model` changes this session; the ready-screen selection carries to subsequent new sessions.
 - ConfigDir `AGENTS.md` plus workspace `.yunmengze/AGENTS.md` are runtime instructions. This repository's root `AGENTS.md` is contributor guidance.
 - Skills: `<config>/skills/<id>/SKILL.md` and `<workspace>/.yunmengze/skills/<id>/SKILL.md`; workspace wins. Bodies load through `/id` or `skills_list` / `skill_view`. Slash priority: builtin, `chat.commands`, skill.

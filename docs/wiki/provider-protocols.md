@@ -22,6 +22,14 @@ protocol 推荐使用上表规范名，与 JSON Schema 一致。运行时 protoc
 | Anthropic | `anthropic`、`anthropic-compatible`、`claude` |
 | Gemini | `gemini`、`google`、`google-generative-ai` |
 
+## 认证与装配
+
+[启动快照](../../internal/providerconfig/snapshot.go)一次解析 provider 的密钥和请求头，并记录解析错误；[工厂](../../internal/providers/factory.go)把已解析的 `APIKey` 和 headers 直接交给适配器。请求期间不再读取 env 或密钥文件，首次使用其他模型也沿用同一快照。主模型和已启用功能的角色依赖必须通过本地配置解析，其他受影响模型选择时返回原因；修改配置或密钥后需重启。
+
+Engine 启动时创建主模型适配器，其余按需创建并复用。`ymz config validate` 不创建适配器、不请求服务，因此不能确认远端认证、模型能力或服务兼容性。
+
+工厂依赖 providerconfig 的已解析配置，各适配器使用 providerapi 消息与协议类型，不依赖 tools。Anthropic 还直接查询 modelcatalog 作为输出预算的回退来源；Responses、Anthropic 和 Gemini 共用 providerhttp 的 HTTP / SSE 处理，Chat 当前保留自身实现。独立图像调用的结果由 [Agent](../../internal/agent/feature_vision.go)转换为工具结果。
+
 ## 路径与请求参数
 
 baseURL 必须为绝对 HTTP(S)，不得带 userinfo、查询参数或 fragment。completionPath 是以 `/` 开头的路径，可带查询参数；与基址路径拼接时只消除重复的 `/v1`。Gemini 基址通常只写服务根，自定义路径必须含 `{model}` 和 `:generateContent`；流式调用替换为 `:streamGenerateContent?alt=sse`。
@@ -42,14 +50,14 @@ Chat 的 responseFormat 只在内部请求带 ResponseSchema 时生效：auto �
 
 统一消息分别保存正文、可展示思考、工具调用、图片和协议原始回传块。Responses 保留 reasoning 的 encrypted_content 与完整 output；Anthropic 保留 thinking / redacted_thinking / signature；Gemini 保留 thoughtSignature 和完整 parts；Chat 保留兼容服务的 reasoning_content。原始块只回传给原 provider / 协议和实际模型，不能把思考文本当成签名的替代品。
 
-Responses 使用 `store=false`。模型项显式设 `nativeCompaction=true` 时，调用对应 `/responses/compact`，把完整返回窗口作为下一次输入，不裁剪其中的保留项；使用该模型自身压缩。调用失败回退通用摘要。切换 provider 或模型时仅使用本地抽取文字摘要，可能损失细节；完整原始对话仍在数据库。默认关闭，不能从“兼容 Responses”推断服务支持原生压缩。
+Responses 使用 `store=false`。模型项显式设 `nativeCompaction=true` 时，调用对应 `/responses/compact`，把完整返回窗口作为下一次输入，不裁剪其中的保留项；使用该模型自身压缩。原生调用失败且本次操作未取消时回退通用摘要；用户取消或父 context 到期时直接结束。切换 provider 或模型时仅使用本地抽取文字摘要，可能损失细节；完整原始对话仍在数据库。默认关闭，不能从“兼容 Responses”推断服务支持原生压缩。
 
 仅在尚未向前端交付任何事件时重试可恢复错误，最多额外两次；等待遵循 Retry-After，超过 30 秒则返回错误供用户后续处理。已输出的中断响应保存为部分文本，不重放已执行的工具。流必须收到协议终态才算完成；错误保留有界的服务诊断。
 
 ## 图片
 
-四种协议均可承载图片，具体模型能力由精确元数据或 `supportsImages` 确认。未配置 vision 时，`vision_analyze` 把图片作为当前会话的工具观察交给模型，不另做一次同模型“看图转述”。Chat 通过工具结果之后的用户图片消息承载；Responses / Anthropic / Gemini 使用各自支持的内容块。
+`chat.vision.enabled=false` 时不注册图像工具，也不装配独立 vision 模型。开启后，四种协议均可承载图片，具体模型能力由精确元数据或 `supportsImages` 确认。未配置 vision 时，`vision_analyze` 把图片作为当前会话的工具观察交给模型，不另做一次同模型“看图转述”。Chat 通过工具结果之后的用户图片消息承载；Responses / Anthropic / Gemini 使用各自支持的内容块。
 
-显式配置 `models.vision` 时，[图像后端](../../internal/providers/vision.go)调用该模型，再把分析文字返回主会话并报告用量。当前模型能力未知或不支持且没有 vision 配置时，工具返回设置提示；不会静默丢弃图片。
+显式配置 `models.vision` 时，[图像后端](../../internal/providers/vision.go)调用该模型，再把分析文字返回主会话并报告用量。独立 vision 模型已知不支持图片时，在运行装配阶段报错；未配置独立 vision 且当前模型能力未知或不支持时，在工具调用时返回设置提示，不会静默丢弃图片。
 
 源码：[有界 SSE](../../internal/providers/internal/providerhttp/stream.go)、[原生压缩](../../internal/providers/openairesponses/compact.go)、[重试与工具调度](../../internal/agent/execution.go)。

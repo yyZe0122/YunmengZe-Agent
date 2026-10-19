@@ -1,6 +1,6 @@
 # 规则、技能与模板
 
-源码：[规则](../../internal/providerconfig/agents.go)、[技能目录](../../internal/skillcatalog/catalog.go)、[模板](../../internal/providerconfig/chat.go)、[消息展开](../../internal/agent/engine.go)。
+源码：[规则](../../internal/providerconfig/agents.go)、[技能目录](../../internal/skillcatalog/catalog.go)、[模板](../../internal/providerconfig/chat.go)、[技能装配与消息展开](../../internal/agent/feature_skills.go)。
 
 ## 运行规则
 
@@ -20,7 +20,9 @@ description: Review the current change for correctness
 Read the changed files and report concrete defects.
 ```
 
-`name`、`description` 必填；元数据只支持单行 `key: value`，不是完整 YAML。发现阶段只读元数据，系统前缀只列出 ID 和描述；无效技能被跳过。
+`name`、`description` 必填；元数据只支持单行 `key: value`，不是完整 YAML。发现阶段只读元数据，系统前缀只列出 ID 和描述；无效技能被跳过，并在运行 info 事件和 TUI `/skills` 中显示路径与原因。一次运行的工具、前缀及 slash 展开共用同一份发现结果。
+
+发现阶段目前只限制元数据单行大小，没有 frontmatter 总读取量限制，也未对 ID / 描述执行正文使用的文本扫描；这些限制缺口见[优化待办](../backlog/current.md)。
 
 | 入口 | 用法 |
 | --- | --- |
@@ -30,7 +32,9 @@ Read the changed files and report concrete defects.
 
 关联文件必须是技能目录内的相对普通文件，不要求预先登记。拒绝越界、目标符号链接及 `SKILL.md`、`SKILL.md.draft`、`SKILL.md.bak.*`；技能目录和 SKILL.md 的直接符号链接也被跳过。正文与关联文件经过文本校验；可疑指令词只产生诊断，不因普通文本中出现 system 等词自动拒绝。模式限制和路径包含检查由代码独立执行。
 
-技能编辑后，下次发现或读取即使用新内容。TUI 补全列表在初始化、加载会话和 `/new` 时重建，`/skills` 可重新查看目录。正文和关联文件分别最多 1 MiB；`skill_view` 受工具输出上限限制，slash 展开不受该上限限制。
+技能编辑后，下次发现或读取即使用新内容。TUI 补全列表在初始化、加载会话和 `/new` 时重建，`/skills` 可重新查看目录。正文读取检查整个 SKILL.md 最多 1 MiB，关联文件也最多 1 MiB；传入文本扫描的正文或关联内容另受 200000 字符限制。`skill_view` 受工具输出上限限制，slash 展开不受该上限限制。
+
+`chat.skills.enabled=false` 时不扫描技能目录，不注册技能工具，不提供技能补全或展开；手动输入 `/skills` 会提示禁用。运行规则和 chat.commands 模板仍可用。
 
 ## Slash 模板
 

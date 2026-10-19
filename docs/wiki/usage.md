@@ -10,13 +10,13 @@
 | `ymz run [参数] "任务"` | 执行一次用户轮次后退出 |
 | `ymz sessions` | JSON 列出启动目录的主会话，最近优先，最多 200 条 |
 | `ymz models [refresh]` | JSON 列出配置模型；refresh 先刷新模型元数据缓存 |
-| `ymz config validate` | 补齐缺失模板，校验启动配置快照、配置模型与角色、chat、MCP；不打开数据库或请求远端 |
+| `ymz config validate` | 补齐缺失模板，校验主模型与已启用功能依赖，报告其他模型不可用原因；不打开数据库或请求远端 |
 | `ymz db check` | 打开数据库、应用迁移，再执行 SQLite quick_check |
 | `ymz paths` | JSON 输出 config、database、workspace 路径 |
 | `ymz version` | 版本、提交、构建日期 |
 | `ymz help` / `ymz --help` / `ymz -h` | 帮助 |
 
-`sessions` 也会应用数据库迁移。`config validate` 不验证远端凭证、模型能力或逐个实例化角色适配器。
+`sessions` 也会应用数据库迁移；它与 `db check` 使用短生命周期数据库连接，不依赖模型凭证。`config validate` 不验证远端凭证、模型能力或逐个实例化适配器；主模型和已启用功能依赖通过时返回成功，其他不可用模型的原因写入 stderr。
 
 以下参数供默认 TUI、tui 和 run 使用，必须放在任务文本前；`--session` 与 `--continue` 互斥。
 
@@ -28,13 +28,15 @@
 | `--continue` | 续接启动目录最近的主会话，没有则新建 |
 | `--json` | run 输出 JSON Lines；不改变 TUI 显示 |
 
+`--model` 只选择会话模型，不跳过全局启动快照检查；配置的主模型和已启用功能依赖仍须满足[启动条件](configuration.md)。
+
 ```sh
 ymz --mode plan
 ymz run --continue "继续分析配置加载过程"
 ymz run --json "更新 README 的安装步骤"
 ```
 
-run 的任务可使用技能或模板，如 `ymz run "/review 当前修改"`，不接受 TUI 内置管理命令。普通输出的正文在 stdout，工具开始提示和错误在 stderr；失败返回非零退出码，Ctrl+C 取消，已保存消息保留。
+run 的任务可使用技能或模板，如 `ymz run "/review 当前修改"`，不接受 TUI 内置管理命令。普通输出的正文在 stdout，工具开始提示、运行诊断（包括技能跳过原因）和错误在 stderr；失败返回非零退出码，Ctrl+C 取消，已保存消息保留。
 
 ## TUI 操作
 
@@ -47,6 +49,8 @@ run 的任务可使用技能或模板，如 `ymz run "/review 当前修改"`，�
 | Ctrl+L / Ctrl+S | 空闲时打开模型 / 会话选择器 |
 | PgUp、PgDn / Ctrl+U、Ctrl+D | 整页 / 半页滚动 |
 | `e` / `E` / `c`（输入为空） | 切换最近块 / 展开全部 / 折叠全部工具与思考 |
+
+模型选择器标出启动时不可用的模型及原因；包括准备新会话时的选择在内，选择不可用模型会立即报错并保留原选择。技能 / 记忆禁用后不出现在帮助和补全中；手动输入对应管理命令会提示禁用。
 
 选择器和 slash 补全用 ↑↓、Enter、Esc。运行中发送的消息进入最多 32 条的纠偏队列，在下次模型循环处理，不打断当前工具；结束时未消费的内容回填输入框。
 

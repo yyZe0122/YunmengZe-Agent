@@ -74,7 +74,7 @@ irm https://raw.githubusercontent.com/yyZe0122/YunmengZe-Agent/main/packaging/sc
 
 版本默认 `latest`，无正式版时回退到发布列表。Unix 安装器更新 shell rc 的 PATH；Windows 更新用户 PATH，可用 `YMZ_NO_PATH_UPDATE=1` 禁用。修改后重新打开终端。
 
-需要指定版本时，在运行安装器前设置 `YMZ_VERSION`，例如 Unix 的 `export YMZ_VERSION=v1.0.0` 或 PowerShell 的 `$env:YMZ_VERSION = 'v1.0.0'`。不再固定版本时，分别执行 `unset YMZ_VERSION` 或 `Remove-Item Env:YMZ_VERSION`。
+需要指定版本时，在运行安装器前设置 `YMZ_VERSION`，例如 Unix 的 `export YMZ_VERSION=v1.0.1` 或 PowerShell 的 `$env:YMZ_VERSION = 'v1.0.1'`。不再固定版本时，分别执行 `unset YMZ_VERSION` 或 `Remove-Item Env:YMZ_VERSION`。
 
 `YMZ_CONFIG_DIR` / `-ConfigDir` 只用于安装器；程序运行时只识别 `YMZ_HOME`，自定义配置目录时应同时设置它。
 
@@ -84,6 +84,8 @@ irm https://raw.githubusercontent.com/yyZe0122/YunmengZe-Agent/main/packaging/sc
 
 1. 在工作目录运行 `ymz`，程序会在 `$YMZ_HOME` 或 `~/.yunmengze` 创建缺失的 `agent.json`、`env`、`AGENTS.md`。
 2. 默认模型为 `deepseek1/deepseek-chat`。在生成的 env 中填写 `DEEPSEEK1_API_KEY`，或按[配置说明](configuration.md)更换 provider。缺少密钥时首次启动会报错，模板已生成。
-3. 执行 `ymz config validate` 检查配置，再运行 `ymz --mode plan`。脚本使用 `ymz run "任务"`；TUI 需要交互式终端。
+3. 执行 `ymz config validate` 检查本地配置与已启用功能的依赖，再运行 `ymz --mode plan`。该命令不验证远端认证。脚本使用 `ymz run "任务"`；TUI 需要交互式终端。
 
-MCP stdio 需要对应服务程序。源码：[CLI](../../cmd/ymz/main.go)、[配置初始化](../../internal/providerconfig/ensure.go)。
+技能、记忆、子任务、网页、图像和 MCP 的[开关](configuration.md)默认开启，可按需关闭；关闭不会删除已有数据。未使用模型的凭证引用缺失不会阻止启动，但主模型及已启用功能的依赖必须通过检查。修改配置或密钥后需重启。MCP stdio 在启用并调用时需要对应服务程序。
+
+源码：[CLI](../../cmd/ymz/main.go)、[配置初始化](../../internal/providerconfig/ensure.go)。

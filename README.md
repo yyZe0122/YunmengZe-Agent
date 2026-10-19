@@ -10,7 +10,7 @@ A coding agent for your terminal, written in Go. Explore a codebase, edit files 
 - **Two execution modes** — inspect and plan with `plan`, or let `agent` edit files and execute commands.
 - **Your choice of model** — connect OpenAI-compatible Chat Completions, Responses, Anthropic Messages or Gemini services, including compatible local endpoints.
 - **Local conversation storage** — sessions, context summaries and memory share a SQLite database. Context compaction handles long tool runs; low-frequency memory curation keeps only evidenced user preferences.
-- **Extensible tools** — load file-based skills and MCP servers, run up to two independent child tasks, search the web and inspect images with the current or a separately configured vision model.
+- **Optional capabilities** — load file-based skills and MCP servers, run up to two independent child tasks, search the web and inspect images with the current or a separately configured vision model. Each capability can be disabled in configuration.
 - **One executable** — `ymz` runs on Windows, Linux and macOS; no separate service is needed.
 
 Conversation storage is local. Model calls and enabled web, image and MCP tools use the services you configure.
@@ -80,7 +80,7 @@ See [installation](docs/wiki/installation.md) for updates, install locations and
 
 1. Run `ymz` once to create the configuration files in `~/.yunmengze` (`$env:USERPROFILE\.yunmengze` on Windows).
 2. Edit `agent.json` to select your provider and model, and add the API key to the `env` file. The generated example uses `deepseek1/deepseek-chat` and `DEEPSEEK1_API_KEY`; the first launch reports a missing key until it is set.
-3. Start `ymz` from the project directory and enter a task.
+3. Run `ymz config validate` to check local configuration, then start `ymz` from the project directory and enter a task. This check does not contact model services.
 
 ```sh
 ymz
@@ -90,7 +90,25 @@ ymz run --mode plan "Explain how this project is organized"
 ymz run --json "Summarize the changes in this workspace"
 ```
 
-`YMZ_HOME` changes the configuration directory. You can use a different service by editing the [configuration example](configs/agent.json.example); [configuration](docs/wiki/configuration.md) explains providers, model roles and optional features.
+## Configuration
+
+`YMZ_HOME` changes the configuration directory, which also holds `core.db`. `agent.local.json` takes precedence over `agent.json`; the two files are not merged. Start from the [configuration example](configs/agent.json.example) to use another provider or model.
+
+The following switches default to `true`, including when omitted. Set a switch to `false` to disable that capability; existing sessions and memory remain stored.
+
+| Capability | Configuration key |
+| --- | --- |
+| File skills | `chat.skills.enabled` |
+| Preference memory | `chat.memory.enabled` |
+| Child tasks | `chat.task.enabled` |
+| Web search, extraction and web child tasks | `chat.web.enabled` |
+| Image analysis | `chat.vision.enabled` |
+| MCP integrations | `mcp.enabled` |
+| Automatic context compaction | `chat.compaction.enabled` |
+
+Manual `/compact` remains available when automatic compaction is off. Disabling web tools does not restrict networking by shell commands, MCP servers or image URLs.
+
+Missing credential references block startup only for the main model or enabled capabilities. Other affected models appear unavailable and report the reason when selected. Configuration, resolved credentials and resolution errors are fixed at startup; restart after changing them. See [configuration](docs/wiki/configuration.md) for model roles, defaults and enabled-feature dependencies.
 
 ## Working with the agent
 
@@ -109,6 +127,8 @@ For scripts, use `ymz run`. Put flags before the task text; `--json` emits one J
 - [Tools](docs/wiki/tools.md), [skills](docs/wiki/skills.md) and [memory](docs/wiki/memory.md)
 - [Architecture](docs/wiki/architecture.md), [provider adapters](docs/wiki/provider-protocols.md) and [database](docs/wiki/database.md)
 - [Contributing](CONTRIBUTING.md) and [release process](docs/release.md)
+
+CLI and TUI share one in-process Engine. Optional capabilities use explicit composition and startup switches; source removal also requires updating their configuration, prompts and UI entries. See the [module boundaries](docs/wiki/architecture.md#模块边界与可选能力) and [current review and optimization plan](docs/backlog/current.md).
 
 The wiki describes the current checkout. For a packaged release, use the documentation at its matching Git tag.
 
