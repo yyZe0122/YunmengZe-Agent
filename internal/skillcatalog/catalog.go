@@ -154,9 +154,6 @@ func Discover(roots []Root) (*Catalog, []Diagnostic) {
 }
 
 func (c *Catalog) Skills() []Skill {
-	if c == nil {
-		return nil
-	}
 	skills := make([]Skill, 0, len(c.order))
 	for _, id := range c.order {
 		skills = append(skills, c.byID[id])
@@ -166,18 +163,12 @@ func (c *Catalog) Skills() []Skill {
 
 // Get returns a discovered skill by ID.
 func (c *Catalog) Get(id string) (Skill, bool) {
-	if c == nil {
-		return Skill{}, false
-	}
 	sk, ok := c.byID[strings.TrimSpace(id)]
 	return sk, ok
 }
 
 // Read loads the current body for a discovered skill and rechecks containment.
 func (c *Catalog) Read(id string) ([]byte, error) {
-	if c == nil {
-		return nil, ErrSkillNotFound
-	}
 	skill, ok := c.byID[strings.TrimSpace(id)]
 	if !ok {
 		return nil, fmt.Errorf("%w: %s", ErrSkillNotFound, strings.TrimSpace(id))
@@ -271,9 +262,6 @@ func readBounded(path string) ([]byte, error) {
 }
 
 func (c *Catalog) lookup(id string) (Skill, error) {
-	if c == nil {
-		return Skill{}, ErrSkillNotFound
-	}
 	skill, ok := c.byID[strings.TrimSpace(id)]
 	if !ok {
 		return Skill{}, fmt.Errorf("%w: %s", ErrSkillNotFound, strings.TrimSpace(id))
@@ -368,7 +356,7 @@ func parseScalar(value string) (string, error) {
 func splitSkillFile(data []byte) (string, error) {
 	text := strings.ReplaceAll(string(data), "\r\n", "\n")
 	lines := strings.Split(text, "\n")
-	if len(lines) == 0 || strings.TrimSpace(lines[0]) != "---" {
+	if strings.TrimSpace(lines[0]) != "---" {
 		return "", fmt.Errorf("%w: missing frontmatter", ErrInvalidSkill)
 	}
 	closing := -1

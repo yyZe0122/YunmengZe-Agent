@@ -61,7 +61,7 @@ func current() *catalog {
 		return c
 	}
 	c, err := parse(embeddedModels)
-	if err != nil || c == nil {
+	if err != nil {
 		c = &catalog{
 			byID:      map[string]entry{},
 			bySegment: map[string][]entry{},
@@ -73,9 +73,7 @@ func current() *catalog {
 }
 
 func swap(c *catalog) {
-	if c != nil {
-		loaded.Store(c)
-	}
+	loaded.Store(c)
 }
 
 func parse(raw []byte) (*catalog, error) {

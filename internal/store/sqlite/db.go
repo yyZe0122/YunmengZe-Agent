@@ -33,9 +33,6 @@ type DB struct {
 // Open creates the parent directory, applies safety PRAGMAs, and runs all Core
 // migrations. Core uses one SQLite connection so writes are serialized.
 func Open(ctx context.Context, path string) (*DB, error) {
-	if ctx == nil {
-		return nil, errors.New("database context is required")
-	}
 	if strings.TrimSpace(path) == "" {
 		return nil, errors.New("database path is required")
 	}
@@ -93,15 +90,8 @@ func (db *DB) SQL() *sql.DB {
 	return db.sql
 }
 
-func (db *DB) Path() string {
-	return db.path
-}
-
 // Health performs SQLite's lightweight structural consistency check.
 func (db *DB) Health(ctx context.Context) error {
-	if ctx == nil {
-		return errors.New("health context is required")
-	}
 	var result string
 	if err := db.sql.QueryRowContext(ctx, "PRAGMA quick_check").Scan(&result); err != nil {
 		return fmt.Errorf("database quick check: %w", err)
@@ -113,9 +103,6 @@ func (db *DB) Health(ctx context.Context) error {
 }
 
 func (db *DB) Close() error {
-	if db == nil || db.sql == nil {
-		return nil
-	}
 	return db.sql.Close()
 }
 

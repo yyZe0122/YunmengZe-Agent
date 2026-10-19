@@ -52,9 +52,7 @@ func RepairToolMessages(messages []providerapi.Message) []providerapi.Message {
 			// New assistant tool batch: prior pending calls never got results.
 			flushMissing()
 			cloned := msg
-			if len(msg.ToolCalls) > 0 {
-				cloned.ToolCalls = append([]providerapi.ToolCall(nil), msg.ToolCalls...)
-			}
+			cloned.ToolCalls = append([]providerapi.ToolCall(nil), msg.ToolCalls...)
 			out = append(out, cloned)
 			for _, tc := range msg.ToolCalls {
 				id := strings.TrimSpace(tc.ID)

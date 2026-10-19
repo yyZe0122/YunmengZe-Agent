@@ -17,8 +17,7 @@ var errEmptyCatalog = errors.New("model catalog is empty")
 const defaultRefreshTimeout = 5 * time.Second
 
 // Init loads ConfigDir/cache/models.dev.json when it has at least as many
-// models as the embed, else embed. Network is never used here; call Refresh
-// in a background goroutine.
+// models as the embed, else embed. Network is never used here; Refresh is explicit.
 func Init(configDir string) {
 	raw, err := os.ReadFile(cachePath(configDir))
 	if err != nil {
@@ -28,7 +27,7 @@ func Init(configDir string) {
 		return
 	}
 	c, err := parse(raw)
-	if err != nil || c == nil || len(c.all) == 0 {
+	if err != nil || len(c.all) == 0 {
 		slog.Warn("model catalog cache ignored", "component", "modelcatalog", "operation", "init", "result", "warning", "error", err)
 		return
 	}
@@ -43,7 +42,7 @@ func Init(configDir string) {
 
 func embedCount() int {
 	c, err := parse(embeddedModels)
-	if err != nil || c == nil {
+	if err != nil {
 		return 0
 	}
 	return len(c.all)
@@ -51,9 +50,6 @@ func embedCount() int {
 
 // Refresh fetches models.json and writes ConfigDir/cache when the body parses.
 func Refresh(ctx context.Context, configDir string) error {
-	if ctx == nil {
-		ctx = context.Background()
-	}
 	timeout := defaultRefreshTimeout
 	if deadline, ok := ctx.Deadline(); ok {
 		timeout = time.Until(deadline)
@@ -93,7 +89,7 @@ func Refresh(ctx context.Context, configDir string) error {
 	if err != nil {
 		return err
 	}
-	if c == nil || len(c.all) == 0 {
+	if len(c.all) == 0 {
 		return errEmptyCatalog
 	}
 	if err := writeCache(configDir, raw); err != nil {
