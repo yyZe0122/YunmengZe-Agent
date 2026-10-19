@@ -23,13 +23,22 @@ func (s *Store) savePreference(ctx context.Context, p preferenceProposal, stamp 
 	if !strings.HasPrefix(key, p.Category+"/") {
 		key = p.Category + "/" + key
 	}
-	var id, archived, content, source, updated, evidenceJSON string
-	err := s.db.QueryRowContext(ctx, `SELECT entry_id,archived_at,content,source,updated_at,evidence_json FROM memory_entries WHERE preference_key=? OR (kind='preference' AND lower(content)=lower(?)) ORDER BY archived_at DESC LIMIT 1`, key, p.Content).Scan(&id, &archived, &content, &source, &updated, &evidenceJSON)
+	var id, archived, source, updated, evidenceJSON, expiresAt string
+	err := s.db.QueryRowContext(ctx, `SELECT entry_id,archived_at,source,updated_at,evidence_json,expires_at FROM memory_entries WHERE preference_key=? OR (kind='preference' AND lower(content)=lower(?)) ORDER BY archived_at DESC LIMIT 1`, key, p.Content).Scan(&id, &archived, &source, &updated, &evidenceJSON, &expiresAt)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
-	if archived != "" || (id != "" && !p.Explicit) {
+	now, _ := time.Parse(time.RFC3339Nano, stamp)
+	expiry, _ := time.Parse(time.RFC3339Nano, expiresAt)
+	expired := expiresAt != "" && !expiry.After(now)
+	if archived != "" || (id != "" && !expired && !p.Explicit) {
 		return nil
+	}
+	if expired {
+		observed, _ := time.Parse(time.RFC3339Nano, p.latestEvidenceAt)
+		if !observed.After(expiry) {
+			return nil
+		}
 	}
 	if id != "" {
 		var evidence []Evidence
@@ -100,7 +109,12 @@ func (m *Manager) Correct(ctx context.Context, id, content string) error {
 		return err
 	}
 	defer tx.Rollback()
-	result, err := tx.ExecContext(ctx, `UPDATE memory_entries SET content=?,source='user',kind='preference',session_id='',evidence_json='[]',updated_at=? WHERE entry_id=? AND archived_at=''`, content, m.now().UTC().Format(time.RFC3339Nano), id)
+	now := m.now().UTC()
+	expires := ""
+	if m.defaultTTL > 0 {
+		expires = now.Add(m.defaultTTL).Format(time.RFC3339Nano)
+	}
+	result, err := tx.ExecContext(ctx, `UPDATE memory_entries SET content=?,source='user',kind='preference',session_id='',evidence_json='[]',updated_at=?,expires_at=? WHERE entry_id=? AND archived_at=''`, content, now.Format(time.RFC3339Nano), expires, id)
 	if err != nil {
 		return err
 	}

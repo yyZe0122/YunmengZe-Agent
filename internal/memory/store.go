@@ -8,18 +8,11 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 )
 
 const (
-	SourceBuiltin = "builtin"
-	SourceUser    = "user"
-	SourceCurator = "curator"
-
-	KindPreference = "preference"
-	KindCurated    = "curated"
-	KindSession    = "session"
-	KindDetail     = "detail"
+	SourceUser  = "user"
+	KindCurated = "curated"
 
 	DefaultMaxInjectRunes = 2_000
 	DefaultListLimit      = 32
@@ -61,48 +54,8 @@ func NewStore(db *sql.DB) (*Store, error) {
 	return &Store{db: db}, nil
 }
 
-// Insert writes one entry and updates FTS. Empty content is rejected.
-func (s *Store) Insert(ctx context.Context, e Entry) error {
-	if s == nil || s.db == nil {
-		return errors.New("memory store is nil")
-	}
-	e = normalizeEntry(e)
-	if e.ID == "" || e.Content == "" {
-		return errors.New("memory entry id and content are required")
-	}
-	tagsJSON, _ := json.Marshal(e.Tags)
-	if e.Tags == nil {
-		tagsJSON = []byte("[]")
-	}
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin memory insert: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	_, err = tx.ExecContext(ctx, `
-		INSERT INTO memory_entries (
-			entry_id, session_id, content, source, tags_json, created_at,
-			kind, priority, expires_at, updated_at, archived_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		e.ID, e.SessionID, e.Content, e.Source, string(tagsJSON), e.CreatedAt,
-		e.Kind, e.Priority, e.ExpiresAt, e.UpdatedAt, e.ArchivedAt,
-	)
-	if err != nil {
-		return fmt.Errorf("insert memory entry: %w", err)
-	}
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO memory_entries_fts(entry_id, content) VALUES (?, ?)`,
-		e.ID, e.Content); err != nil {
-		// FTS may be missing on pre-020 DBs during partial tests; ignore only if table missing.
-		if !isMissingTable(err) {
-			return fmt.Errorf("insert memory fts: %w", err)
-		}
-	}
-	return tx.Commit()
-}
-
 // ListRecent returns newest entries for session (and global when includeGlobal).
-// includeDetail=false excludes kind=detail (for inject). Expired rows are skipped when nowRFC is set.
+// includeDetail=false excludes legacy kind=detail records. Expired rows are skipped when nowRFC is set.
 func (s *Store) ListRecent(ctx context.Context, sessionID string, includeGlobal, includeDetail bool, limit int, nowRFC string) ([]Entry, error) {
 	if limit <= 0 || limit > 200 {
 		limit = DefaultListLimit
@@ -134,7 +87,7 @@ func (s *Store) ListRecent(ctx context.Context, sessionID string, includeGlobal,
 	return scanEntries(rows)
 }
 
-// Search returns matching entries (FTS when available, else LIKE).
+// Search returns matching entries from the migrated FTS index.
 func (s *Store) Search(ctx context.Context, sessionID, query string, includeDetail bool, limit int, nowRFC string) ([]Entry, error) {
 	query = strings.TrimSpace(query)
 	if query == "" {
@@ -143,15 +96,7 @@ func (s *Store) Search(ctx context.Context, sessionID, query string, includeDeta
 	if limit <= 0 || limit > 200 {
 		limit = DefaultListLimit
 	}
-	// Prefer FTS.
-	entries, err := s.searchFTS(ctx, sessionID, query, includeDetail, limit, nowRFC)
-	if err == nil {
-		return entries, nil
-	}
-	if !isMissingTable(err) && !isFTSError(err) {
-		return nil, err
-	}
-	return s.searchLike(ctx, sessionID, query, includeDetail, limit, nowRFC)
+	return s.searchFTS(ctx, sessionID, query, includeDetail, limit, nowRFC)
 }
 
 func (s *Store) searchFTS(ctx context.Context, sessionID, query string, includeDetail bool, limit int, nowRFC string) ([]Entry, error) {
@@ -184,31 +129,8 @@ func (s *Store) searchFTS(ctx context.Context, sessionID, query string, includeD
 	return scanEntries(rows)
 }
 
-func (s *Store) searchLike(ctx context.Context, sessionID, query string, includeDetail bool, limit int, nowRFC string) ([]Entry, error) {
-	pattern := "%" + escapeLike(query) + "%"
-	sessionID = strings.TrimSpace(sessionID)
-	kindSQL := ""
-	if !includeDetail {
-		kindSQL = ` AND COALESCE(kind, 'session') != 'detail'`
-	}
-	expSQL, expArgs := activeClause(nowRFC)
-	args := []any{sessionID, pattern}
-	args = append(args, expArgs...)
-	args = append(args, limit)
-	q := `
-		SELECT ` + entrySelectCols + `
-		FROM memory_entries
-		WHERE (session_id = ? OR session_id = '') AND content LIKE ? ESCAPE '\'` + kindSQL + expSQL + `
-		ORDER BY priority DESC, created_at DESC LIMIT ?`
-	rows, err := s.db.QueryContext(ctx, q, args...)
-	if err != nil {
-		return nil, fmt.Errorf("search memory: %w", err)
-	}
-	defer rows.Close()
-	return scanEntries(rows)
-}
-
-// ArchiveExpired marks due entries archived (does not delete rows or FTS).
+// ArchiveExpired archives legacy entries. Preferences expire by expires_at;
+// archived_at remains a tombstone, including archives from older versions.
 func (s *Store) ArchiveExpired(ctx context.Context, nowRFC string) (int64, error) {
 	nowRFC = strings.TrimSpace(nowRFC)
 	if nowRFC == "" {
@@ -217,38 +139,13 @@ func (s *Store) ArchiveExpired(ctx context.Context, nowRFC string) (int64, error
 	res, err := s.db.ExecContext(ctx, `
 		UPDATE memory_entries
 		SET archived_at = ?, updated_at = ?
-		WHERE archived_at = '' AND expires_at != '' AND expires_at <= ?`,
+		WHERE kind != 'preference' AND archived_at = '' AND expires_at != '' AND expires_at <= ?`,
 		nowRFC, nowRFC, nowRFC)
 	if err != nil {
 		return 0, fmt.Errorf("archive expired memory: %w", err)
 	}
 	n, _ := res.RowsAffected()
 	return n, nil
-}
-
-// normalizeEntry fills defaults shared by direct and curator writes.
-func normalizeEntry(e Entry) Entry {
-	e.ID = strings.TrimSpace(e.ID)
-	e.SessionID = strings.TrimSpace(e.SessionID)
-	e.Content = strings.TrimSpace(e.Content)
-	if e.Source == "" {
-		e.Source = SourceBuiltin
-	}
-	if e.Kind == "" {
-		if e.SessionID == "" {
-			e.Kind = KindCurated
-		} else {
-			e.Kind = KindSession
-		}
-	}
-	if e.CreatedAt == "" {
-		e.CreatedAt = time.Now().UTC().Format(time.RFC3339Nano)
-	}
-	if e.UpdatedAt == "" {
-		e.UpdatedAt = e.CreatedAt
-	}
-	e.ArchivedAt = strings.TrimSpace(e.ArchivedAt)
-	return e
 }
 
 func scopeClause(sessionID string, includeGlobal bool) (string, []any) {
@@ -310,13 +207,6 @@ func scanEntries(rows *sql.Rows) ([]Entry, error) {
 	return out, rows.Err()
 }
 
-func escapeLike(s string) string {
-	s = strings.ReplaceAll(s, `\`, `\\`)
-	s = strings.ReplaceAll(s, `%`, `\%`)
-	s = strings.ReplaceAll(s, `_`, `\_`)
-	return s
-}
-
 // buildFTSQuery turns free text into a safe FTS5 query (AND of quoted tokens).
 func buildFTSQuery(q string) string {
 	parts := strings.Fields(q)
@@ -344,21 +234,4 @@ func buildFTSQuery(q string) string {
 		out = append(out, `"`+p+`"`)
 	}
 	return strings.Join(out, " ")
-}
-
-func isMissingTable(err error) bool {
-	if err == nil {
-		return false
-	}
-	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "no such table") || strings.Contains(msg, "no such module")
-}
-
-func isFTSError(err error) bool {
-	if err == nil {
-		return false
-	}
-	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "fts5") || strings.Contains(msg, "sql logic error") ||
-		strings.Contains(msg, "malformed") || strings.Contains(msg, "no such column")
 }

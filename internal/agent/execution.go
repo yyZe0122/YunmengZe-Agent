@@ -4,11 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/yyZe0122/yunmengze-agent/internal/tools"
-	"github.com/yyZe0122/yunmengze-agent/pkg/providerapi"
 	"io"
 	"sync"
 	"time"
+
+	"github.com/yyZe0122/yunmengze-agent/internal/tools"
+	"github.com/yyZe0122/yunmengze-agent/pkg/providerapi"
 )
 
 func (e *Engine) stream(ctx context.Context, b binding, request providerapi.CompletionRequest, options RunOptions) (providerapi.CompletionResponse, providerapi.CompletionResponse, error) {
@@ -116,7 +117,7 @@ func (e *Engine) executeTools(ctx context.Context, id string, registry *tools.Re
 	for index, call := range calls {
 		result := results[index]
 		save, done := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
-		_, err := e.Store.Append(save, id, providerapi.Message{Role: providerapi.RoleTool, ToolCallID: call.ID, Content: result.Text, Images: result.Images, UserText: result.UserText}, providerapi.Usage{})
+		_, err := e.store.Append(save, id, providerapi.Message{Role: providerapi.RoleTool, ToolCallID: call.ID, Content: result.Text, Images: result.Images, UserText: result.UserText}, providerapi.Usage{})
 		done()
 		if err != nil {
 			saveErrors = append(saveErrors, err)

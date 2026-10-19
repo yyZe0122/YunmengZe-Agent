@@ -36,6 +36,7 @@ type Tool struct {
 	Description string
 	Schema      json.RawMessage
 	ReadOnly    bool
+	RootOnly    bool
 	Handler     Handler
 }
 type Registry struct {
@@ -69,7 +70,7 @@ func (r *Registry) Register(t Tool) {
 func (r *Registry) Definitions(env Env) []providerapi.ToolDefinition {
 	var out []providerapi.ToolDefinition
 	for _, t := range r.tools {
-		if env.ReadOnly && !t.ReadOnly || env.Child && t.Name == "task" {
+		if env.ReadOnly && !t.ReadOnly || env.Child && t.RootOnly {
 			continue
 		}
 		out = append(out, providerapi.ToolDefinition{Name: t.Name, Description: t.Description, InputSchema: t.Schema})
@@ -85,8 +86,8 @@ func (r *Registry) Execute(ctx context.Context, env Env, name string, args json.
 	if env.ReadOnly && !t.ReadOnly {
 		return Result{}, fmt.Errorf("%s is unavailable in plan mode", name)
 	}
-	if env.Child && name == "task" {
-		return Result{}, errors.New("child agents cannot spawn children")
+	if env.Child && t.RootOnly {
+		return Result{}, fmt.Errorf("%s is unavailable in child sessions", name)
 	}
 	if err := validateArguments(args, t.Schema); err != nil {
 		return Result{}, err

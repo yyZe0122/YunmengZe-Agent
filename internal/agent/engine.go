@@ -4,9 +4,7 @@ package agent
 import (
 	"context"
 	"errors"
-	"fmt"
 	"path/filepath"
-	"strings"
 	"sync"
 
 	"github.com/yyZe0122/yunmengze-agent/internal/memory"
@@ -14,7 +12,6 @@ import (
 	"github.com/yyZe0122/yunmengze-agent/internal/providerconfig"
 	"github.com/yyZe0122/yunmengze-agent/internal/providers"
 	"github.com/yyZe0122/yunmengze-agent/internal/session"
-	"github.com/yyZe0122/yunmengze-agent/internal/skillcatalog"
 	"github.com/yyZe0122/yunmengze-agent/internal/store/sqlite"
 	"github.com/yyZe0122/yunmengze-agent/pkg/providerapi"
 )
@@ -27,14 +24,14 @@ type Engine struct {
 	closed     bool
 	mcpMu      sync.Mutex
 	mcpClients map[string]mcpConnection
-	Store      *session.Store
+	store      *session.Store
 	Config     providerconfig.ChatConfig
 	ConfigDir  string
 	Workspace  string
 	Main       string
 	Roles      map[string]string
 	Models     []providerconfig.ModelRef
-	Memory     *memory.Manager
+	memory     *memory.Manager
 	db         *sqlite.DB
 	mcp        providerconfig.MCPConfig
 	mu         sync.Mutex
@@ -88,9 +85,6 @@ func Open(ctx context.Context, configDir, workspace string) (*Engine, error) {
 		return nil, err
 	}
 	config, main := snapshot.Chat, snapshot.Main
-	if main == "" {
-		return nil, errors.New("configure a model in agent.json before starting")
-	}
 	life, cancel := context.WithCancel(ctx)
 	opened := false
 	defer func() {
@@ -107,22 +101,10 @@ func Open(ctx context.Context, configDir, workspace string) (*Engine, error) {
 		return nil, err
 	}
 	e.db = db
-	e.Store = session.New(db.SQL())
-	if config.MemoryEnabled() {
-		store, err := memory.NewStore(db.SQL())
-		if err != nil {
-			db.Close()
-			return nil, err
-		}
-		e.Memory, err = memory.New(memory.Config{Store: store, MaxInjectRunes: config.MemoryMaxInjectRunes(), DefaultTTL: config.MemoryDefaultTTL()})
-		if err != nil {
-			db.Close()
-			return nil, err
-		}
-		if err = e.Memory.Initialize(ctx); err != nil {
-			db.Close()
-			return nil, err
-		}
+	e.store = session.New(db.SQL())
+	if err = e.initMemory(ctx); err != nil {
+		db.Close()
+		return nil, err
 	}
 	opened = true
 	return e, nil
@@ -141,13 +123,10 @@ func (e *Engine) Close() error {
 		client.cancel()
 		_ = client.session.Close()
 	}
-	if e.Memory != nil {
-		_ = e.Memory.Shutdown(context.Background())
+	if e.memory != nil {
+		_ = e.memory.Shutdown(context.Background())
 	}
-	if e.db != nil {
-		return e.db.Close()
-	}
-	return nil
+	return e.db.Close()
 }
 func (e *Engine) resolve(ref string) (binding, error) {
 	if ref == "" {
@@ -177,13 +156,13 @@ func (e *Engine) NewSession(ctx context.Context, mode session.Mode, model string
 	if _, err := e.resolve(model); err != nil {
 		return session.Session{}, err
 	}
-	return e.Store.Create(ctx, session.Session{Workspace: e.Workspace, Mode: mode, Model: model})
+	return e.store.Create(ctx, session.Session{Workspace: e.Workspace, Mode: mode, Model: model})
 }
 func (e *Engine) SetModel(ctx context.Context, s session.Session, ref string) error {
 	if _, err := e.resolve(ref); err != nil {
 		return err
 	}
-	return e.Store.Configure(ctx, s.ID, s.Mode, ref)
+	return e.store.Configure(ctx, s.ID, s.Mode, ref)
 }
 func (e *Engine) role(name, fallback string) string {
 	if ref := e.Roles[name]; ref != "" {
@@ -194,35 +173,6 @@ func (e *Engine) role(name, fallback string) string {
 	}
 	return e.Main
 }
-func (e *Engine) Skills(workspace string) *skillcatalog.Catalog {
-	catalog, _ := skillcatalog.Discover([]skillcatalog.Root{{Path: filepath.Join(e.ConfigDir, "skills"), Source: skillcatalog.SourceUser}, {Path: filepath.Join(workspace, ".yunmengze", "skills"), Source: skillcatalog.SourceProject}})
-	return catalog
-}
-
-// Expand turns a configured slash template or explicit skill into a user message.
-func (e *Engine) Expand(workspace, text string) (string, error) {
-	if !strings.HasPrefix(text, "/") {
-		return text, nil
-	}
-	parts := strings.SplitN(strings.TrimPrefix(text, "/"), " ", 2)
-	args := ""
-	if len(parts) > 1 {
-		args = parts[1]
-	}
-	if cmd, ok := e.Config.LookupCommand(parts[0]); ok {
-		return providerconfig.ExpandChatCommandTemplate(cmd.Template, args), nil
-	}
-	catalog := e.Skills(workspace)
-	if _, ok := catalog.Get(parts[0]); ok {
-		b, err := catalog.Read(parts[0])
-		if err != nil {
-			return "", err
-		}
-		return fmt.Sprintf("Use skill %s:\n%s\n\n%s", parts[0], b, args), nil
-	}
-	return "", fmt.Errorf("unknown command /%s", parts[0])
-}
-
 func (e *Engine) beginRun(ctx context.Context) (context.Context, func(), error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()

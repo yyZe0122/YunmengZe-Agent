@@ -5,7 +5,6 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/yyZe0122/yunmengze-agent/internal/tools"
 	"github.com/yyZe0122/yunmengze-agent/pkg/providerapi"
 )
 
@@ -15,15 +14,17 @@ type VisionBackend struct {
 	Model    string
 }
 
-func (b VisionBackend) Complete(ctx context.Context, prompt string, images []providerapi.ImagePart) (tools.Result, error) {
-	if b.Provider == nil || strings.TrimSpace(b.Model) == "" {
-		return tools.Result{}, errors.New("vision provider is not configured")
-	}
+type VisionResult struct {
+	Text  string
+	Usage *providerapi.Usage
+}
+
+func (b VisionBackend) Complete(ctx context.Context, prompt string, images []providerapi.ImagePart) (VisionResult, error) {
 	if strings.TrimSpace(prompt) == "" {
 		prompt = "Describe the image."
 	}
 	if len(images) == 0 {
-		return tools.Result{}, errors.New("no images to analyze")
+		return VisionResult{}, errors.New("no images to analyze")
 	}
 	resp, err := b.Provider.Complete(ctx, providerapi.CompletionRequest{
 		Model: b.Model,
@@ -33,10 +34,10 @@ func (b VisionBackend) Complete(ctx context.Context, prompt string, images []pro
 		Images: images,
 	})
 	if err != nil {
-		return tools.Result{}, err
+		return VisionResult{}, err
 	}
 	if strings.TrimSpace(resp.Content) == "" {
-		return tools.Result{}, errors.New("vision model returned no image description")
+		return VisionResult{}, errors.New("vision model returned no image description")
 	}
-	return tools.Result{Text: strings.TrimSpace(resp.Content), Usage: &resp.Usage}, nil
+	return VisionResult{Text: strings.TrimSpace(resp.Content), Usage: &resp.Usage}, nil
 }

@@ -9,7 +9,7 @@ import (
 	storesqlite "github.com/yyZe0122/yunmengze-agent/internal/store/sqlite"
 )
 
-func TestStoreInsertListSearch(t *testing.T) {
+func TestStoreListSearchLegacyRecords(t *testing.T) {
 	ctx := context.Background()
 	database, err := storesqlite.Open(ctx, t.TempDir()+"/core.db")
 	if err != nil {
@@ -21,16 +21,13 @@ func TestStoreInsertListSearch(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Date(2026, 8, 6, 12, 0, 0, 0, time.UTC)
-	if err := store.Insert(ctx, Entry{
-		ID: "e1", SessionID: "s1", Content: "prefer Go 1.26", Source: SourceUser,
-		CreatedAt: now.Format(time.RFC3339Nano),
-	}); err != nil {
+	// Existing installations can contain session/global facts; production no longer creates them.
+	if _, err := database.SQL().ExecContext(ctx, `INSERT INTO memory_entries(entry_id,session_id,content,kind,created_at) VALUES
+		('e1','s1','prefer Go 1.26','session',?),
+		('e2','','global note','curated',?)`, now.Format(time.RFC3339Nano), now.Add(time.Second).Format(time.RFC3339Nano)); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Insert(ctx, Entry{
-		ID: "e2", SessionID: "", Content: "global note", Source: SourceBuiltin,
-		CreatedAt: now.Add(time.Second).Format(time.RFC3339Nano),
-	}); err != nil {
+	if _, err := database.SQL().ExecContext(ctx, `INSERT INTO memory_entries_fts(entry_id,content) SELECT entry_id,content FROM memory_entries`); err != nil {
 		t.Fatal(err)
 	}
 	list, err := store.ListRecent(ctx, "s1", true, true, 10, "")
@@ -58,7 +55,7 @@ func TestStoreFreeze(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := mgr.RememberKind(ctx, "", "session fact A", SourceUser, nil, KindPreference, 10, ""); err != nil {
+	if err := store.savePreference(ctx, preferenceProposal{Key: "a", Category: "workflow", Content: "session fact A"}, mgr.now().Format(time.RFC3339Nano), 0); err != nil {
 		t.Fatal(err)
 	}
 	block1 := mgr.FrozenSystemBlock(ctx, "s1")
@@ -66,7 +63,7 @@ func TestStoreFreeze(t *testing.T) {
 		t.Fatalf("frozen = %q", block1)
 	}
 	// Mid-session write must not change frozen block until invalidate.
-	if err := mgr.RememberKind(ctx, "", "session fact B after freeze", SourceUser, nil, KindPreference, 10, ""); err != nil {
+	if err := store.savePreference(ctx, preferenceProposal{Key: "b", Category: "workflow", Content: "session fact B after freeze"}, mgr.now().Format(time.RFC3339Nano), 0); err != nil {
 		t.Fatal(err)
 	}
 	block2 := mgr.FrozenSystemBlock(ctx, "s1")
@@ -103,7 +100,7 @@ func TestManagerSystemPrompt(t *testing.T) {
 	if err := mgr.Initialize(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if err := mgr.RememberKind(ctx, "", "User prefers terse replies", SourceUser, nil, KindPreference, 10, ""); err != nil {
+	if err := store.savePreference(ctx, preferenceProposal{Key: "terse", Category: "response_style", Content: "User prefers terse replies"}, mgr.now().Format(time.RFC3339Nano), 0); err != nil {
 		t.Fatal(err)
 	}
 	block := mgr.buildInjectBlock(ctx, "sess-a")
@@ -115,7 +112,7 @@ func TestManagerSystemPrompt(t *testing.T) {
 	}
 }
 
-func TestDefaultTTLAndSoftArchive(t *testing.T) {
+func TestLegacyMemoryExpiryAndInjection(t *testing.T) {
 	ctx := context.Background()
 	database, err := storesqlite.Open(ctx, t.TempDir()+"/core.db")
 	if err != nil {
@@ -129,36 +126,16 @@ func TestDefaultTTLAndSoftArchive(t *testing.T) {
 	now := time.Date(2026, 8, 13, 12, 0, 0, 0, time.UTC)
 	clock := now
 	mgr, err := New(Config{
-		Store: store, DefaultTTL: time.Hour,
-		Now: func() time.Time { return clock },
+		Store: store,
+		Now:   func() time.Time { return clock },
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := mgr.Remember(ctx, "s1", "session fact with ttl", SourceUser, nil); err != nil {
+	if _, err := database.SQL().ExecContext(ctx, `INSERT INTO memory_entries(entry_id,session_id,content,kind,created_at,expires_at) VALUES
+		('legacy-session','s1','session fact with ttl','session',?,?),
+		('legacy-global','','global curated no ttl','curated',?,'')`, now.Format(time.RFC3339Nano), now.Add(time.Hour).Format(time.RFC3339Nano), now.Format(time.RFC3339Nano)); err != nil {
 		t.Fatal(err)
-	}
-	if err := mgr.RememberKind(ctx, "", "global curated no ttl", SourceUser, nil, KindCurated, 10, ""); err != nil {
-		t.Fatal(err)
-	}
-	list, err := store.ListRecent(ctx, "s1", true, true, 10, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var session, curated Entry
-	for _, e := range list {
-		switch e.Content {
-		case "session fact with ttl":
-			session = e
-		case "global curated no ttl":
-			curated = e
-		}
-	}
-	if session.ID == "" || session.ExpiresAt != now.Add(time.Hour).Format(time.RFC3339Nano) {
-		t.Fatalf("session ttl = %+v", session)
-	}
-	if curated.ID == "" || curated.ExpiresAt != "" {
-		t.Fatalf("curated should have no ttl: %+v", curated)
 	}
 	if strings.Contains(mgr.buildInjectBlock(ctx, "s1"), "session fact with ttl") {
 		t.Fatal("legacy session facts must not be injected")
@@ -169,7 +146,7 @@ func TestDefaultTTLAndSoftArchive(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, err := scanEntry(database.SQL().QueryRowContext(ctx,
-		`SELECT `+entrySelectCols+` FROM memory_entries WHERE entry_id = ?`, session.ID))
+		`SELECT `+entrySelectCols+` FROM memory_entries WHERE entry_id = ?`, "legacy-session"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,7 +165,7 @@ func TestDefaultTTLAndSoftArchive(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, e := range active {
-		if e.ID == session.ID {
+		if e.ID == "legacy-session" {
 			t.Fatalf("archived entry still in default list: %+v", e)
 		}
 	}

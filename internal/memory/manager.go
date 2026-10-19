@@ -51,11 +51,8 @@ func New(config Config) (*Manager, error) {
 	}, nil
 }
 
-// Initialize opens lifecycle; soft-archives expired entries (no hard delete).
+// Initialize opens lifecycle and archives expired legacy entries (no hard delete).
 func (m *Manager) Initialize(ctx context.Context) error {
-	if m == nil {
-		return nil
-	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.closed = false
@@ -63,11 +60,8 @@ func (m *Manager) Initialize(ctx context.Context) error {
 	return nil
 }
 
-// Maintain soft-archives expired entries. Safe to call after each turn.
+// Maintain archives expired legacy entries. Preferences expire without tombstones.
 func (m *Manager) Maintain(ctx context.Context) {
-	if m == nil {
-		return
-	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.closed {
@@ -77,9 +71,6 @@ func (m *Manager) Maintain(ctx context.Context) {
 }
 
 func (m *Manager) maintainLocked(ctx context.Context, operation string) {
-	if m.store == nil {
-		return
-	}
 	if n, err := m.store.ArchiveExpired(ctx, m.now().UTC().Format(time.RFC3339Nano)); err != nil {
 		slog.Warn("memory archive expired failed",
 			"component", "memory", "operation", operation, "result", "warning", "error", err)
@@ -91,9 +82,6 @@ func (m *Manager) maintainLocked(ctx context.Context, operation string) {
 
 // Shutdown marks closed (store uses shared core.db — do not close DB).
 func (m *Manager) Shutdown(ctx context.Context) error {
-	if m == nil {
-		return nil
-	}
 	_ = ctx
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -104,9 +92,6 @@ func (m *Manager) Shutdown(ctx context.Context) error {
 
 // InvalidateSnapshot drops the frozen inject block for a session (or all if empty).
 func (m *Manager) InvalidateSnapshot(sessionID string) {
-	if m == nil {
-		return
-	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	sessionID = strings.TrimSpace(sessionID)
@@ -119,9 +104,6 @@ func (m *Manager) InvalidateSnapshot(sessionID string) {
 
 // FrozenSystemBlock returns preferences fixed for this run until invalidated.
 func (m *Manager) FrozenSystemBlock(ctx context.Context, sessionID string) string {
-	if m == nil || m.store == nil {
-		return ""
-	}
 	sessionID = strings.TrimSpace(sessionID)
 	m.mu.Lock()
 	if block, ok := m.snapshots[sessionID]; ok {
@@ -143,9 +125,6 @@ func (m *Manager) FrozenSystemBlock(ctx context.Context, sessionID string) strin
 }
 
 func (m *Manager) buildInjectBlock(ctx context.Context, sessionID string) string {
-	if m == nil || m.store == nil {
-		return ""
-	}
 	nowRFC := m.now().UTC().Format(time.RFC3339Nano)
 	entries, err := m.store.Preferences(ctx, 32, nowRFC)
 	if err != nil || len(entries) == 0 {
@@ -154,63 +133,14 @@ func (m *Manager) buildInjectBlock(ctx context.Context, sessionID string) string
 	return formatBlock(entries, m.maxInjectRunes)
 }
 
-// Remember stores one fact. kind empty → session (or curated if sessionID empty).
-func (m *Manager) Remember(ctx context.Context, sessionID, content, source string, tags []string) error {
-	return m.RememberKind(ctx, sessionID, content, source, tags, "", 0, "")
-}
-
-// RememberKind stores with explicit kind/priority/expiresAt.
-func (m *Manager) RememberKind(ctx context.Context, sessionID, content, source string, tags []string, kind string, priority int, expiresAt string) error {
-	if m == nil || m.store == nil {
-		return nil
-	}
-	content = strings.TrimSpace(content)
-	if content == "" {
-		return nil
-	}
-
-	// Cap single entry size (detail can be longer).
-	maxRunes := 800
-	if kind == KindDetail {
-		maxRunes = 2000
-	}
-	content = truncateRunes(content, maxRunes)
-	sessionID = strings.TrimSpace(sessionID)
-	if kind == "" {
-		if sessionID == "" {
-			kind = KindCurated
-		} else {
-			kind = KindSession
-		}
-	}
-	now := m.now().UTC()
-	nowRFC := now.Format(time.RFC3339Nano)
-	expiresAt = strings.TrimSpace(expiresAt)
-	if expiresAt == "" && m.defaultTTL > 0 && kind != KindCurated && sessionID != "" {
-		expiresAt = now.Add(m.defaultTTL).Format(time.RFC3339Nano)
-	}
-	id := "mem-" + shortID(sessionID, content, nowRFC)
-	return m.store.Insert(ctx, Entry{
-		ID: id, SessionID: sessionID, Content: content, Source: source,
-		Tags: tags, Kind: kind, Priority: priority, ExpiresAt: expiresAt,
-		CreatedAt: nowRFC, UpdatedAt: nowRFC,
-	})
-}
-
 // List returns current facts for this session and optionally the user.
 func (m *Manager) List(ctx context.Context, sessionID string, includeGlobal bool, limit int) ([]Entry, error) {
-	if m == nil || m.store == nil {
-		return nil, fmt.Errorf("memory store unavailable")
-	}
 	nowRFC := m.now().UTC().Format(time.RFC3339Nano)
 	return m.store.ListRecent(ctx, sessionID, includeGlobal, true, limit, nowRFC)
 }
 
 // Search lists matching entries for UI/tools.
 func (m *Manager) Search(ctx context.Context, sessionID, query string, limit int) ([]Entry, error) {
-	if m == nil || m.store == nil {
-		return nil, fmt.Errorf("memory store unavailable")
-	}
 	nowRFC := m.now().UTC().Format(time.RFC3339Nano)
 	return m.store.Search(ctx, sessionID, query, true, limit, nowRFC)
 }

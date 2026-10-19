@@ -90,10 +90,16 @@ func run(ctx context.Context, args []string, out, errOut io.Writer) error {
 			return err
 		}
 		modelcatalog.Init(dir)
-		if _, err = providerconfig.LoadSnapshot(dir); err != nil {
+		snapshot, err := providerconfig.LoadSnapshot(dir)
+		if err != nil {
 			return err
 		}
-		fmt.Fprintln(out, "configuration valid")
+		fmt.Fprintln(out, "configuration valid for enabled features")
+		for _, model := range snapshot.Models {
+			if model.Unavailable != "" {
+				fmt.Fprintf(errOut, "%s unavailable: %s\n", model.ID, model.Unavailable)
+			}
+		}
 		return nil
 	case "models":
 		if len(args) > 1 || len(args) == 1 && args[0] != "refresh" {
@@ -168,7 +174,7 @@ func run(ctx context.Context, args []string, out, errOut io.Writer) error {
 	defer engine.Close()
 	var s session.Session
 	if *resume {
-		items, err := engine.Store.List(ctx, cwd)
+		items, err := engine.ListSessions(ctx, cwd)
 		if err != nil {
 			return err
 		}
@@ -183,7 +189,7 @@ func run(ctx context.Context, args []string, out, errOut io.Writer) error {
 		}
 	})
 	if *id != "" {
-		s, err = engine.Store.Get(ctx, *id)
+		s, err = engine.GetSession(ctx, *id)
 		if err != nil {
 			return err
 		}
@@ -245,6 +251,8 @@ func run(ctx context.Context, args []string, out, errOut io.Writer) error {
 			_, writeErr = fmt.Fprint(out, event.Text)
 		} else if event.Type == "tool_start" {
 			fmt.Fprintf(errOut, "[%s]\n", event.Tool)
+		} else if event.Type == "info" {
+			fmt.Fprintln(errOut, event.Text)
 		}
 	}})
 	if !*jsonMode {

@@ -4,15 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/yyZe0122/yunmengze-agent/internal/skillcatalog"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/yyZe0122/yunmengze-agent/internal/contextpack"
-	"github.com/yyZe0122/yunmengze-agent/internal/memory"
 	"github.com/yyZe0122/yunmengze-agent/internal/providerconfig"
 	"github.com/yyZe0122/yunmengze-agent/internal/session"
+	"github.com/yyZe0122/yunmengze-agent/internal/skillcatalog"
 	"github.com/yyZe0122/yunmengze-agent/internal/tools"
 	"github.com/yyZe0122/yunmengze-agent/internal/version"
 	"github.com/yyZe0122/yunmengze-agent/pkg/providerapi"
@@ -32,37 +31,12 @@ func (e *Engine) Run(ctx context.Context, id, input string, options RunOptions) 
 		return "", err
 	}
 	defer finish()
-	token, err := e.Store.Acquire(ctx, id)
+	ctx, release, err := e.acquireSession(ctx, id)
 	if err != nil {
 		return "", err
 	}
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	leaseDone := make(chan struct{})
-	defer func() {
-		cancel()
-		<-leaseDone
-		cleanup, done := context.WithTimeout(context.Background(), 3*time.Second)
-		defer done()
-		_ = e.Store.Release(cleanup, id, token)
-	}()
-	go func() {
-		defer close(leaseDone)
-		ticker := time.NewTicker(30 * time.Second)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				if e.Store.Renew(ctx, id, token) != nil {
-					cancel()
-					return
-				}
-			}
-		}
-	}()
-	s, err := e.Store.Get(ctx, id)
+	defer release()
+	s, err := e.store.Get(ctx, id)
 	if err != nil {
 		return "", err
 	}
@@ -70,13 +44,16 @@ func (e *Engine) Run(ctx context.Context, id, input string, options RunOptions) 
 	if err != nil {
 		return "", err
 	}
-	catalog := e.Skills(s.Workspace)
+	catalog, diagnostics := e.Skills(s.Workspace)
+	for _, diagnostic := range diagnostics {
+		options.emit(Event{Type: "info", Text: "Skill skipped: " + diagnostic.Error()})
+	}
 	registry, err := e.registry(s, options, catalog)
 	if err != nil {
 		return "", err
 	}
 	userText := input
-	input, err = e.Expand(s.Workspace, input)
+	input, err = e.expand(input, catalog)
 	if err != nil {
 		return "", err
 	}
@@ -84,14 +61,12 @@ func (e *Engine) Run(ctx context.Context, id, input string, options RunOptions) 
 	if s.ParentID == "" && s.Mode == session.Agent && !strings.HasPrefix(userText, "/") {
 		original = &userText
 	}
-	if _, err = e.Store.Append(ctx, id, providerapi.Message{Role: providerapi.RoleUser, Content: input, UserText: original}, providerapi.Usage{}); err != nil {
+	if _, err = e.store.Append(ctx, id, providerapi.Message{Role: providerapi.RoleUser, Content: input, UserText: original}, providerapi.Usage{}); err != nil {
 		return "", err
 	}
 	env := tools.Env{Workspace: s.Workspace, SessionID: id, ReadOnly: s.Mode == session.Plan, Child: s.ParentID != ""}
 	defs := registry.Definitions(env)
-	if e.Memory != nil {
-		e.Memory.InvalidateSnapshot(s.ID)
-	}
+	e.RefreshMemory(s.ID)
 	prefix := e.prefix(ctx, s, catalog)
 	var records []session.Record
 	after := s.SummaryThrough
@@ -113,7 +88,7 @@ func (e *Engine) Run(ctx context.Context, id, input string, options RunOptions) 
 				}
 				if strings.TrimSpace(text) != "" {
 					rawText := text
-					text, err = e.Expand(s.Workspace, text)
+					text, err = e.expand(text, catalog)
 					if err != nil {
 						return last, err
 					}
@@ -121,7 +96,7 @@ func (e *Engine) Run(ctx context.Context, id, input string, options RunOptions) 
 					if s.ParentID == "" && s.Mode == session.Agent && !strings.HasPrefix(rawText, "/") {
 						original = &rawText
 					}
-					if _, err = e.Store.Append(ctx, id, providerapi.Message{Role: providerapi.RoleUser, Content: text, UserText: original}, providerapi.Usage{}); err != nil {
+					if _, err = e.store.Append(ctx, id, providerapi.Message{Role: providerapi.RoleUser, Content: text, UserText: original}, providerapi.Usage{}); err != nil {
 						return last, err
 					}
 					options.emit(Event{Type: "steer", Text: text})
@@ -131,7 +106,7 @@ func (e *Engine) Run(ctx context.Context, id, input string, options RunOptions) 
 			}
 		}
 	collected:
-		next, err := e.Store.Records(ctx, id, after)
+		next, err := e.store.Records(ctx, id, after)
 		if err != nil {
 			return last, err
 		}
@@ -172,7 +147,7 @@ func (e *Engine) Run(ctx context.Context, id, input string, options RunOptions) 
 			}
 			if partial.Content != "" || partial.Thinking != "" {
 				save, done := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
-				_, saveErr := e.Store.Append(save, id, providerapi.Message{Role: providerapi.RoleAssistant, Content: partial.Content, Thinking: partial.Thinking}, providerapi.Usage{})
+				_, saveErr := e.store.Append(save, id, providerapi.Message{Role: providerapi.RoleAssistant, Content: partial.Content, Thinking: partial.Thinking}, providerapi.Usage{})
 				done()
 				if saveErr != nil {
 					return partial.Content, errors.Join(streamErr, saveErr)
@@ -188,7 +163,7 @@ func (e *Engine) Run(ctx context.Context, id, input string, options RunOptions) 
 			seen[call.ID] = true
 		}
 		assistant := providerapi.Message{Role: providerapi.RoleAssistant, Content: response.Content, Thinking: response.Thinking, ToolCalls: response.ToolCalls, Replay: response.Replay}
-		if _, err = e.Store.Append(ctx, id, assistant, response.Usage); err != nil {
+		if _, err = e.store.Append(ctx, id, assistant, response.Usage); err != nil {
 			return last, err
 		}
 		last = response.Content
@@ -206,12 +181,7 @@ func (e *Engine) Run(ctx context.Context, id, input string, options RunOptions) 
 			if options.Inbox != nil && len(options.Inbox) > 0 {
 				continue
 			}
-			if e.Memory != nil && s.Mode == session.Agent && s.ParentID == "" {
-				if ce := e.Memory.Curate(ctx, memory.CuratorConfig{Enabled: e.Config.MemoryCuratorEnabled(), MaxFacts: e.Config.MemoryCuratorMaxFacts(), TimeoutMS: e.Config.MemoryCuratorTimeoutMS(), MinTurns: e.Config.MemoryCuratorMinTurns(), MinInterval: e.Config.MemoryCuratorMinInterval(), Caller: curatorCaller{e: e, model: s.Model, options: options}}); ce != nil {
-					options.emit(Event{Type: "info", Text: "Preference curation skipped: " + ce.Error()})
-				}
-				e.Memory.Maintain(ctx)
-			}
+			e.curateMemory(ctx, s, options)
 			return last, nil
 		}
 	}
@@ -232,10 +202,10 @@ func (e *Engine) prefix(ctx context.Context, s session.Session, catalog *skillca
 			prefix += sk.ID + ": " + sk.Description + "\n"
 		}
 	}
-	if e.Memory != nil {
-		prefix += "\n" + e.Memory.FrozenSystemBlock(ctx, s.ID)
+	prefix += e.memoryBlock(ctx, s.ID)
+	if e.Config.TaskEnabled() && s.ParentID == "" {
+		prefix += "\nUse task only when substantial independent work benefits from delegation. Set independent only for tasks with no dependencies and no overlapping files; never delegate routine small edits. The parent integrates results.\n"
 	}
-	prefix += "\nUse task only when substantial independent work benefits from delegation. Set independent only for tasks with no dependencies and no overlapping files; never delegate routine small edits. The parent integrates results.\n"
 	prefix += "\nUTC date: " + time.Now().UTC().Format("2006-01-02")
 	return prefix
 }
@@ -259,26 +229,4 @@ func (e *Engine) messages(s session.Session, records []session.Record, prefix st
 		out = append(out, r.Message)
 	}
 	return out
-}
-
-type curatorCaller struct {
-	e       *Engine
-	model   string
-	options RunOptions
-}
-
-func (c curatorCaller) ProposeMemoryFacts(ctx context.Context, user, assistant string, maxFacts int) (string, error) {
-	b, err := c.e.resolve(c.e.role(providerconfig.RoleMemory, c.model))
-	if err != nil {
-		return "", err
-	}
-	prompt := memory.BuildCuratorUserPrompt(user, assistant, maxFacts)
-	if contextpack.EstimateText(prompt)+contextpack.EstimateText(memory.CuratorSystemPrompt) > contextpack.UsableWindow(b.config.ContextWindow, 1024, 0) {
-		return "", errors.New("preference batch exceeds memory model context; configure a larger-context memory model")
-	}
-	r, err := b.provider.Complete(ctx, providerapi.CompletionRequest{Model: b.config.ModelID, Messages: []providerapi.Message{{Role: providerapi.RoleSystem, Content: memory.CuratorSystemPrompt}, {Role: providerapi.RoleUser, Content: prompt}}, MaxOutputTokens: 1024})
-	if err == nil {
-		c.options.emit(Event{Type: "usage", Purpose: "memory", Usage: &r.Usage})
-	}
-	return r.Content, err
 }

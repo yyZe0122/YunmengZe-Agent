@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/yyZe0122/yunmengze-agent/pkg/providerapi"
 	"os"
 	"strings"
 	"sync"
@@ -19,6 +18,7 @@ import (
 	"github.com/mattn/go-isatty"
 	"github.com/yyZe0122/yunmengze-agent/internal/agent"
 	"github.com/yyZe0122/yunmengze-agent/internal/session"
+	"github.com/yyZe0122/yunmengze-agent/pkg/providerapi"
 )
 
 type entry struct {
@@ -106,14 +106,14 @@ func Run(ctx context.Context, e *agent.Engine, initial session.Session, mode ses
 }
 func (m model) Init() tea.Cmd { return textarea.Blink }
 func (m *model) load(id string) error {
-	s, err := m.engine.Store.Get(m.ctx, id)
+	s, err := m.engine.GetSession(m.ctx, id)
 	if err != nil {
 		return err
 	}
 	if s.ParentID != "" {
 		return errors.New("child sessions are resumed through the task tool")
 	}
-	records, err := m.engine.Store.Records(m.ctx, id, 0)
+	records, err := m.engine.SessionRecords(m.ctx, id)
 	if err != nil {
 		return err
 	}
@@ -390,7 +390,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				mode = session.Agent
 			}
 			if m.session.ID != "" {
-				if err := m.engine.Store.Configure(m.ctx, m.session.ID, mode, m.modelRef); err != nil {
+				if err := m.engine.ConfigureSession(m.ctx, m.session.ID, mode, m.modelRef); err != nil {
 					m.status = err.Error()
 					return m, nil
 				}

@@ -4,13 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
+	"time"
+
 	"github.com/yyZe0122/yunmengze-agent/internal/contextpack"
 	"github.com/yyZe0122/yunmengze-agent/internal/providerconfig"
 	"github.com/yyZe0122/yunmengze-agent/internal/session"
 	"github.com/yyZe0122/yunmengze-agent/internal/tools"
 	"github.com/yyZe0122/yunmengze-agent/pkg/providerapi"
-	"strings"
-	"time"
 )
 
 func (e *Engine) Compact(ctx context.Context, id, focus string) error {
@@ -19,20 +20,16 @@ func (e *Engine) Compact(ctx context.Context, id, focus string) error {
 		return err
 	}
 	defer finish()
-	token, err := e.Store.Acquire(ctx, id)
+	ctx, release, err := e.acquireSession(ctx, id)
 	if err != nil {
 		return err
 	}
-	defer func() {
-		c, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		defer cancel()
-		_ = e.Store.Release(c, id, token)
-	}()
-	s, err := e.Store.Get(ctx, id)
+	defer release()
+	s, err := e.store.Get(ctx, id)
 	if err != nil {
 		return err
 	}
-	records, err := e.Store.Records(ctx, id, s.SummaryThrough)
+	records, err := e.store.Records(ctx, id, s.SummaryThrough)
 	if err != nil {
 		return err
 	}
@@ -51,6 +48,8 @@ func (e *Engine) compact(ctx context.Context, s *session.Session, records []sess
 	if main.config.NativeCompaction && len(records) > 0 {
 		if changed, err := e.compactNative(ctx, s, records, main, focus, options); err == nil {
 			return changed, nil
+		} else if ctx.Err() != nil {
+			return false, ctx.Err()
 		} else {
 			options.emit(Event{Type: "info", Text: "Native compaction unavailable; using summary: " + err.Error()})
 		}
@@ -88,7 +87,7 @@ func (e *Engine) compact(ctx context.Context, s *session.Session, records []sess
 		return false, errors.New("empty compaction summary")
 	}
 	through := records[len(head)-1].ID
-	if err = e.Store.SetSummary(ctx, s.ID, result.Content, through); err != nil {
+	if err = e.store.SetSummary(ctx, s.ID, result.Content, through); err != nil {
 		return false, err
 	}
 	s.SummaryReplay = nil
@@ -115,7 +114,7 @@ func (e *Engine) compactNative(ctx context.Context, s *session.Session, records 
 	// Text is an explicitly lossy fallback only when switching adapter/model.
 	summary := tools.BoundText(s.Summary+"\n"+contextpack.ExtractiveSummary(messages, 10000), 12000)
 	through := records[len(records)-1].ID
-	if err = e.Store.SetNativeSummary(ctx, s.ID, summary, through, replay); err != nil {
+	if err = e.store.SetNativeSummary(ctx, s.ID, summary, through, replay); err != nil {
 		return false, err
 	}
 	s.Summary, s.SummaryThrough, s.SummaryReplay = summary, through, replay
