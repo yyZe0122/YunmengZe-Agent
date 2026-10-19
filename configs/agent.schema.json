@@ -57,7 +57,8 @@
                 "type": "string"
               },
               "apiKey": {
-                "type": "string"
+                "type": "string",
+                "description": "Literal key or a whole-value {env:NAME}/{file:path} reference, resolved once at startup. Omit for services that need no key."
               },
               "completionPath": {
                 "type": "string"
@@ -155,7 +156,9 @@
           "additionalProperties": false,
           "properties": {
             "enabled": {
-              "type": "boolean"
+              "type": "boolean",
+              "default": true,
+              "description": "Controls automatic compaction and overflow retry; manual compaction and context packing remain available."
             }
           }
         },
@@ -169,7 +172,9 @@
           "additionalProperties": false,
           "properties": {
             "enabled": {
-              "type": "boolean"
+              "type": "boolean",
+              "default": true,
+              "description": "Enable memory initialization, tools, injection, curation and maintenance. Disabling preserves stored data."
             },
             "max_inject_runes": {
               "anyOf": [
@@ -184,14 +189,17 @@
               ]
             },
             "default_ttl": {
-              "type": "string"
+              "type": "string",
+              "description": "Positive Go duration up to 8760h; empty means no default preference expiry. Expired preferences may be relearned from fresh evidence; explicit forget and existing archives remain tombstones."
             },
             "curator": {
               "type": "object",
               "additionalProperties": false,
               "properties": {
                 "enabled": {
-                  "type": "boolean"
+                  "type": "boolean",
+                  "default": true,
+                  "description": "Automatically curate preferences after successful root agent runs; also requires chat.memory.enabled."
                 },
                 "max_facts": {
                   "type": "integer",
@@ -252,6 +260,11 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true,
+              "description": "Enable built-in web tools and web child tasks. Disabling skips search-backend dependencies but does not restrict OS, MCP or image URL networking."
+            },
             "search": {
               "enum": [
                 "ddg",
@@ -266,6 +279,39 @@
               "type": "string"
             }
           }
+        },
+        "skills": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true,
+              "description": "Enable skill discovery, tools, completion and slash expansion. Rules and chat.commands remain available when disabled."
+            }
+          }
+        },
+        "vision": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true,
+              "description": "Enable image tools and the optional models.vision dependency; actual image support depends on the selected model."
+            }
+          }
+        },
+        "task": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true,
+              "description": "Enable leaf child tasks and delegation prompts. Web children also require chat.web.enabled."
+            }
+          }
         }
       }
     },
@@ -273,6 +319,11 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable MCP service validation, credential resolution and tools. Connections are opened only when invoked in agent mode."
+        },
         "servers": {
           "type": "object",
           "additionalProperties": {

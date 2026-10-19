@@ -13,24 +13,8 @@ import (
 	"github.com/yyZe0122/yunmengze-agent/internal/modelcatalog"
 )
 
-func loadFile(path string) (Resolved, error) {
-	config, err := decodeConfigFile(path)
-	if err != nil {
-		return Resolved{}, err
-	}
-	if err := validateModelsMap(config); err != nil {
-		return Resolved{}, err
-	}
-	providerID, modelID, ok := strings.Cut(strings.TrimSpace(config.Model), "/")
-	providerID, modelID = strings.TrimSpace(providerID), strings.TrimSpace(modelID)
-	if !ok || providerID == "" || modelID == "" {
-		return Resolved{}, errors.New("provider config model must use provider/model format")
-	}
-	return resolveFromFile(path, config, providerID, modelID)
-}
-
-// validateModelsMap checks optional top-level models role map.
-func validateModelsMap(config File) error {
+// Role names and reference syntax remain strict even for disabled capabilities.
+func validateModelRoles(config File) error {
 	if len(config.Models) == 0 {
 		return nil
 	}
@@ -54,28 +38,8 @@ func validateModelsMap(config File) error {
 		if !ok || providerID == "" || modelID == "" {
 			return fmt.Errorf("models.%s must use provider/model format", role)
 		}
-		provider, exists := config.Provider[providerID]
-		if !exists {
-			return fmt.Errorf("models.%s provider %q is not configured", role, providerID)
-		}
-		if len(provider.Models) > 0 {
-			if _, ok := lookupModel(provider.Models, providerID, modelID); !ok {
-				return fmt.Errorf("models.%s: %w", role, errModelNotInCatalog(providerID, modelID, provider.Models))
-			}
-		}
 	}
 	return nil
-}
-
-func loadFileWithModel(path, providerID, modelID string) (Resolved, error) {
-	config, err := decodeConfigFile(path)
-	if err != nil {
-		return Resolved{}, err
-	}
-	if err := validateModelsMap(config); err != nil {
-		return Resolved{}, err
-	}
-	return resolveFromFile(path, config, providerID, modelID)
 }
 
 // lookupModel finds a model entry under provider.models (OpenCode-style).
@@ -138,26 +102,6 @@ func decodeConfigFile(path string) (File, error) {
 		return File{}, fmt.Errorf("decode provider config %s: %w", path, err)
 	}
 	return config, nil
-}
-
-func resolveFromFile(path string, config File, providerID, modelID string) (Resolved, error) {
-	if providerID == "" || modelID == "" {
-		return Resolved{}, errors.New("provider config model must use provider/model format")
-	}
-	provider, ok := config.Provider[providerID]
-	if !ok {
-		return Resolved{}, fmt.Errorf("selected provider %q is not configured", providerID)
-	}
-	var err error
-	provider.Options.APIKey, err = resolveValue(provider.Options.APIKey, filepath.Dir(path))
-	if err != nil {
-		return Resolved{}, fmt.Errorf("resolve provider %q apiKey: %w", providerID, err)
-	}
-	provider.Options.Headers, err = resolveValues(provider.Options.Headers, filepath.Dir(path))
-	if err != nil {
-		return Resolved{}, fmt.Errorf("resolve provider %q headers: %w", providerID, err)
-	}
-	return resolveProvider(path, providerID, modelID, provider)
 }
 
 // resolveProvider consumes credentials already resolved by the config loader.

@@ -10,13 +10,14 @@ import (
 
 // Snapshot is immutable for the Engine lifetime, including resolved secret values.
 type Snapshot struct {
-	path   string
-	file   File
-	Chat   ChatConfig
-	MCP    MCPConfig
-	Main   string
-	Roles  map[string]string
-	Models []ModelRef
+	path           string
+	file           File
+	providerErrors map[string]error
+	Chat           ChatConfig
+	MCP            MCPConfig
+	Main           string
+	Roles          map[string]string
+	Models         []ModelRef
 }
 
 func LoadSnapshot(dir string) (*Snapshot, error) {
@@ -34,10 +35,10 @@ func LoadSnapshot(dir string) (*Snapshot, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err = validateModelsMap(file); err != nil {
+	if err = validateModelRoles(file); err != nil {
 		return nil, err
 	}
-	snapshot := &Snapshot{path: path, file: file, Main: strings.TrimSpace(file.Model), Roles: make(map[string]string)}
+	snapshot := &Snapshot{path: path, file: file, providerErrors: make(map[string]error), Main: strings.TrimSpace(file.Model), Roles: make(map[string]string)}
 	if snapshot.Main == "" {
 		return nil, errors.New("provider config model is required")
 	}
@@ -50,11 +51,13 @@ func LoadSnapshot(dir string) (*Snapshot, error) {
 	for name, provider := range file.Provider {
 		provider.Options.APIKey, err = resolveValue(provider.Options.APIKey, base)
 		if err != nil {
-			return nil, fmt.Errorf("provider %s: %w", name, err)
+			snapshot.providerErrors[name] = fmt.Errorf("provider %s apiKey: %w", name, err)
+			continue
 		}
 		provider.Options.Headers, err = resolveValues(provider.Options.Headers, base)
 		if err != nil {
-			return nil, err
+			snapshot.providerErrors[name] = fmt.Errorf("provider %s headers: %w", name, err)
+			continue
 		}
 		file.Provider[name] = provider
 	}
@@ -73,16 +76,18 @@ func LoadSnapshot(dir string) (*Snapshot, error) {
 	if err = snapshot.MCP.validate(); err != nil {
 		return nil, err
 	}
-	for name, server := range snapshot.MCP.Servers {
-		server.Env, err = resolveValues(server.Env, base)
-		if err != nil {
-			return nil, err
+	if snapshot.MCP.IsEnabled() {
+		for name, server := range snapshot.MCP.Servers {
+			server.Env, err = resolveValues(server.Env, base)
+			if err != nil {
+				return nil, fmt.Errorf("mcp %s env: %w", name, err)
+			}
+			server.Headers, err = resolveValues(server.Headers, base)
+			if err != nil {
+				return nil, fmt.Errorf("mcp %s headers: %w", name, err)
+			}
+			snapshot.MCP.Servers[name] = server
 		}
-		server.Headers, err = resolveValues(server.Headers, base)
-		if err != nil {
-			return nil, err
-		}
-		snapshot.MCP.Servers[name] = server
 	}
 	seen := map[string]bool{}
 	add := func(ref, name string) {
@@ -101,9 +106,28 @@ func LoadSnapshot(dir string) (*Snapshot, error) {
 		}
 	}
 	sort.Slice(snapshot.Models, func(i, j int) bool { return snapshot.Models[i].ID < snapshot.Models[j].ID })
-	for _, model := range snapshot.Models {
+	for i, model := range snapshot.Models {
 		if _, err = snapshot.Resolve(model.ID); err != nil {
-			return nil, err
+			snapshot.Models[i].Unavailable = err.Error()
+		}
+	}
+	if _, err = snapshot.Resolve(snapshot.Main); err != nil {
+		return nil, fmt.Errorf("main model: %w", err)
+	}
+	for _, role := range []struct {
+		name    string
+		enabled bool
+	}{
+		{RoleSubagent, snapshot.Chat.TaskEnabled()},
+		{RoleCompact, snapshot.Chat.CompactionEnabled()},
+		{RoleWeb, snapshot.Chat.TaskEnabled() && snapshot.Chat.WebEnabled()},
+		{RoleVision, snapshot.Chat.VisionEnabled()},
+		{RoleMemory, snapshot.Chat.MemoryCuratorEnabled()},
+	} {
+		if ref := snapshot.Roles[role.name]; role.enabled && ref != "" {
+			if _, err = snapshot.Resolve(ref); err != nil {
+				return nil, fmt.Errorf("models.%s: %w", role.name, err)
+			}
 		}
 	}
 	return snapshot, nil
@@ -117,6 +141,9 @@ func (s *Snapshot) Resolve(ref string) (*Resolved, error) {
 	configured, exists := s.file.Provider[provider]
 	if !exists {
 		return nil, fmt.Errorf("selected provider %q is not configured", provider)
+	}
+	if err := s.providerErrors[provider]; err != nil {
+		return nil, err
 	}
 	resolved, err := resolveProvider(s.path, provider, model, configured)
 	return &resolved, err

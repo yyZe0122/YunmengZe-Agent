@@ -16,33 +16,27 @@ import (
 
 // NewConfigured builds the protocol adapter selected by the resolved JSON configuration.
 func NewConfigured(config providerconfig.Resolved) (providerapi.Provider, error) {
-	var apiKeyRef string
-	var resolver providerapi.SecretResolver
-	if config.APIKey != "" {
-		apiKeyRef = "provider:" + config.ProviderID
-		resolver = staticSecretResolver{reference: apiKeyRef, value: config.APIKey}
-	}
 	var provider providerapi.Provider
 	var err error
 	switch config.Protocol {
 	case providerconfig.ProtocolOpenAIChat:
 		provider, err = openai.New(openai.Config{
-			Name: config.ProviderID, BaseURL: config.BaseURL, APIKeyRef: apiKeyRef, Resolver: resolver,
+			Name: config.ProviderID, BaseURL: config.BaseURL, APIKey: config.APIKey,
 			CompletionPath: config.CompletionPath, ResponseFormat: config.ResponseFormat, Headers: config.Headers,
 		})
 	case providerconfig.ProtocolAnthropicMessages:
 		provider, err = anthropic.New(anthropic.Config{
-			Name: config.ProviderID, BaseURL: config.BaseURL, APIKeyRef: apiKeyRef, Resolver: resolver,
+			Name: config.ProviderID, BaseURL: config.BaseURL, APIKey: config.APIKey,
 			MessagesPath: config.CompletionPath, AnthropicVersion: config.AnthropicVersion, Headers: config.Headers,
 		})
 	case providerconfig.ProtocolOpenAIResponses:
 		provider, err = openairesponses.New(openairesponses.Config{
-			Name: config.ProviderID, BaseURL: config.BaseURL, APIKeyRef: apiKeyRef, Resolver: resolver,
+			Name: config.ProviderID, BaseURL: config.BaseURL, APIKey: config.APIKey,
 			ResponsesPath: config.CompletionPath, Headers: config.Headers,
 		})
 	case providerconfig.ProtocolGeminiGenerate:
 		provider, err = gemini.New(gemini.Config{
-			Name: config.ProviderID, BaseURL: config.BaseURL, APIKeyRef: apiKeyRef, Resolver: resolver,
+			Name: config.ProviderID, BaseURL: config.BaseURL, APIKey: config.APIKey,
 			GeneratePath: config.CompletionPath, Headers: config.Headers,
 		})
 	default:
@@ -87,18 +81,6 @@ func (p *modelConfiguredProvider) apply(request providerapi.CompletionRequest) p
 		request.ReasoningEffort = p.reasoningEffort
 	}
 	return request
-}
-
-type staticSecretResolver struct {
-	reference string
-	value     string
-}
-
-func (r staticSecretResolver) ResolveSecret(_ context.Context, reference string) (string, error) {
-	if reference == "" || reference != r.reference {
-		return "", errors.New("secret reference is unavailable")
-	}
-	return r.value, nil
 }
 
 func (p *modelConfiguredProvider) Compact(ctx context.Context, request providerapi.CompletionRequest, focus string) (*providerapi.Replay, providerapi.Usage, error) {

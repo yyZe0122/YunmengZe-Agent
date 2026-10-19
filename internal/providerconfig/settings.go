@@ -13,15 +13,20 @@ type ChatConfig struct {
 	Memory        *ChatMemoryConfig            `json:"memory,omitempty"`
 	Commands      map[string]ChatCommandConfig `json:"commands,omitempty"`
 	Web           *ChatWebConfig               `json:"web,omitempty"`
+	Skills        *ChatFeatureConfig           `json:"skills,omitempty"`
+	Vision        *ChatFeatureConfig           `json:"vision,omitempty"`
+	Task          *ChatFeatureConfig           `json:"task,omitempty"`
 }
-type ChatCompactionConfig struct {
+type ChatFeatureConfig struct {
 	Enabled *bool `json:"enabled,omitempty"`
 }
+type ChatCompactionConfig = ChatFeatureConfig
 type ChatCommandConfig struct {
 	Description string `json:"description,omitempty"`
 	Template    string `json:"template"`
 }
 type ChatWebConfig struct {
+	Enabled    *bool  `json:"enabled,omitempty"`
 	Search     string `json:"search,omitempty"`
 	SearxNGURL string `json:"searxng_url,omitempty"`
 	TavilyKey  string `json:"tavily_key,omitempty"`
@@ -48,7 +53,16 @@ type ChatMemoryCuratorConfig struct {
 }
 
 func (c ChatConfig) CompactionEnabled() bool {
-	return c.Compaction == nil || c.Compaction.Enabled == nil || *c.Compaction.Enabled
+	return featureEnabled(c.Compaction)
+}
+func featureEnabled(c *ChatFeatureConfig) bool {
+	return c == nil || c.Enabled == nil || *c.Enabled
+}
+func (c ChatConfig) SkillsEnabled() bool { return featureEnabled(c.Skills) }
+func (c ChatConfig) VisionEnabled() bool { return featureEnabled(c.Vision) }
+func (c ChatConfig) TaskEnabled() bool   { return featureEnabled(c.Task) }
+func (c ChatConfig) WebEnabled() bool {
+	return c.Web == nil || c.Web.Enabled == nil || *c.Web.Enabled
 }
 func (c ChatConfig) MemoryEnabled() bool {
 	return c.Memory == nil || c.Memory.Enabled == nil || *c.Memory.Enabled

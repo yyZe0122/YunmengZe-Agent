@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestLoadResolvesSelectedModelOptions(t *testing.T) {
+func TestSnapshotResolvesSelectedModelOptions(t *testing.T) {
 	root := t.TempDir()
 	config := `{
   "model": "deepseek/deepseek-v4-flash",
@@ -32,7 +32,11 @@ func TestLoadResolvesSelectedModelOptions(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, LocalFilename), []byte(config), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	resolved, err := Load(root)
+	snapshot, err := LoadSnapshot(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := snapshot.Resolve(snapshot.Main)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +51,7 @@ func TestLoadResolvesSelectedModelOptions(t *testing.T) {
 	}
 }
 
-func TestLoadFillsContextWindowFromCatalog(t *testing.T) {
+func TestSnapshotFillsContextWindowFromCatalog(t *testing.T) {
 	root := t.TempDir()
 	config := `{
   "model": "deepseek1/deepseek-v4-flash",
@@ -62,7 +66,11 @@ func TestLoadFillsContextWindowFromCatalog(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, LocalFilename), []byte(config), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	resolved, err := Load(root)
+	snapshot, err := LoadSnapshot(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := snapshot.Resolve(snapshot.Main)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +82,7 @@ func TestLoadFillsContextWindowFromCatalog(t *testing.T) {
 	}
 }
 
-func TestLoadAcceptsLimitAlias(t *testing.T) {
+func TestSnapshotAcceptsLimitAlias(t *testing.T) {
 	root := t.TempDir()
 	config := `{
   "model": "test/custom",
@@ -89,7 +97,11 @@ func TestLoadAcceptsLimitAlias(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, LocalFilename), []byte(config), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	resolved, err := Load(root)
+	snapshot, err := LoadSnapshot(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := snapshot.Resolve(snapshot.Main)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +110,7 @@ func TestLoadAcceptsLimitAlias(t *testing.T) {
 	}
 }
 
-func TestLoadExplicitFieldsBeatLimit(t *testing.T) {
+func TestSnapshotExplicitFieldsBeatLimit(t *testing.T) {
 	root := t.TempDir()
 	config := `{
   "model": "test/custom",
@@ -119,7 +131,11 @@ func TestLoadExplicitFieldsBeatLimit(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, LocalFilename), []byte(config), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	resolved, err := Load(root)
+	snapshot, err := LoadSnapshot(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := snapshot.Resolve(snapshot.Main)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +144,7 @@ func TestLoadExplicitFieldsBeatLimit(t *testing.T) {
 	}
 }
 
-func TestLoadRejectsInvalidSelectedModelOptions(t *testing.T) {
+func TestSnapshotRejectsInvalidSelectedModelOptions(t *testing.T) {
 	tests := []struct {
 		name       string
 		provider   string
@@ -157,7 +173,7 @@ func TestLoadRejectsInvalidSelectedModelOptions(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(root, LocalFilename), []byte(config), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			_, err := Load(root)
+			_, err := LoadSnapshot(root)
 			if err == nil || !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("error = %v, want %q", err, test.want)
 			}

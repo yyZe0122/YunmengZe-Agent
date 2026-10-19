@@ -61,8 +61,11 @@ func allowedModelRoleList() string {
 
 // MCPConfig is the optional MCP servers section of agent.json.
 type MCPConfig struct {
+	Enabled *bool                `json:"enabled,omitempty"`
 	Servers map[string]MCPServer `json:"servers,omitempty"`
 }
+
+func (c MCPConfig) IsEnabled() bool { return c.Enabled == nil || *c.Enabled }
 
 // MCP transport types. Empty + command → stdio; empty + url → remote.
 const (
@@ -151,6 +154,7 @@ type Resolved struct {
 
 // ModelRef is a configured model identifier in provider/model form (no secrets).
 type ModelRef struct {
-	ID   string `json:"id"`
-	Name string `json:"name,omitempty"`
+	ID          string `json:"id"`
+	Name        string `json:"name,omitempty"`
+	Unavailable string `json:"unavailable,omitempty"`
 }

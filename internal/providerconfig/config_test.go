@@ -8,11 +8,15 @@ import (
 	"testing"
 )
 
-func TestLoadUsesConfigDirLocalFirst(t *testing.T) {
+func TestSnapshotUsesConfigDirLocalFirst(t *testing.T) {
 	root := t.TempDir()
 	writeConfig(t, filepath.Join(root, Filename), "user-provider/user-model", "https://user.example")
 	writeConfig(t, filepath.Join(root, LocalFilename), "deepseek/deepseek-v4-flash", "https://api.deepseek.com")
-	resolved, err := Load(root)
+	snapshot, err := LoadSnapshot(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := snapshot.Resolve(snapshot.Main)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -27,7 +31,7 @@ func TestLoadUsesConfigDirLocalFirst(t *testing.T) {
 	}
 }
 
-func TestLoadIgnoresProjectDirectory(t *testing.T) {
+func TestSnapshotIgnoresProjectDirectory(t *testing.T) {
 	root := t.TempDir()
 	configDir := filepath.Join(root, "config")
 	projectDir := filepath.Join(root, "project")
@@ -38,16 +42,13 @@ func TestLoadIgnoresProjectDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeConfig(t, filepath.Join(projectDir, LocalFilename), "deepseek/deepseek-v4-flash", "https://api.deepseek.com")
-	resolved, err := Load(configDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resolved != nil {
-		t.Fatalf("expected nil when only project has config, got %+v", resolved)
+	_, err := LoadSnapshot(configDir)
+	if err == nil || !strings.Contains(err.Error(), "provider config not found") {
+		t.Fatalf("expected missing config when only project has config, got %v", err)
 	}
 }
 
-func TestLoadResolvesFileAPIKey(t *testing.T) {
+func TestSnapshotResolvesFileAPIKey(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "key.txt"), []byte("secret-value\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -69,7 +70,11 @@ func TestLoadResolvesFileAPIKey(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, LocalFilename), []byte(config), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	resolved, err := Load(root)
+	snapshot, err := LoadSnapshot(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := snapshot.Resolve(snapshot.Main)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,15 +83,15 @@ func TestLoadResolvesFileAPIKey(t *testing.T) {
 	}
 }
 
-func TestLoadRejectsUnknownModel(t *testing.T) {
+func TestSnapshotRejectsUnknownModel(t *testing.T) {
 	root := t.TempDir()
 	writeConfig(t, filepath.Join(root, LocalFilename), "deepseek/missing", "https://api.deepseek.com")
-	if _, err := Load(root); err == nil {
+	if _, err := LoadSnapshot(root); err == nil {
 		t.Fatal("expected model validation error")
 	}
 }
 
-func TestLoadAcceptsMistypedCatalogKeyWithProviderPrefix(t *testing.T) {
+func TestSnapshotAcceptsMistypedCatalogKeyWithProviderPrefix(t *testing.T) {
 	root := t.TempDir()
 	// Mistaken catalog key "provider/model" while selection model segment is bare.
 	config := `{
@@ -107,7 +112,11 @@ func TestLoadAcceptsMistypedCatalogKeyWithProviderPrefix(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, LocalFilename), []byte(config), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	resolved, err := Load(root)
+	snapshot, err := LoadSnapshot(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := snapshot.Resolve(snapshot.Main)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +129,7 @@ func TestLoadAcceptsMistypedCatalogKeyWithProviderPrefix(t *testing.T) {
 	}
 }
 
-func TestLoadNestedModelIDWirePreserved(t *testing.T) {
+func TestSnapshotNestedModelIDWirePreserved(t *testing.T) {
 	root := t.TempDir()
 	// OpenCode/NewAPI: model segment may contain '/' (e.g. deepseek/deepseek-v4-flash).
 	config := `{
@@ -141,7 +150,11 @@ func TestLoadNestedModelIDWirePreserved(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, LocalFilename), []byte(config), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	resolved, err := Load(root)
+	snapshot, err := LoadSnapshot(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := snapshot.Resolve(snapshot.Main)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -172,7 +185,7 @@ func TestLoadNestedModelIDWirePreserved(t *testing.T) {
 	}
 }
 
-func TestLoadModelIDOverride(t *testing.T) {
+func TestSnapshotModelIDOverride(t *testing.T) {
 	root := t.TempDir()
 	config := `{
   "model": "ziy/flash",
@@ -195,7 +208,11 @@ func TestLoadModelIDOverride(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, LocalFilename), []byte(config), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	resolved, err := Load(root)
+	snapshot, err := LoadSnapshot(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := snapshot.Resolve(snapshot.Main)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,7 +224,7 @@ func TestLoadModelIDOverride(t *testing.T) {
 	}
 }
 
-func TestLoadEmptyCatalogPassThrough(t *testing.T) {
+func TestSnapshotEmptyCatalogPassThrough(t *testing.T) {
 	root := t.TempDir()
 	config := `{
   "model": "provider-a/any-model-id",
@@ -224,7 +241,11 @@ func TestLoadEmptyCatalogPassThrough(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, LocalFilename), []byte(config), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	resolved, err := Load(root)
+	snapshot, err := LoadSnapshot(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := snapshot.Resolve(snapshot.Main)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -233,7 +254,7 @@ func TestLoadEmptyCatalogPassThrough(t *testing.T) {
 	}
 }
 
-func TestLoadTwoProvidersSameModelID(t *testing.T) {
+func TestSnapshotTwoProvidersSameModelID(t *testing.T) {
 	root := t.TempDir()
 	config := `{
   "model": "provider-b/shared-model",
@@ -253,7 +274,11 @@ func TestLoadTwoProvidersSameModelID(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, LocalFilename), []byte(config), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	resolved, err := Load(root)
+	snapshot, err := LoadSnapshot(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := snapshot.Resolve(snapshot.Main)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -307,7 +332,7 @@ func TestEnsureConfigWritesDefaultWhenEmpty(t *testing.T) {
 	if !result.Created || result.Path != filepath.Join(root, Filename) {
 		t.Fatalf("ensure = %+v", result)
 	}
-	// template uses env key; Load fails without env — but ListModelRefs works
+	// template uses env key; LoadSnapshot fails without env — but ListModelRefs works
 	selected, models, err := ListModelRefs(root)
 	if err != nil {
 		t.Fatal(err)
@@ -344,7 +369,7 @@ func TestEnsureConfigWritesDefaultWhenEmpty(t *testing.T) {
 
 func writeConfig(t *testing.T, path, model, baseURL string) {
 	t.Helper()
-	providerID, _, _ := cutModel(model)
+	providerID, _, _ := strings.Cut(model, "/")
 	content := `{
   "model": %q,
   "provider": {
@@ -355,9 +380,9 @@ func writeConfig(t *testing.T, path, model, baseURL string) {
   }
 }`
 	if model == "deepseek/missing" {
-		content = sprintf(content, model, providerID, baseURL)
+		content = fmt.Sprintf(content, model, providerID, baseURL)
 	} else {
-		_, modelID, _ := cutModel(model)
+		_, modelID, _ := strings.Cut(model, "/")
 		content = `{
   "model": %q,
   "provider": {
@@ -367,24 +392,11 @@ func writeConfig(t *testing.T, path, model, baseURL string) {
     }
   }
 }`
-		content = sprintf(content, model, providerID, baseURL, modelID)
+		content = fmt.Sprintf(content, model, providerID, baseURL, modelID)
 	}
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
-}
-
-func cutModel(value string) (string, string, bool) {
-	for i := range value {
-		if value[i] == '/' {
-			return value[:i], value[i+1:], true
-		}
-	}
-	return value, "", false
-}
-
-func sprintf(format string, values ...any) string {
-	return fmt.Sprintf(format, values...)
 }
 
 func TestResolveProtocolAliases(t *testing.T) {
@@ -418,7 +430,7 @@ func TestResolveProtocolRejectsConflictingFields(t *testing.T) {
 	}
 }
 
-func TestLoadResolvesHeaderPlaceholders(t *testing.T) {
+func TestSnapshotResolvesHeaderPlaceholders(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("YMZ_TEST_HEADER", "header-secret")
 	config := `{
@@ -437,7 +449,11 @@ func TestLoadResolvesHeaderPlaceholders(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, LocalFilename), []byte(config), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	resolved, err := Load(root)
+	snapshot, err := LoadSnapshot(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := snapshot.Resolve(snapshot.Main)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -446,7 +462,7 @@ func TestLoadResolvesHeaderPlaceholders(t *testing.T) {
 	}
 }
 
-func TestLoadChatCompactionAndMaxIterations(t *testing.T) {
+func TestSnapshotChatCompactionAndMaxIterations(t *testing.T) {
 	root := t.TempDir()
 	config := `{
   "model": "deepseek/deepseek-chat",
@@ -465,15 +481,15 @@ func TestLoadChatCompactionAndMaxIterations(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, Filename), []byte(config), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	chat, err := LoadChat(root)
+	snapshot, err := LoadSnapshot(root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if chat.CompactionEnabled() {
+	if snapshot.Chat.CompactionEnabled() {
 		t.Fatal("expected compaction disabled")
 	}
-	if chat.MaxIterations != 32 {
-		t.Fatalf("max_iterations = %d", chat.MaxIterations)
+	if snapshot.Chat.MaxIterations != 32 {
+		t.Fatalf("max_iterations = %d", snapshot.Chat.MaxIterations)
 	}
 
 	badIter := `{
@@ -490,12 +506,12 @@ func TestLoadChatCompactionAndMaxIterations(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, Filename), []byte(badIter), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := LoadChat(root); err == nil {
+	if _, err := LoadSnapshot(root); err == nil {
 		t.Fatal("expected max_iterations range error")
 	}
 }
 
-func TestLoadChatWeb(t *testing.T) {
+func TestSnapshotChatWeb(t *testing.T) {
 	root := t.TempDir()
 	write := func(web string) {
 		t.Helper()
@@ -509,41 +525,41 @@ func TestLoadChatWeb(t *testing.T) {
 		}
 	}
 	write(`{}`)
-	chat, err := LoadChat(root)
+	snapshot, err := LoadSnapshot(root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if chat.WebSearchBackend() != WebSearchDDG {
-		t.Fatalf("default backend = %q", chat.WebSearchBackend())
+	if snapshot.Chat.WebSearchBackend() != WebSearchDDG {
+		t.Fatalf("default backend = %q", snapshot.Chat.WebSearchBackend())
 	}
 	write(`{"search": "searxng"}`)
-	if _, err := LoadChat(root); err == nil {
+	if _, err := LoadSnapshot(root); err == nil {
 		t.Fatal("expected missing searxng_url")
 	}
 	write(`{"search": "searxng", "searxng_url": "http://127.0.0.1:8888"}`)
-	chat, err = LoadChat(root)
+	snapshot, err = LoadSnapshot(root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if chat.WebSearchBackend() != WebSearchSearxNG || chat.Web.SearxNGURL != "http://127.0.0.1:8888" {
-		t.Fatalf("searxng = %+v", chat.Web)
+	if snapshot.Chat.WebSearchBackend() != WebSearchSearxNG || snapshot.Chat.Web.SearxNGURL != "http://127.0.0.1:8888" {
+		t.Fatalf("searxng = %+v", snapshot.Chat.Web)
 	}
 	t.Setenv("YMZ_TEST_TAVILY", "tvly-test")
 	write(`{"search": "tavily", "tavily_key": "{env:YMZ_TEST_TAVILY}"}`)
-	chat, err = LoadChat(root)
+	snapshot, err = LoadSnapshot(root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if chat.Web.TavilyKey != "tvly-test" {
-		t.Fatalf("tavily key = %q", chat.Web.TavilyKey)
+	if snapshot.Chat.Web.TavilyKey != "tvly-test" {
+		t.Fatalf("tavily key = %q", snapshot.Chat.Web.TavilyKey)
 	}
 	write(`{"search": "bing"}`)
-	if _, err := LoadChat(root); err == nil {
+	if _, err := LoadSnapshot(root); err == nil {
 		t.Fatal("expected unknown backend")
 	}
 }
 
-func TestLoadModelRolesAndValidation(t *testing.T) {
+func TestSnapshotModelRolesAndValidation(t *testing.T) {
 	root := t.TempDir()
 	base := `{
   "model": "deepseek/deepseek-chat",
@@ -572,75 +588,69 @@ func TestLoadModelRolesAndValidation(t *testing.T) {
 	}
 
 	write(`{}`)
-	main, roles, err := LoadModelRoles(root)
+	snapshot, err := LoadSnapshot(root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if main != "deepseek/deepseek-chat" || roles != nil {
-		t.Fatalf("main=%q roles=%v", main, roles)
-	}
-	if _, err := Load(root); err != nil {
-		t.Fatal(err)
+	if snapshot.Main != "deepseek/deepseek-chat" || len(snapshot.Roles) != 0 {
+		t.Fatalf("main=%q roles=%v", snapshot.Main, snapshot.Roles)
 	}
 
 	write(`{"compact": "openai/gpt-cheap", "subagent": "deepseek/deepseek-flash"}`)
-	main, roles, err = LoadModelRoles(root)
+	snapshot, err = LoadSnapshot(root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if main != "deepseek/deepseek-chat" {
-		t.Fatalf("main = %q", main)
+	if snapshot.Main != "deepseek/deepseek-chat" {
+		t.Fatalf("main = %q", snapshot.Main)
 	}
-	if roles[RoleCompact] != "openai/gpt-cheap" || roles[RoleSubagent] != "deepseek/deepseek-flash" {
-		t.Fatalf("roles = %v", roles)
-	}
-	if _, err := Load(root); err != nil {
-		t.Fatal(err)
+	if snapshot.Roles[RoleCompact] != "openai/gpt-cheap" || snapshot.Roles[RoleSubagent] != "deepseek/deepseek-flash" {
+		t.Fatalf("roles = %v", snapshot.Roles)
 	}
 
 	write(`{"compact": ""}`)
-	main, roles, err = LoadModelRoles(root)
+	snapshot, err = LoadSnapshot(root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if main != "deepseek/deepseek-chat" || roles != nil {
-		t.Fatalf("empty compact should omit role: main=%q roles=%v", main, roles)
+	if snapshot.Main != "deepseek/deepseek-chat" || len(snapshot.Roles) != 0 {
+		t.Fatalf("empty compact should omit role: main=%q roles=%v", snapshot.Main, snapshot.Roles)
 	}
 
 	write(`{"main": "deepseek/deepseek-flash"}`)
-	if _, err := Load(root); err == nil {
+	if _, err := LoadSnapshot(root); err == nil {
 		t.Fatal("expected models.main rejection")
 	}
 	write(`{"vision": "deepseek/deepseek-chat"}`)
-	main, roles, err = LoadModelRoles(root)
+	snapshot, err = LoadSnapshot(root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if roles[RoleVision] != "deepseek/deepseek-chat" {
-		t.Fatalf("vision role = %v", roles)
+	if snapshot.Roles[RoleVision] != "deepseek/deepseek-chat" {
+		t.Fatalf("vision role = %v", snapshot.Roles)
 	}
 	write(`{"tts": "deepseek/deepseek-chat"}`)
-	if _, err := Load(root); err == nil {
+	if _, err := LoadSnapshot(root); err == nil {
 		t.Fatal("expected unknown role rejection")
 	}
 	write(`{"web": "deepseek/deepseek-flash"}`)
-	main, roles, err = LoadModelRoles(root)
+	snapshot, err = LoadSnapshot(root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if main != "deepseek/deepseek-chat" || roles[RoleWeb] != "deepseek/deepseek-flash" {
-		t.Fatalf("web role: main=%q roles=%v", main, roles)
+	if snapshot.Main != "deepseek/deepseek-chat" || snapshot.Roles[RoleWeb] != "deepseek/deepseek-flash" {
+		t.Fatalf("web role: main=%q roles=%v", snapshot.Main, snapshot.Roles)
 	}
 	write(`{"compact": "missing/model"}`)
-	if _, err := Load(root); err == nil {
+	if _, err := LoadSnapshot(root); err == nil {
 		t.Fatal("expected missing provider rejection")
 	}
 	write(`{"compact": "deepseek/nope"}`)
-	if _, err := Load(root); err == nil {
+	if _, err := LoadSnapshot(root); err == nil {
 		t.Fatal("expected missing model rejection")
 	}
 	write(`{"compact": "not-a-ref"}`)
-	if _, err := Load(root); err == nil {
+	if _, err := LoadSnapshot(root); err == nil {
 		t.Fatal("expected bad ref format rejection")
 	}
 }

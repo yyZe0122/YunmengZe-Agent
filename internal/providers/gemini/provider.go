@@ -19,8 +19,7 @@ import (
 type Config struct {
 	Name         string
 	BaseURL      string
-	APIKeyRef    string
-	Resolver     providerapi.SecretResolver
+	APIKey       string
 	HTTPClient   *http.Client
 	MaxBodyBytes int64
 	GeneratePath string
@@ -30,8 +29,7 @@ type Config struct {
 type Provider struct {
 	name         string
 	baseURL      *url.URL
-	apiKeyRef    string
-	resolver     providerapi.SecretResolver
+	apiKey       string
 	client       *http.Client
 	maxBodyBytes int64
 	generatePath string
@@ -46,9 +44,6 @@ func New(config Config) (*Provider, error) {
 	baseURL, err := providerhttp.ParseBaseURL("gemini", config.BaseURL)
 	if err != nil {
 		return nil, err
-	}
-	if strings.TrimSpace(config.APIKeyRef) != "" && config.Resolver == nil {
-		return nil, errors.New("secret resolver is required when API key reference is configured")
 	}
 	client := config.HTTPClient
 	if client == nil {
@@ -76,7 +71,7 @@ func New(config Config) (*Provider, error) {
 		return nil, err
 	}
 	return &Provider{
-		name: name, baseURL: baseURL, apiKeyRef: strings.TrimSpace(config.APIKeyRef), resolver: config.Resolver,
+		name: name, baseURL: baseURL, apiKey: config.APIKey,
 		client: client, maxBodyBytes: maxBody, generatePath: generatePath, headers: headers,
 	}, nil
 }
@@ -386,12 +381,8 @@ func (p *Provider) newRequest(ctx context.Context, method, endpoint string, body
 	if body != nil {
 		request.Header.Set("Content-Type", "application/json")
 	}
-	if p.apiKeyRef != "" {
-		secret, err := p.resolver.ResolveSecret(ctx, p.apiKeyRef)
-		if err != nil || strings.TrimSpace(secret) == "" {
-			return nil, &providerapi.ProviderError{Provider: p.name, Kind: providerapi.ErrorAuthentication, Err: errors.New("secret reference could not be resolved")}
-		}
-		request.Header.Set("x-goog-api-key", secret)
+	if p.apiKey != "" {
+		request.Header.Set("x-goog-api-key", p.apiKey)
 	}
 	providerhttp.ApplyHeaders(request, p.headers)
 	return request, nil

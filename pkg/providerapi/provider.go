@@ -263,10 +263,6 @@ type Provider interface {
 	Stream(context.Context, CompletionRequest, StreamHandler) error
 }
 
-type SecretResolver interface {
-	ResolveSecret(context.Context, string) (string, error)
-}
-
 type ErrorKind string
 
 const (

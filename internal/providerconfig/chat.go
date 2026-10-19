@@ -11,7 +11,7 @@ import (
 )
 
 func (c ChatConfig) validateWeb() error {
-	if c.Web == nil {
+	if c.Web == nil || !c.WebEnabled() {
 		return nil
 	}
 	search := strings.ToLower(strings.TrimSpace(c.Web.Search))

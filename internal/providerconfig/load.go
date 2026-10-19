@@ -1,13 +1,9 @@
 package providerconfig
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/url"
-	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 )
@@ -27,19 +23,9 @@ func ListModelRefs(configDir string) (selected string, models []ModelRef, err er
 }
 
 func listModelRefsFromFile(path string) (string, []ModelRef, error) {
-	file, err := os.Open(path)
+	config, err := decodeConfigFile(path)
 	if err != nil {
-		return "", nil, fmt.Errorf("open provider config %s: %w", path, err)
-	}
-	defer file.Close()
-	decoder := json.NewDecoder(io.LimitReader(file, 1<<20))
-	decoder.DisallowUnknownFields()
-	var config File
-	if err := decoder.Decode(&config); err != nil {
-		return "", nil, fmt.Errorf("decode provider config %s: %w", path, err)
-	}
-	if err := requireEOF(decoder); err != nil {
-		return "", nil, fmt.Errorf("decode provider config %s: %w", path, err)
+		return "", nil, err
 	}
 	selected := strings.TrimSpace(config.Model)
 	seen := make(map[string]struct{})
@@ -79,60 +65,8 @@ func listModelRefsFromFile(path string) (string, []ModelRef, error) {
 	return selected, models, nil
 }
 
-// Load reads provider configuration only from configDir
-// (agent.local.json, then agent.json). Project directories are not searched.
-// Optional ConfigDir/env is loaded first (does not override existing process env).
-func Load(configDir string) (*Resolved, error) {
-	if err := LoadEnvFromConfigDir(configDir); err != nil {
-		return nil, err
-	}
-	path, err := findConfigPath(configDir)
-	if err != nil {
-		return nil, err
-	}
-	if path == "" {
-		return nil, nil
-	}
-	resolved, err := loadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	return &resolved, nil
-}
-
-// LoadChat reads the optional chat section from the first resolvable config file.
-// Missing file or missing chat block returns a zero ChatConfig (feature defaults).
-// chat.web.searxng_url / tavily_key resolve {env:}/{file:} like MCP secrets.
-func LoadChat(configDir string) (ChatConfig, error) {
-	if err := LoadEnvFromConfigDir(configDir); err != nil {
-		return ChatConfig{}, err
-	}
-	path, err := findConfigPath(configDir)
-	if err != nil {
-		return ChatConfig{}, err
-	}
-	if path == "" {
-		return ChatConfig{}, nil
-	}
-	file, err := decodeConfigFile(path)
-	if err != nil {
-		return ChatConfig{}, err
-	}
-	if file.Chat == nil {
-		return ChatConfig{}, nil
-	}
-	chat := *file.Chat
-	if err := chat.resolveWeb(filepath.Dir(path)); err != nil {
-		return ChatConfig{}, err
-	}
-	if err := chat.validate(); err != nil {
-		return ChatConfig{}, err
-	}
-	return chat, nil
-}
-
 func (c *ChatConfig) resolveWeb(configDirectory string) error {
-	if c == nil || c.Web == nil {
+	if c.Web == nil || !c.WebEnabled() {
 		return nil
 	}
 	search := strings.ToLower(strings.TrimSpace(c.Web.Search))
@@ -161,56 +95,10 @@ func (c *ChatConfig) resolveWeb(configDirectory string) error {
 	}
 }
 
-// LoadMCP reads the optional mcp section. Missing file or mcp block returns zero config.
-// Env and header values may use {env:VAR} / {file:...} and are resolved relative to the config directory.
-func LoadMCP(configDir string) (MCPConfig, error) {
-	if err := LoadEnvFromConfigDir(configDir); err != nil {
-		return MCPConfig{}, err
-	}
-	path, err := findConfigPath(configDir)
-	if err != nil {
-		return MCPConfig{}, err
-	}
-	if path == "" {
-		return MCPConfig{}, nil
-	}
-	file, err := decodeConfigFile(path)
-	if err != nil {
-		return MCPConfig{}, err
-	}
-	if file.MCP == nil {
-		return MCPConfig{}, nil
-	}
-	mcp := *file.MCP
-	if err := mcp.validate(); err != nil {
-		return MCPConfig{}, err
-	}
-	baseDir := filepath.Dir(path)
-	for name, server := range mcp.Servers {
-		env := make(map[string]string, len(server.Env))
-		for k, v := range server.Env {
-			resolved, err := resolveValue(v, baseDir)
-			if err != nil {
-				return MCPConfig{}, fmt.Errorf("mcp server %q env %q: %w", name, k, err)
-			}
-			env[k] = resolved
-		}
-		server.Env = env
-		headers := make(map[string]string, len(server.Headers))
-		for k, v := range server.Headers {
-			resolved, err := resolveValue(v, baseDir)
-			if err != nil {
-				return MCPConfig{}, fmt.Errorf("mcp server %q header %q: %w", name, k, err)
-			}
-			headers[k] = resolved
-		}
-		server.Headers = headers
-		mcp.Servers[name] = server
-	}
-	return mcp, nil
-}
-
 func (c MCPConfig) validate() error {
+	if !c.IsEnabled() {
+		return nil
+	}
 	for name, server := range c.Servers {
 		name = strings.TrimSpace(name)
 		if name == "" {

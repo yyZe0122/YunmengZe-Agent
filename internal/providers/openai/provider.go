@@ -35,8 +35,7 @@ const (
 type Config struct {
 	Name           string
 	BaseURL        string
-	APIKeyRef      string
-	Resolver       providerapi.SecretResolver
+	APIKey         string
 	HTTPClient     *http.Client
 	MaxBodyBytes   int64
 	CompletionPath string
@@ -47,8 +46,7 @@ type Config struct {
 type Provider struct {
 	name            string
 	baseURL         *url.URL
-	apiKeyRef       string
-	resolver        providerapi.SecretResolver
+	apiKey          string
 	client          *http.Client
 	maxBodyBytes    int64
 	completionPath  string
@@ -68,9 +66,6 @@ func New(config Config) (*Provider, error) {
 	}
 	if parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
 		return nil, errors.New("openai-compatible base URL must not contain userinfo, query, or fragment")
-	}
-	if strings.TrimSpace(config.APIKeyRef) != "" && config.Resolver == nil {
-		return nil, errors.New("secret resolver is required when API key reference is configured")
 	}
 	client := config.HTTPClient
 	if client == nil {
@@ -102,8 +97,8 @@ func New(config Config) (*Provider, error) {
 		return nil, err
 	}
 	return &Provider{
-		name: name, baseURL: parsed, apiKeyRef: strings.TrimSpace(config.APIKeyRef),
-		resolver: config.Resolver, client: client, maxBodyBytes: maxBody,
+		name: name, baseURL: parsed, apiKey: config.APIKey,
+		client: client, maxBodyBytes: maxBody,
 		completionPath: completionPath, responseFormat: responseFormat, headers: headers,
 	}, nil
 }
@@ -411,15 +406,8 @@ func (p *Provider) do(ctx context.Context, method, endpoint string, body []byte)
 	if body != nil {
 		request.Header.Set("Content-Type", "application/json")
 	}
-	if p.apiKeyRef != "" {
-		secret, err := p.resolver.ResolveSecret(ctx, p.apiKeyRef)
-		if err != nil {
-			return nil, &providerapi.ProviderError{Provider: p.name, Kind: providerapi.ErrorAuthentication, Err: errors.New("secret reference could not be resolved")}
-		}
-		if strings.TrimSpace(secret) == "" {
-			return nil, &providerapi.ProviderError{Provider: p.name, Kind: providerapi.ErrorAuthentication, Err: errors.New("resolved secret is empty")}
-		}
-		request.Header.Set("Authorization", "Bearer "+secret)
+	if p.apiKey != "" {
+		request.Header.Set("Authorization", "Bearer "+p.apiKey)
 	}
 	providerhttp.ApplyHeaders(request, p.headers)
 	response, err := p.client.Do(request)

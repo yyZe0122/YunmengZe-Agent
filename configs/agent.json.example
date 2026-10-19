@@ -18,11 +18,33 @@
     }
   },
   "chat": {
+    "compaction": {
+      "enabled": true
+    },
+    "skills": {
+      "enabled": true
+    },
+    "vision": {
+      "enabled": true
+    },
+    "task": {
+      "enabled": true
+    },
+    "web": {
+      "enabled": true,
+      "search": "ddg"
+    },
     "memory": {
+      "enabled": true,
       "curator": {
+        "enabled": true,
         "min_turns": 8,
         "min_interval": "30m"
       }
     }
+  },
+  "mcp": {
+    "enabled": true,
+    "servers": {}
   }
 }
