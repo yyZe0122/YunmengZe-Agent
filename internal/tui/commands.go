@@ -24,7 +24,7 @@ func (m model) helpText() string {
 		text += "/skills 查看技能 · /<skill-id> [参数] 加载技能\n"
 	}
 	if m.engine.Config.MemoryEnabled() {
-		text += "/memory 查看记忆及来源 · /refresh-memory 刷新记忆注入\n/memory forget <id> 遗忘 · /memory edit <id> <偏好> 纠正\n"
+		text += "/memory 查看记忆及来源\n/memory forget <id> 遗忘 · /memory edit <id> <偏好> 纠正\n"
 	}
 	return text
 }
@@ -54,7 +54,7 @@ func (m *model) command(text string) (bool, tea.Cmd) {
 	}
 	if m.busy {
 		switch name {
-		case "model", "mode", "sessions", "resume", "compact", "skills", "memory", "refresh-memory", "status":
+		case "model", "mode", "sessions", "resume", "compact", "skills", "memory", "status":
 			m.status = "请先结束或取消当前运行"
 			return true, nil
 		}
@@ -180,13 +180,6 @@ func (m *model) command(text string) (bool, tea.Cmd) {
 			lines = append(lines, line)
 		}
 		m.entries = append(m.entries, entry{role: "info", text: strings.Join(lines, "\n")})
-	case "refresh-memory":
-		if m.engine.Config.MemoryEnabled() {
-			m.engine.RefreshMemory(m.session.ID)
-			m.status = "下次运行重新加载记忆"
-		} else {
-			m.status = "记忆已禁用"
-		}
 	case "status":
 		m.entries = append(m.entries, entry{role: "info", text: fmt.Sprintf("mode: %s\nmodel: %s\nsession: %s\nworkspace: %s", m.mode, m.modelRef, m.session.ID, m.session.Workspace)})
 	default:
@@ -199,7 +192,7 @@ func (m *model) command(text string) (bool, tea.Cmd) {
 func (m *model) commandNames() {
 	m.commands = []string{"new", "sessions", "resume", "model", "mode", "compact", "status", "help", "quit"}
 	if m.engine.Config.MemoryEnabled() {
-		m.commands = append(m.commands, "memory", "refresh-memory")
+		m.commands = append(m.commands, "memory")
 	}
 	if m.engine.Config.SkillsEnabled() {
 		m.commands = append(m.commands, "skills")

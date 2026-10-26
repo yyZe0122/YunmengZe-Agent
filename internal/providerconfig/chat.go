@@ -50,7 +50,7 @@ const MaxChatCommandTemplateRunes = 8_000
 
 // reservedChatCommandNames are TUI builtin slash names (without /) that chat.commands may not claim.
 var reservedChatCommandNames = map[string]struct{}{
-	"new": {}, "sessions": {}, "resume": {}, "model": {}, "skills": {}, "compact": {}, "memory": {}, "refresh-memory": {}, "mode": {}, "status": {}, "help": {}, "quit": {}, "q": {}, "exit": {},
+	"new": {}, "sessions": {}, "resume": {}, "model": {}, "skills": {}, "compact": {}, "memory": {}, "mode": {}, "status": {}, "help": {}, "quit": {}, "q": {}, "exit": {},
 }
 
 func validateChatCommands(commands map[string]ChatCommandConfig) error {

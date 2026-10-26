@@ -90,7 +90,7 @@ ymz run --mode plan "Explain how this project is organized"
 ymz run --json "Summarize the changes in this workspace"
 ```
 
-Use `ymz models` to list the configured main model, role models and provider catalog entries without requiring complete API credentials.
+Use `ymz models` to list the configured main model, role models and provider catalog entries without requiring complete API credentials. Enabled preference memory refreshes automatically at the start of each run.
 
 ## Configuration
 

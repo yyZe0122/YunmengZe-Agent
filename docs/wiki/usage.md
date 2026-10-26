@@ -62,7 +62,7 @@ run 的任务可使用技能或模板，如 `ymz run "/review 当前修改"`，�
 | `/mode plan`、`/mode agent` | 设置模式 |
 | `/skills`、`/<技能 ID> [参数]`、`/<模板名> [参数]` | [发现技能或展开消息](skills.md) |
 | `/compact [重点]` | 手动压缩较早的对话，Esc 可取消 |
-| `/memory`、`/refresh-memory` | [查看偏好及证据或刷新注入](memory.md) |
+| `/memory` | [查看、纠正或遗忘偏好及证据](memory.md) |
 | `/memory edit <id> <偏好>`、`/memory forget <id>` | 纠正或遗忘记录，仅 agent |
 | `/status` | 显示模式、模型、会话 ID、工作目录 |
 | `/help` | 帮助 |

@@ -90,7 +90,7 @@ ymz run --mode plan "解释这个项目的结构"
 ymz run --json "总结当前工作区的修改"
 ```
 
-使用 `ymz models` 列出配置的主模型、角色模型和 provider 目录模型，不要求密钥齐全。
+使用 `ymz models` 列出配置的主模型、角色模型和 provider 目录模型，不要求密钥齐全。启用记忆后，每次运行开始会自动刷新偏好注入。
 
 ## 配置
 
