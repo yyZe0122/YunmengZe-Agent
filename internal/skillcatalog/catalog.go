@@ -18,6 +18,7 @@ import (
 
 const (
 	SkillFileName = "SKILL.md"
+	maxSkillBytes = 1 << 20
 )
 
 var (
@@ -134,6 +135,10 @@ func Discover(roots []Root) (*Catalog, []Diagnostic) {
 				diagnostics = append(diagnostics, Diagnostic{Path: filePath, Err: fmt.Errorf("%w: invalid directory ID", ErrInvalidSkill)})
 				continue
 			}
+			if err := injectscan.Scan(id); err != nil {
+				diagnostics = append(diagnostics, Diagnostic{Path: filePath, Err: err})
+				continue
+			}
 			catalog.byID[id] = Skill{
 				ID:          id,
 				Name:        metadata.name,
@@ -184,7 +189,7 @@ func readSkillBody(skill Skill) ([]byte, error) {
 	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() || !pathsecurity.ContainsResolved(skill.rootPath, skill.FilePath) {
 		return nil, fmt.Errorf("%w: skill path is no longer safe", ErrInvalidSkill)
 	}
-	if info.Size() > 1<<20 {
+	if info.Size() > maxSkillBytes {
 		return nil, fmt.Errorf("%w: skill exceeds 1 MiB", ErrInvalidSkill)
 	}
 	data, err := readBounded(skill.FilePath)
@@ -232,7 +237,7 @@ func (c *Catalog) ReadLinked(id, rel string) ([]byte, error) {
 	if !pathsecurity.ContainsResolved(skill.rootPath, target) || !pathsecurity.ContainsResolved(dir, target) {
 		return nil, fmt.Errorf("%w: linked path is outside the skill directory", ErrInvalidSkill)
 	}
-	if info.Size() > 1<<20 {
+	if info.Size() > maxSkillBytes {
 		return nil, fmt.Errorf("%w: linked file exceeds 1 MiB", ErrInvalidSkill)
 	}
 	data, err := readBounded(target)
@@ -251,11 +256,11 @@ func readBounded(path string) ([]byte, error) {
 		return nil, err
 	}
 	defer file.Close()
-	data, err := io.ReadAll(io.LimitReader(file, (1<<20)+1))
+	data, err := io.ReadAll(io.LimitReader(file, maxSkillBytes+1))
 	if err != nil {
 		return nil, err
 	}
-	if len(data) > 1<<20 {
+	if len(data) > maxSkillBytes {
 		return nil, fmt.Errorf("%w: skill file exceeds 1 MiB", ErrInvalidSkill)
 	}
 	return data, nil
@@ -293,8 +298,9 @@ func readMetadata(filePath string) (metadata, error) {
 	}
 	defer file.Close()
 
-	scanner := bufio.NewScanner(file)
-	scanner.Buffer(make([]byte, 1024), 1024*1024)
+	reader := &io.LimitedReader{R: file, N: maxSkillBytes + 1}
+	scanner := bufio.NewScanner(reader)
+	scanner.Buffer(make([]byte, 1024), maxSkillBytes)
 	if !scanner.Scan() || strings.TrimSpace(scanner.Text()) != "---" {
 		return metadata{}, fmt.Errorf("%w: missing frontmatter", ErrInvalidSkill)
 	}
@@ -323,6 +329,9 @@ func readMetadata(filePath string) (metadata, error) {
 		}
 		values[key] = value
 	}
+	if reader.N == 0 {
+		return metadata{}, fmt.Errorf("%w: frontmatter exceeds 1 MiB", ErrInvalidSkill)
+	}
 	if err := scanner.Err(); err != nil {
 		return metadata{}, err
 	}
@@ -333,6 +342,9 @@ func readMetadata(filePath string) (metadata, error) {
 	description := strings.TrimSpace(values["description"])
 	if name == "" || description == "" {
 		return metadata{}, fmt.Errorf("%w: name and description are required", ErrInvalidSkill)
+	}
+	if err := injectscan.Scan(name + "\n" + description); err != nil {
+		return metadata{}, fmt.Errorf("%w: metadata: %v", ErrInvalidSkill, err)
 	}
 	return metadata{name: name, description: description}, nil
 }

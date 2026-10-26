@@ -18,13 +18,13 @@
 | `web_search` | `query`；（`limit`） | 两者；web 启用 | DDG / SearxNG / Tavily 搜索，默认 8 条、最多 20 条 |
 | `web_extract` | `url` | 两者；web 启用 | HTTP(S) 获取网页并提取文字，不执行页面脚本 |
 
-文件相对路径基于会话工作区，绝对路径可在工作区外，由 OS 权限决定。write / edit 的 expected_sha256 可用 read 返回值；写入使用同目录临时文件再重命名，内置文件修改在进程内串行，没有跨工具事务；不能锁住外部编辑器和 shell。修改预览最多 40 行删除 / 新增，最多 12000 字节。
+文件相对路径基于会话工作区，绝对路径可在工作区外，由 OS 权限决定。write / edit 的 expected_sha256 可用 read 返回值；写入使用同目录临时文件再重命名，内置文件修改在进程内串行，没有跨工具事务；不能锁住外部编辑器和 shell。edit 在构造替换结果前计算最终字节数，超过 8 MiB 则报错；换行转换和 BOM 计入大小。修改预览最多 40 行删除 / 新增，最多 12000 字节。
 
 glob / grep 的 path 默认 `.`，limit 默认 100，支持 1–1000，超界回到默认；最多遍历 10000 个普通文件，跳过 `.git`、`.cache`、`node_modules` 子目录，不解析 .gitignore。grep 跳过大于 1 MiB、不可读或非 UTF-8 文件，单条正文保留最多 1000 字节。
 
 shell 在 Windows 优先用 pwsh，回退 powershell.exe；其他系统用 sh。合并输出保留开头 / 结尾各 24000 字节，中间截断；运行中最多每 250 毫秒发送一次有界进度，非零退出码作为结果返回，超时 / 取消附加 error。网页请求超时 30 秒，搜索 / 提取响应上限为 2 / 4 MiB，提取正文最多 24000 字符；URL 必须是无 userinfo 的绝对 HTTP(S) 地址。
 
-当前共用 HTTP 读取函数在超限时直接截掉尾部，不返回超限标记；网页正文因此可能不完整，结构化搜索响应可能解码失败。这与 Registry 对最终文本结果提供的 `truncated` 标记是两个不同阶段。
+HTTP 读取超限会返回明确错误，搜索响应必须完整。web_extract 允许提取已读取的网页前缀，响应超限或正文被裁剪时返回 `truncated: true`；这是提取结果的一部分，与 Registry 对最终工具输出的限额分别生效。
 
 源码：[文件](../../internal/tools/files.go)、[shell](../../internal/tools/shell.go)、[网页](../../internal/tools/web.go)、[搜索后端](../../internal/tools/web_helpers.go)、[网页与图片共用的 HTTP 请求](../../internal/tools/http.go)。
 
@@ -47,7 +47,7 @@ task 的 kind 可选 general / explore / web；关闭 web 后 schema 不提供 w
 | 工具 | 参数 | 模式 / 注册条件 | 用途 |
 | --- | --- | --- | --- |
 | `mcp_<服务名>` | （`tool`、`arguments`） | agent；MCP 启用且配置对应服务 | 省略 tool 列出远端工具，否则调用工具；arguments 默认 `{}` |
-| `vision_analyze` | `path` / `url` 二选一；（`prompt`） | 两者；vision 启用，当前模型能力在调用时检查 | 本地图像最多 16 MiB，URL 图像最多读取 16 MiB |
+| `vision_analyze` | `path` / `url` 二选一；（`prompt`） | 两者；vision 启用，当前模型能力在调用时检查 | 本地和 URL 图像最多 16 MiB，超限报错，不发送截断图片 |
 
 MCP 在首次调用时连接，同一会话 / 服务复用连接；初始化限时 15 秒，调用失败后关闭失效连接；stdio 调用超时或取消会关闭管道、终止进程树并等待回收，Engine 退出时统一关闭。子任务结束后保留连接，便于 task_id 续接时继续使用服务端状态。连接缓存锁只保护缓存读写，启动、握手和关闭在锁外执行。stdio 在会话工作区启动并应用配置的 env，远端支持 HTTP / SSE。Plan 不请求 MCP 工具列表。
 

@@ -113,6 +113,6 @@
 
 ## 模型元数据
 
-启动从 `<config>/cache/models.dev.json` 或内嵌快照读取窗口等限制，不联网刷新。缓存须能解析、不超过 2 MiB、条目数不少于内嵌目录。`ymz models refresh` 显式下载并尝试保存缓存，不改 provider 模型配置、不验证密钥；`ymz models` 只列配置模型。
+启动从 `<config>/cache/models.dev.json` 或内嵌快照读取窗口等限制，不联网刷新。缓存读取有界，须能解析、不超过 2 MiB、条目数不少于内嵌目录。`ymz models refresh` 显式下载并尝试保存缓存，不改 provider 模型配置、不验证密钥；`ymz models` 只列配置模型。
 
 源码：[模型目录](../../internal/modelcatalog/)、[刷新缓存](../../internal/modelcatalog/refresh.go)；维护内嵌快照使用 [refresh-modelcatalog.sh](../../scripts/refresh-modelcatalog.sh)。

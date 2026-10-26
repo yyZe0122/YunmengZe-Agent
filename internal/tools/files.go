@@ -174,15 +174,34 @@ func (r *Registry) files() {
 					return nil, fmt.Errorf("old_text matched %d times", len(matches))
 				}
 				replacement := strings.ReplaceAll(a.New, "\r\n", "\n")
-				a.Content = matcher.ReplaceAllStringFunc(original, func(match string) string {
-					if strings.Contains(match, "\r\n") || (!strings.Contains(match, "\n") && strings.Contains(original, "\r\n")) {
-						return strings.ReplaceAll(replacement, "\n", "\r\n")
+				crlfReplacement := strings.ReplaceAll(replacement, "\n", "\r\n")
+				hasCRLF := strings.Contains(original, "\r\n")
+				replacementFor := func(match string) string {
+					if strings.Contains(match, "\r\n") || (!strings.Contains(match, "\n") && hasCRLF) {
+						return crlfReplacement
 					}
 					return replacement
-				})
-				if strings.HasPrefix(string(b), "\ufeff") {
-					a.Content = "\ufeff" + a.Content
 				}
+				size := len(b)
+				for _, match := range matches {
+					size += len(replacementFor(original[match[0]:match[1]])) - (match[1] - match[0])
+				}
+				if size > 8<<20 {
+					return nil, errors.New("write exceeds 8 MiB")
+				}
+				var edited strings.Builder
+				edited.Grow(size)
+				if strings.HasPrefix(string(b), "\ufeff") {
+					edited.WriteString("\ufeff")
+				}
+				offset := 0
+				for _, match := range matches {
+					edited.WriteString(original[offset:match[0]])
+					edited.WriteString(replacementFor(original[match[0]:match[1]]))
+					offset = match[1]
+				}
+				edited.WriteString(original[offset:])
+				a.Content = edited.String()
 			}
 			if len(a.Content) > 8<<20 {
 				return nil, errors.New("write exceeds 8 MiB")

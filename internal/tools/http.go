@@ -12,6 +12,8 @@ import (
 
 func newWebClient() *http.Client { return &http.Client{Timeout: 30 * time.Second} }
 
+var errResponseTooLarge = errors.New("HTTP response exceeds size limit")
+
 func httpRequest(ctx context.Context, address string) (*http.Request, error) {
 	u, err := url.Parse(address)
 	if err != nil || u.Host == "" || u.User != nil || (u.Scheme != "http" && u.Scheme != "https") {
@@ -35,7 +37,7 @@ func doHTTP(client *http.Client, req *http.Request, limit int64) ([]byte, string
 		return nil, "", err
 	}
 	if int64(len(body)) > limit {
-		body = body[:limit]
+		return body[:limit], resp.Header.Get("Content-Type"), fmt.Errorf("%w (%d bytes)", errResponseTooLarge, limit)
 	}
 	return body, resp.Header.Get("Content-Type"), nil
 }

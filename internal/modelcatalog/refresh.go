@@ -19,11 +19,13 @@ const defaultRefreshTimeout = 5 * time.Second
 // Init loads ConfigDir/cache/models.dev.json when it has at least as many
 // models as the embed, else embed. Network is never used here; Refresh is explicit.
 func Init(configDir string) {
-	raw, err := os.ReadFile(cachePath(configDir))
+	file, err := os.Open(cachePath(configDir))
 	if err != nil {
 		return
 	}
-	if len(raw) == 0 || int64(len(raw)) > maxCatalogBytes {
+	defer file.Close()
+	raw, err := io.ReadAll(io.LimitReader(file, maxCatalogBytes+1))
+	if err != nil || len(raw) == 0 || int64(len(raw)) > maxCatalogBytes {
 		return
 	}
 	c, err := parse(raw)

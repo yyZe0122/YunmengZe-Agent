@@ -40,9 +40,11 @@ func (r *Registry) Web(config WebConfig) {
 			return nil, err
 		}
 		b, ct, err := doHTTP(newWebClient(), req, 4<<20)
-		if err != nil {
+		if err != nil && !errors.Is(err, errResponseTooLarge) {
 			return nil, err
 		}
-		return map[string]string{"url": a.URL, "content": truncateRunesHeadTail(extractReadableText(b, ct), 24000)}, nil
+		text := extractReadableText(b, ct)
+		content := truncateRunesHeadTail(text, 24000)
+		return map[string]any{"url": a.URL, "content": content, "truncated": errors.Is(err, errResponseTooLarge) || content != text}, nil
 	}})
 }

@@ -22,7 +22,7 @@ Read the changed files and report concrete defects.
 
 `name`、`description` 必填；元数据只支持单行 `key: value`，不是完整 YAML。发现阶段只读元数据，系统前缀只列出 ID 和描述；无效技能被跳过，并在运行 info 事件和 TUI `/skills` 中显示路径与原因。一次运行的工具、前缀及 slash 展开共用同一份发现结果。
 
-发现阶段目前只限制元数据单行大小，没有 frontmatter 总读取量限制，也未对 ID / 描述执行正文使用的文本扫描；这些限制缺口见[优化待办](../backlog/current.md)。
+发现阶段限制 frontmatter 总读取量为 1 MiB，技能 ID、名称和描述经过现有文本扫描。无效 UTF-8、隐藏控制字符或超出扫描预算的文本会被拒绝，可疑指令词只产生诊断。正文仍在明确加载时读取。
 
 | 入口 | 用法 |
 | --- | --- |
