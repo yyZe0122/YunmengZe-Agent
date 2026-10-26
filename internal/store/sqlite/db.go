@@ -136,24 +136,34 @@ func migrate(ctx context.Context, db *sql.DB, migrationFS fs.FS) error {
 		if err != nil {
 			return fmt.Errorf("read migration %s: %w", name, err)
 		}
-		tx, err := db.BeginTx(ctx, nil)
-		if err != nil {
-			return fmt.Errorf("begin migration %s: %w", name, err)
-		}
-		if _, err := tx.ExecContext(ctx, string(script)); err != nil {
-			_ = tx.Rollback()
+		if err := applyMigration(ctx, db, name, string(script)); err != nil {
 			return fmt.Errorf("apply migration %s: %w", name, err)
-		}
-		if _, err := tx.ExecContext(ctx,
-			"INSERT INTO "+migrationTable+" (version, applied_at) VALUES (?, ?)",
-			name, time.Now().UTC().Format(time.RFC3339Nano),
-		); err != nil {
-			_ = tx.Rollback()
-			return fmt.Errorf("record migration %s: %w", name, err)
-		}
-		if err := tx.Commit(); err != nil {
-			return fmt.Errorf("commit migration %s: %w", name, err)
 		}
 	}
 	return nil
+}
+
+func applyMigration(ctx context.Context, db *sql.DB, name, script string) error {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	// The first write acquires SQLite's write lock and rechecks the unique version.
+	// The claim is committed with the script, or both are rolled back.
+	record, err := tx.ExecContext(ctx,
+		"INSERT INTO "+migrationTable+" (version, applied_at) VALUES (?, ?) ON CONFLICT(version) DO NOTHING",
+		name, time.Now().UTC().Format(time.RFC3339Nano),
+	)
+	if err != nil {
+		return err
+	}
+	inserted, err := record.RowsAffected()
+	if err != nil || inserted == 0 {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, script); err != nil {
+		return err
+	}
+	return tx.Commit()
 }

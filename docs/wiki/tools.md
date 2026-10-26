@@ -38,7 +38,7 @@ shell 在 Windows 优先用 pwsh，回退 powershell.exe；其他系统用 sh。
 | `memory_search` | `query` | 两者；记忆启用 | 查当前会话与全局有效事实，最多 20 条；空 query 列表 |
 | `task` | `prompt`；（`kind`、`task_id`、`independent`） | 两者；task 启用且仅父会话可用 | 新建或续接叶子子会话，默认 kind=general |
 
-task 的 kind 可选 general / explore / web；关闭 web 后 schema 不提供 web，恢复已有 web 子会话也会明确拒绝。explore 固定 plan，其余继承父模式。续接只能使用当前父会话的 task_id，不能改 kind。同步返回 task_id、result 和可选 error；子会话消息独立保存，不能再调用 task。只有较大、目标独立、文件不重叠的任务才应设 independent=true。连续独立 task 最多两个并行，结果按调用顺序入库；子结果文字最多 10000 字节，主 Agent 统一收尾。模型选择见[配置](configuration.md)。
+task 的 kind 可选 general / explore / web；关闭 web 后 schema 不提供 web，恢复已有 web 子会话也会明确拒绝。explore 固定 plan，其余继承父模式。续接只能使用当前父会话的 task_id，不能改 kind。同步返回 task_id、result 和可选 error；子会话消息独立保存，不能再调用 task。只有较大、目标独立、文件不重叠的任务才应设 independent=true。连续独立 task 最多两个并行，该批次结束后按调用顺序保存结果，再执行后续工具；普通串行工具完成后立即保存结果。保存失败时停止后续调用并尝试保存未执行原因。子结果文字最多 10000 字节，主 Agent 统一收尾。模型选择见[配置](configuration.md)。
 
 源码：[装配入口](../../internal/agent/features.go)、[技能](../../internal/agent/feature_skills.go)、[记忆](../../internal/agent/feature_memory.go)、[子会话](../../internal/agent/feature_task.go)。
 

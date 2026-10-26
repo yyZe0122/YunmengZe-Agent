@@ -241,7 +241,9 @@ func run(ctx context.Context, args []string, out, errOut io.Writer) error {
 		}
 	}
 	var writeErr error
-	_, err = engine.Run(ctx, s.ID, input, agent.RunOptions{Emit: func(event agent.Event) {
+	runCtx, cancelRun := context.WithCancel(ctx)
+	defer cancelRun()
+	_, err = engine.Run(runCtx, s.ID, input, agent.RunOptions{Emit: func(event agent.Event) {
 		if writeErr != nil {
 			return
 		}
@@ -250,14 +252,20 @@ func run(ctx context.Context, args []string, out, errOut io.Writer) error {
 		} else if event.Type == "delta" && event.TaskID == "" {
 			_, writeErr = fmt.Fprint(out, event.Text)
 		} else if event.Type == "tool_start" {
-			fmt.Fprintf(errOut, "[%s]\n", event.Tool)
+			_, writeErr = fmt.Fprintf(errOut, "[%s]\n", event.Tool)
 		} else if event.Type == "info" {
-			fmt.Fprintln(errOut, event.Text)
+			_, writeErr = fmt.Fprintln(errOut, event.Text)
+		}
+		if writeErr != nil {
+			cancelRun()
 		}
 	}})
+	if writeErr != nil {
+		return writeErr
+	}
 	if !*jsonMode {
-		fmt.Fprintln(out)
-	} else if writeErr == nil {
+		_, writeErr = fmt.Fprintln(out)
+	} else {
 		final := map[string]string{"type": "done", "session_id": s.ID}
 		if err != nil {
 			final["error"] = err.Error()

@@ -84,9 +84,26 @@ func (e *Engine) executeTools(ctx context.Context, id string, registry *tools.Re
 		}
 		options.emit(Event{Type: "tool_end", Tool: call.Name, Text: result.Text})
 	}
+	var saveErrors []error
+	save := func(index int) {
+		call, result := calls[index], results[index]
+		saveCtx, done := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
+		defer done()
+		_, err := e.store.Append(saveCtx, id, providerapi.Message{Role: providerapi.RoleTool, ToolCallID: call.ID, Content: result.Text, Images: result.Images, UserText: result.UserText}, providerapi.Usage{})
+		if err != nil {
+			saveErrors = append(saveErrors, err)
+		}
+	}
 	for i := 0; i < len(calls); {
+		if len(saveErrors) > 0 {
+			results[i] = tools.Result{Text: `{"error":"not executed because a previous tool result could not be saved"}`}
+			save(i)
+			i++
+			continue
+		}
 		if !independent(calls[i]) {
 			run(i)
+			save(i)
 			i++
 			continue
 		}
@@ -110,18 +127,11 @@ func (e *Engine) executeTools(ctx context.Context, id string, registry *tools.Re
 		}
 		close(jobs)
 		group.Wait()
-		i = end
-	}
-	// Preserve provider tool-call order even when children finish out of order.
-	var saveErrors []error
-	for index, call := range calls {
-		result := results[index]
-		save, done := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
-		_, err := e.store.Append(save, id, providerapi.Message{Role: providerapi.RoleTool, ToolCallID: call.ID, Content: result.Text, Images: result.Images, UserText: result.UserText}, providerapi.Usage{})
-		done()
-		if err != nil {
-			saveErrors = append(saveErrors, err)
+		// Preserve provider order within this parallel batch before running more tools.
+		for index := i; index < end; index++ {
+			save(index)
 		}
+		i = end
 	}
 	return errors.Join(saveErrors...)
 }

@@ -85,3 +85,5 @@ run 的任务可使用技能或模板，如 `ymz run "/review 当前修改"`，�
 | `done` | `session_id`；失败时附加 `error` |
 
 子任务事件带 `task_id`；CLI 普通正文只输出主回复，JSON 保留全部事件。TUI 汇总本轮含辅助调用的 token，金额仅在服务提供时可用。TUI 另使用 `steer` 事件接收纠偏消息。准备阶段出错可能没有 session / done；不同协议的增量行为见[Provider 协议](provider-protocols.md)。
+
+运行期间 stdout 或诊断输出写入失败会取消本轮，沿用工具观察保存和租约释放流程，最终返回首次写入错误。输出通道失效时不能保证交付 done 事件。
