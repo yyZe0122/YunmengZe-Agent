@@ -9,13 +9,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/yyZe0122/yunmengze-agent/internal/providers/internal/providerhttp"
 	"github.com/yyZe0122/yunmengze-agent/pkg/providerapi"
@@ -109,7 +106,7 @@ func (p *Provider) Complete(ctx context.Context, request providerapi.CompletionR
 		return providerapi.CompletionResponse{}, err
 	}
 	defer response.Body.Close()
-	payload, err := readLimited(response.Body, p.maxBodyBytes)
+	payload, err := providerhttp.ReadLimited(response.Body, p.maxBodyBytes)
 	if err != nil {
 		return providerapi.CompletionResponse{}, p.responseError(ctx, err)
 	}
@@ -412,31 +409,13 @@ func (p *Provider) do(ctx context.Context, method, endpoint string, body []byte)
 	providerhttp.ApplyHeaders(request, p.headers)
 	response, err := p.client.Do(request)
 	if err != nil {
-		return nil, p.networkError(ctx, err)
+		return nil, providerhttp.NetworkError(p.name, ctx, err)
 	}
 	return response, nil
 }
 
-func (p *Provider) networkError(ctx context.Context, err error) error {
-	if errors.Is(err, context.Canceled) || errors.Is(ctx.Err(), context.Canceled) {
-		return &providerapi.ProviderError{
-			Provider: p.name, Kind: providerapi.ErrorUnavailable, Err: context.Canceled,
-		}
-	}
-	var networkError net.Error
-	if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) ||
-		(errors.As(err, &networkError) && networkError.Timeout()) {
-		return &providerapi.ProviderError{
-			Provider: p.name, Kind: providerapi.ErrorTimeout, Retryable: true, Err: context.DeadlineExceeded,
-		}
-	}
-	return &providerapi.ProviderError{
-		Provider: p.name, Kind: providerapi.ErrorUnavailable, Retryable: true, Err: errors.New("HTTP request failed"),
-	}
-}
-
 func (p *Provider) responseError(ctx context.Context, err error) error {
-	classified := p.networkError(ctx, err)
+	classified := providerhttp.NetworkError(p.name, ctx, err)
 	var providerError *providerapi.ProviderError
 	if errors.As(classified, &providerError) &&
 		(providerError.Kind == providerapi.ErrorTimeout || errors.Is(classified, context.Canceled)) {
@@ -470,7 +449,7 @@ func (p *Provider) statusError(response *http.Response) error {
 	}
 	return &providerapi.ProviderError{
 		Provider: p.name, Kind: kind, StatusCode: response.StatusCode,
-		Retryable: retryable, RetryAfter: parseRetryAfter(response.Header.Get("Retry-After")),
+		Retryable: retryable, RetryAfter: providerhttp.ParseRetryAfter(response.Header.Get("Retry-After")),
 		Err: providerStatusMessage(response.Body),
 	}
 }
@@ -480,7 +459,7 @@ func providerStatusMessage(body io.Reader) error {
 	if body == nil {
 		return fallback
 	}
-	payload, err := readLimited(body, maxProviderErrorBytes)
+	payload, err := providerhttp.ReadLimited(body, maxProviderErrorBytes)
 	if err != nil {
 		return fallback
 	}
@@ -540,30 +519,6 @@ func boundedStatusText(value string, maximum int) string {
 		return string(runes[:maximum]) + "..."
 	}
 	return value
-}
-
-func readLimited(reader io.Reader, maximum int64) ([]byte, error) {
-	payload, err := io.ReadAll(io.LimitReader(reader, maximum+1))
-	if err != nil {
-		return nil, err
-	}
-	if int64(len(payload)) > maximum {
-		return nil, errors.New("provider response exceeds configured size limit")
-	}
-	return payload, nil
-}
-
-func parseRetryAfter(value string) time.Duration {
-	value = strings.TrimSpace(value)
-	if seconds, err := strconv.Atoi(value); err == nil && seconds >= 0 {
-		return time.Duration(seconds) * time.Second
-	}
-	if at, err := http.ParseTime(value); err == nil {
-		if delay := time.Until(at); delay > 0 {
-			return delay
-		}
-	}
-	return 0
 }
 
 type chatRequest struct {

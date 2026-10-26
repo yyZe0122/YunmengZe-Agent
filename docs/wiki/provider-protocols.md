@@ -28,7 +28,7 @@ protocol 推荐使用上表规范名，与 JSON Schema 一致。运行时 protoc
 
 Engine 启动时创建主模型适配器，其余按需创建并复用。`ymz config validate` 不创建适配器、不请求服务，因此不能确认远端认证、模型能力或服务兼容性。
 
-工厂依赖 providerconfig 的已解析配置，各适配器使用 providerapi 消息与协议类型，不依赖 tools。Anthropic 还直接查询 modelcatalog 作为输出预算的回退来源；Responses、Anthropic 和 Gemini 共用 providerhttp 的 HTTP / SSE 处理，Chat 当前保留自身实现。独立图像调用的结果由 [Agent](../../internal/agent/feature_vision.go)转换为工具结果。
+工厂依赖 providerconfig 的已解析配置，各适配器使用 providerapi 消息与协议类型，不依赖 tools。四种协议共用 providerhttp 的路径、请求头、有界读取、网络错误分类和 Retry-After 解析；Responses、Anthropic 和 Gemini 还共用 SSE 读取，Chat 保留自己的 SSE 解析和包含 param 的服务错误诊断，用于 responseFormat 回退。Anthropic 直接查询 modelcatalog 作为输出预算的回退来源。独立图像调用的结果由 [Agent](../../internal/agent/feature_vision.go)转换为工具结果。
 
 ## 路径与请求参数
 

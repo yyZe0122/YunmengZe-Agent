@@ -27,7 +27,10 @@ func listModelRefsFromFile(path string) (string, []ModelRef, error) {
 	if err != nil {
 		return "", nil, err
 	}
-	selected := strings.TrimSpace(config.Model)
+	return strings.TrimSpace(config.Model), collectModelRefs(config), nil
+}
+
+func collectModelRefs(config File) []ModelRef {
 	seen := make(map[string]struct{})
 	var models []ModelRef
 	add := func(id, name string) {
@@ -41,8 +44,9 @@ func listModelRefsFromFile(path string) (string, []ModelRef, error) {
 		seen[id] = struct{}{}
 		models = append(models, ModelRef{ID: id, Name: strings.TrimSpace(name)})
 	}
-	if selected != "" {
-		add(selected, "")
+	add(config.Model, "")
+	for _, ref := range config.Models {
+		add(ref, "")
 	}
 	providerIDs := make([]string, 0, len(config.Provider))
 	for providerID := range config.Provider {
@@ -57,12 +61,13 @@ func listModelRefsFromFile(path string) (string, []ModelRef, error) {
 		}
 		sort.Strings(modelIDs)
 		for _, modelID := range modelIDs {
-			// OpenCode: list ref = providerID + "/" + catalog key (key may contain '/').
+			// Catalog keys may contain '/'.
 			ref := providerID + "/" + strings.TrimSpace(modelID)
 			add(ref, provider.Models[modelID].Name)
 		}
 	}
-	return selected, models, nil
+	sort.Slice(models, func(i, j int) bool { return models[i].ID < models[j].ID })
+	return models
 }
 
 func (c *ChatConfig) resolveWeb(configDirectory string) error {

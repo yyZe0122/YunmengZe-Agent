@@ -90,6 +90,8 @@ ymz run --mode plan "Explain how this project is organized"
 ymz run --json "Summarize the changes in this workspace"
 ```
 
+Use `ymz models` to list the configured main model, role models and provider catalog entries without requiring complete API credentials.
+
 ## Configuration
 
 `YMZ_HOME` changes the configuration directory, which also holds `core.db`. `agent.local.json` takes precedence over `agent.json`; the two files are not merged. Start from the [configuration example](configs/agent.json.example) to use another provider or model.

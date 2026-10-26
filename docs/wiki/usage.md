@@ -9,7 +9,7 @@
 | `ymz` / `ymz tui` | 打开终端界面 |
 | `ymz run [参数] "任务"` | 执行一次用户轮次后退出 |
 | `ymz sessions` | JSON 列出启动目录的主会话，最近优先，最多 200 条 |
-| `ymz models [refresh]` | JSON 列出配置模型；refresh 先刷新模型元数据缓存 |
+| `ymz models [refresh]` | JSON 列出主模型、角色模型及 provider 目录模型，去重后按 ID 排序；refresh 先刷新模型元数据缓存 |
 | `ymz config validate` | 补齐缺失模板，校验主模型与已启用功能依赖，报告其他模型不可用原因；不打开数据库或请求远端 |
 | `ymz db check` | 打开数据库、应用迁移，再执行 SQLite quick_check |
 | `ymz paths` | JSON 输出 config、database、workspace 路径 |

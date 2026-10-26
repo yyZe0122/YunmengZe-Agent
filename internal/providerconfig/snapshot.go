@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
-	"sort"
 	"strings"
 )
 
@@ -89,23 +88,7 @@ func LoadSnapshot(dir string) (*Snapshot, error) {
 			snapshot.MCP.Servers[name] = server
 		}
 	}
-	seen := map[string]bool{}
-	add := func(ref, name string) {
-		if ref != "" && !seen[ref] {
-			seen[ref] = true
-			snapshot.Models = append(snapshot.Models, ModelRef{ID: ref, Name: name})
-		}
-	}
-	add(snapshot.Main, "")
-	for _, ref := range snapshot.Roles {
-		add(ref, "")
-	}
-	for provider, p := range file.Provider {
-		for model, m := range p.Models {
-			add(provider+"/"+model, m.Name)
-		}
-	}
-	sort.Slice(snapshot.Models, func(i, j int) bool { return snapshot.Models[i].ID < snapshot.Models[j].ID })
+	snapshot.Models = collectModelRefs(file)
 	for i, model := range snapshot.Models {
 		if _, err = snapshot.Resolve(model.ID); err != nil {
 			snapshot.Models[i].Unavailable = err.Error()

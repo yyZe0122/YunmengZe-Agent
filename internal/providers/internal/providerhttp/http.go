@@ -137,7 +137,7 @@ func StatusError(provider string, response *http.Response) error {
 	}
 	return &providerapi.ProviderError{
 		Provider: provider, Kind: kind, StatusCode: response.StatusCode, Retryable: retryable,
-		RetryAfter: parseRetryAfter(response.Header.Get("Retry-After")), Err: errors.New(message),
+		RetryAfter: ParseRetryAfter(response.Header.Get("Retry-After")), Err: errors.New(message),
 	}
 }
 
@@ -149,8 +149,10 @@ func Protocol(provider string, err error) error {
 	return &providerapi.ProviderError{Provider: provider, Kind: providerapi.ErrorProtocol, Retryable: true, Err: err}
 }
 
-func parseRetryAfter(value string) time.Duration {
-	if seconds, err := strconv.Atoi(strings.TrimSpace(value)); err == nil && seconds >= 0 {
+// ParseRetryAfter accepts a delay in seconds or an HTTP date.
+func ParseRetryAfter(value string) time.Duration {
+	value = strings.TrimSpace(value)
+	if seconds, err := strconv.Atoi(value); err == nil && seconds >= 0 {
 		return time.Duration(seconds) * time.Second
 	}
 	if when, err := http.ParseTime(value); err == nil {
