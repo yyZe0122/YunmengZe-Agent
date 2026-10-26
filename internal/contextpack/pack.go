@@ -49,7 +49,7 @@ func Pack(messages []providerapi.Message, opt PackOptions) PackResult {
 		opt.ToolReclaimMin = DefaultToolReclaimMin
 	}
 
-	out := RepairToolMessages(cloneMessages(messages))
+	out := RepairToolMessages(messages)
 	var result PackResult
 
 	// L1: per-message body trim.
@@ -72,26 +72,24 @@ func Pack(messages []providerapi.Message, opt PackOptions) PackResult {
 		}
 	}
 
+	result.EstimateTokens = EstimateMessages(out)
 	if opt.Budget > 0 {
 		// L2: clear older tool results if reclaim is worthwhile.
 		cleared := 0
-		if EstimateMessages(out) > opt.Budget {
+		if result.EstimateTokens > opt.Budget {
 			cleared = clearOldToolResults(out, min(opt.ToolProtectTokens, opt.Budget/3), min(opt.ToolReclaimMin, opt.Budget/4))
 		}
 		result.ClearedTools = cleared
+		if cleared > 0 {
+			result.EstimateTokens = EstimateMessages(out)
+		}
 
 		// L3: drop oldest complete turns while over budget (keep system prefix).
-		for EstimateMessages(out) > opt.Budget {
-			n, ok := dropOldestTurn(out)
-			if !ok {
-				break
-			}
-			out = n
-			result.DroppedMessages++
+		if result.EstimateTokens > opt.Budget {
+			out, result.DroppedMessages, result.EstimateTokens = dropOldestTurns(out, opt.Budget, result.EstimateTokens)
 		}
 	}
 
-	result.EstimateTokens = EstimateMessages(out)
 	result.OverBudget = opt.Budget > 0 && result.EstimateTokens > opt.Budget
 	result.Messages = out
 	return result
@@ -165,43 +163,32 @@ func clearOldToolResults(messages []providerapi.Message, protect, reclaimMin int
 	return cleared
 }
 
-// dropOldestTurn removes the oldest non-system turn block (user… until next user or end),
-// preserving tool-call pairing within remaining suffix. Returns false if nothing droppable.
-func dropOldestTurn(messages []providerapi.Message) ([]providerapi.Message, bool) {
-	if len(messages) == 0 {
-		return messages, false
-	}
-	// Keep leading system messages.
+// dropOldestTurns removes complete turns in one pass, keeping the prefix and last user turn.
+// messages belongs to the packed view, so its backing array can be compacted in place.
+func dropOldestTurns(messages []providerapi.Message, budget, tokens int64) ([]providerapi.Message, int, int64) {
 	start := 0
 	for start < len(messages) && (messages[start].Role == providerapi.RoleSystem || messages[start].Replay != nil && messages[start].Replay.Canonical) {
 		start++
 	}
-	if start >= len(messages) {
-		return messages, false
-	}
-	// Find first user after system, or first message if no user.
-	turnStart := start
-	if messages[turnStart].Role != providerapi.RoleUser {
-		return messages, false
-	}
-	// End of turn = next user (exclusive) or EOF; always keep at least the last user turn.
-	turnEnd := turnStart + 1
-	for turnEnd < len(messages) && messages[turnEnd].Role != providerapi.RoleUser {
-		turnEnd++
-	}
-	// Count remaining user turns after this drop.
-	usersAfter := 0
-	for i := turnEnd; i < len(messages); i++ {
-		if messages[i].Role == providerapi.RoleUser {
-			usersAfter++
+	cut, dropped := start, 0
+	for tokens > budget && cut < len(messages) && messages[cut].Role == providerapi.RoleUser {
+		end := cut + 1
+		for end < len(messages) && messages[end].Role != providerapi.RoleUser {
+			end++
 		}
+		if end == len(messages) {
+			break
+		}
+		tokens -= EstimateMessages(messages[cut:end])
+		cut = end
+		dropped++
 	}
-	if usersAfter < 1 {
-		// Would drop the only remaining user turn.
-		return messages, false
+	if dropped > 0 {
+		end := start + copy(messages[start:], messages[cut:])
+		clear(messages[end:])
+		messages = messages[:end]
 	}
-	out := append(append([]providerapi.Message{}, messages[:turnStart]...), messages[turnEnd:]...)
-	return out, true
+	return messages, dropped, tokens
 }
 
 const trimMarkerFmt = "\n...[trimmed %d runes for provider context]...\n"
@@ -220,40 +207,9 @@ func trimRunes(content string, maxRunes int) string {
 		return string(runes[:maxRunes])
 	}
 	keep := maxRunes - markerLen
-	head := keep / 2
+	head := (keep + 1) / 2
 	tail := keep - head
-	if head < 1 {
-		head = 1
-	}
-	if tail < 1 {
-		tail = 1
-	}
-	if head+tail >= len(runes) {
-		return content
-	}
-	omitted := len(runes) - head - tail
-	marker = fmt.Sprintf(trimMarkerFmt, omitted)
-	markerLen = utf8.RuneCountInString(marker)
-	if head+markerLen+tail < maxRunes {
-		extra := maxRunes - head - markerLen - tail
-		head += extra
-	}
-	if head+markerLen+tail > maxRunes {
-		overflow := head + markerLen + tail - maxRunes
-		if tail > overflow {
-			tail -= overflow
-		} else {
-			overflow -= tail
-			tail = 0
-			if head > overflow {
-				head -= overflow
-			} else {
-				head = 0
-			}
-		}
-	}
-	if head+tail >= len(runes) || head < 0 || tail < 0 {
-		return string(runes[:maxRunes])
-	}
+	// Reserving digits for the original length also bounds the shorter omitted count.
+	marker = fmt.Sprintf(trimMarkerFmt, len(runes)-keep)
 	return string(runes[:head]) + marker + string(runes[len(runes)-tail:])
 }

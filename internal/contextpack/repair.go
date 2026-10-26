@@ -12,7 +12,7 @@ import (
 //   - injects synthetic error tool results for calls missing a result before the
 //     next user/assistant boundary (Crush-style orphan repair)
 //
-// Non-destructive to durable history: callers pass a clone or pack view only.
+// Returns a new view without mutating the input messages or tool calls.
 func RepairToolMessages(messages []providerapi.Message) []providerapi.Message {
 	if len(messages) == 0 {
 		return messages

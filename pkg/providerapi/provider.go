@@ -165,9 +165,12 @@ type StreamProvider interface {
 
 var ErrInvalidStream = errors.New("invalid provider stream")
 
+// StreamAccumulator must not be copied after the first Add.
 type StreamAccumulator struct {
 	response  CompletionResponse
 	completed bool
+	content   strings.Builder
+	thinking  strings.Builder
 }
 
 func (a *StreamAccumulator) Add(event StreamEvent) error {
@@ -180,13 +183,13 @@ func (a *StreamAccumulator) Add(event StreamEvent) error {
 			event.Usage != nil || event.FinishReason != "" {
 			return fmt.Errorf("%w: invalid content delta", ErrInvalidStream)
 		}
-		a.response.Content += event.ContentDelta
+		a.content.WriteString(event.ContentDelta)
 	case StreamThinking:
 		if event.ThinkingDelta == "" || event.ContentDelta != "" || event.ToolCall != nil ||
 			event.Usage != nil || event.FinishReason != "" {
 			return fmt.Errorf("%w: invalid thinking delta", ErrInvalidStream)
 		}
-		a.response.Thinking += event.ThinkingDelta
+		a.thinking.WriteString(event.ThinkingDelta)
 	case StreamToolCall:
 		if event.ToolCall == nil || strings.TrimSpace(event.ToolCall.ID) == "" ||
 			strings.TrimSpace(event.ToolCall.Name) == "" ||
@@ -214,6 +217,8 @@ func (a *StreamAccumulator) Response() (CompletionResponse, error) {
 		return CompletionResponse{}, fmt.Errorf("%w: missing completion", ErrInvalidStream)
 	}
 	response := a.response
+	response.Content = a.content.String()
+	response.Thinking = a.thinking.String()
 	response.ToolCalls = append([]ToolCall(nil), response.ToolCalls...)
 	return response, nil
 }
@@ -255,7 +260,7 @@ func EmitResponse(response CompletionResponse, handler StreamHandler) error {
 
 // Partial contains only displayable output; unfinished tool calls must never run.
 func (a *StreamAccumulator) Partial() CompletionResponse {
-	return CompletionResponse{Content: a.response.Content, Thinking: a.response.Thinking}
+	return CompletionResponse{Content: a.content.String(), Thinking: a.thinking.String()}
 }
 
 type Provider interface {
