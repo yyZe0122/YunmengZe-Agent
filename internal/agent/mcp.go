@@ -17,9 +17,10 @@ type mcpConnection struct {
 
 func (e *Engine) mcpClient(ctx context.Context, id, name string, server providerconfig.MCPServer, workspace string) (mcp.Session, error) {
 	e.mcpMu.Lock()
-	defer e.mcpMu.Unlock()
 	key := id + "/" + name
-	if client, ok := e.mcpClients[key]; ok {
+	client, ok := e.mcpClients[key]
+	e.mcpMu.Unlock()
+	if ok {
 		return client.session, nil
 	}
 	kind, err := server.ResolvedType()
@@ -29,11 +30,11 @@ func (e *Engine) mcpClient(ctx context.Context, id, name string, server provider
 	life, cancel := context.WithCancel(e.life)
 	stop := context.AfterFunc(ctx, cancel)
 	timer := time.AfterFunc(15*time.Second, cancel)
-	var client mcp.Session
+	var connected mcp.Session
 	if kind == providerconfig.MCPTypeStdio {
-		client, err = mcp.Start(life, mcp.ServerConfig{Name: name, Command: server.Command, Args: server.Args, Env: server.Env, Dir: workspace})
+		connected, err = mcp.Start(life, mcp.ServerConfig{Name: name, Command: server.Command, Args: server.Args, Env: server.Env, Dir: workspace})
 	} else {
-		client, err = mcp.Dial(life, mcp.RemoteConfig{Name: name, URL: server.URL, Headers: server.Headers, Mode: kind})
+		connected, err = mcp.Dial(life, mcp.RemoteConfig{Name: name, URL: server.URL, Headers: server.Headers, Mode: kind})
 	}
 	timer.Stop()
 	stop()
@@ -43,18 +44,22 @@ func (e *Engine) mcpClient(ctx context.Context, id, name string, server provider
 	}
 	if life.Err() != nil {
 		cancel()
-		_ = client.Close()
+		_ = connected.Close()
 		return nil, life.Err()
 	}
-	e.mcpClients[key] = mcpConnection{session: client, cancel: cancel}
-	return client, nil
+	// The session lease serializes calls for this key; other sessions may connect independently.
+	e.mcpMu.Lock()
+	e.mcpClients[key] = mcpConnection{session: connected, cancel: cancel}
+	e.mcpMu.Unlock()
+	return connected, nil
 }
 func (e *Engine) dropMCP(id, name string) {
 	e.mcpMu.Lock()
-	defer e.mcpMu.Unlock()
 	key := id + "/" + name
-	if client, ok := e.mcpClients[key]; ok {
-		delete(e.mcpClients, key)
+	client, ok := e.mcpClients[key]
+	delete(e.mcpClients, key)
+	e.mcpMu.Unlock()
+	if ok {
 		client.cancel()
 		_ = client.session.Close()
 	}

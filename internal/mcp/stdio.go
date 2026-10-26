@@ -14,8 +14,6 @@ import (
 	"sync/atomic"
 )
 
-const maxStdioMessageBytes = 8 << 20
-
 // ServerConfig launches one MCP server over stdio.
 type ServerConfig struct {
 	Name    string
@@ -74,7 +72,7 @@ func Start(ctx context.Context, config ServerConfig) (*Client, error) {
 		return nil, fmt.Errorf("start mcp %s: %w", name, err)
 	}
 	messages := bufio.NewScanner(stdout)
-	messages.Buffer(make([]byte, 4096), maxStdioMessageBytes+2)
+	messages.Buffer(make([]byte, 4096), maxRPCMessageBytes+2)
 	c := &Client{name: name, cmd: cmd, stdin: stdin, stdout: messages, output: stdout}
 	if err := c.initialize(ctx); err != nil {
 		_ = c.Close()
@@ -168,20 +166,7 @@ func (c *Client) call(ctx context.Context, method string, params any, result any
 			if !idEqual(rawID, id) {
 				continue
 			}
-			if errObj, ok := msg["error"]; ok && errObj != nil {
-				return fmt.Errorf("mcp %s %s: %v", c.name, method, errObj)
-			}
-			if result == nil {
-				return nil
-			}
-			payload, err := json.Marshal(msg["result"])
-			if err != nil {
-				return err
-			}
-			if string(payload) == "null" {
-				return nil
-			}
-			return json.Unmarshal(payload, result)
+			return decodeRPCResult(c.name, method, msg, result)
 		}
 	})
 }
@@ -224,7 +209,7 @@ func (c *Client) writeMessage(msg any) error {
 	if err != nil {
 		return err
 	}
-	if len(body) > maxStdioMessageBytes {
+	if len(body) > maxRPCMessageBytes {
 		return errors.New("mcp message exceeds 8 MiB")
 	}
 	_, err = c.stdin.Write(append(body, '\n'))
@@ -239,7 +224,7 @@ func (c *Client) readMessage() (map[string]any, error) {
 		return nil, io.EOF
 	}
 	body := c.stdout.Bytes()
-	if len(body) > maxStdioMessageBytes {
+	if len(body) > maxRPCMessageBytes {
 		return nil, errors.New("mcp message exceeds 8 MiB")
 	}
 	var msg map[string]any

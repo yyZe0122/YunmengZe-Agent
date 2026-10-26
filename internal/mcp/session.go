@@ -4,8 +4,13 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
 	"strconv"
 )
+
+const maxRPCMessageBytes = 8 << 20
 
 // ToolDesc is a tool advertised by tools/list.
 type ToolDesc struct {
@@ -45,7 +50,7 @@ func parseToolList(result struct {
 func idEqual(raw any, want int64) bool {
 	switch v := raw.(type) {
 	case float64:
-		return int64(v) == want
+		return v == float64(want)
 	case json.Number:
 		n, err := v.Int64()
 		return err == nil && n == want
@@ -57,14 +62,39 @@ func idEqual(raw any, want int64) bool {
 		n, err := strconv.ParseInt(v, 10, 64)
 		return err == nil && n == want
 	default:
-		return strconv.FormatInt(want, 10) == formatRawID(raw)
+		return false
 	}
 }
 
-func formatRawID(v any) string {
-	b, err := json.Marshal(v)
+func readRPCBody(reader io.Reader) ([]byte, error) {
+	body, err := io.ReadAll(io.LimitReader(reader, maxRPCMessageBytes+1))
 	if err != nil {
-		return ""
+		return nil, err
 	}
-	return string(b)
+	if len(body) > maxRPCMessageBytes {
+		return nil, errors.New("mcp response exceeds 8 MiB")
+	}
+	return body, nil
+}
+
+func decodeRPCResult(server, method string, msg map[string]any, result any) error {
+	value, hasResult := msg["result"]
+	errObj, hasError := msg["error"]
+	if hasResult == hasError || hasError && errObj == nil {
+		return fmt.Errorf("mcp %s %s: response must contain either result or error", server, method)
+	}
+	if hasError {
+		return fmt.Errorf("mcp %s %s: %v", server, method, errObj)
+	}
+	if value == nil {
+		return fmt.Errorf("mcp %s %s: null result", server, method)
+	}
+	if result == nil {
+		return nil
+	}
+	payload, err := json.Marshal(value)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(payload, result)
 }

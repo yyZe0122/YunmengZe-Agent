@@ -42,6 +42,7 @@ type RemoteClient struct {
 	messageURL string
 	sseCancel  context.CancelFunc
 	sseDone    chan struct{}
+	sseErr     error // published before sseDone closes
 	pending    map[int64]chan map[string]any
 	pendingMu  sync.Mutex
 }
@@ -305,19 +306,19 @@ func (c *RemoteClient) callStreamable(ctx context.Context, method string, params
 		}
 		return decodeRPCResult(c.name, method, msg, result)
 	case strings.Contains(ct, "application/json") || ct == "" || strings.Contains(ct, "json"):
-		raw, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+		raw, err := readRPCBody(resp.Body)
 		if err != nil {
 			return err
 		}
 		if len(bytes.TrimSpace(raw)) == 0 {
-			if result == nil {
-				return nil
-			}
 			return fmt.Errorf("mcp %s %s: empty response", c.name, method)
 		}
 		var msg map[string]any
 		if err := json.Unmarshal(raw, &msg); err != nil {
 			return fmt.Errorf("mcp %s %s: decode: %w", c.name, method, err)
+		}
+		if !idEqual(msg["id"], id) {
+			return fmt.Errorf("mcp %s %s: response ID does not match request %d", c.name, method, id)
 		}
 		return decodeRPCResult(c.name, method, msg, result)
 	default:
@@ -365,23 +366,6 @@ func (c *RemoteClient) notifyStreamable(ctx context.Context, method string, para
 	return fmt.Errorf("mcp %s %s: status %d: %s", c.name, method, resp.StatusCode, strings.TrimSpace(string(snippet)))
 }
 
-func decodeRPCResult(server, method string, msg map[string]any, result any) error {
-	if errObj, ok := msg["error"]; ok && errObj != nil {
-		return fmt.Errorf("mcp %s %s: %v", server, method, errObj)
-	}
-	if result == nil {
-		return nil
-	}
-	payload, err := json.Marshal(msg["result"])
-	if err != nil {
-		return err
-	}
-	if string(payload) == "null" {
-		return nil
-	}
-	return json.Unmarshal(payload, result)
-}
-
 // readSSEJSONRPCResponse reads an SSE stream until a JSON-RPC response with matching id.
 func readSSEJSONRPCResponse(r io.Reader, wantID int64) (map[string]any, error) {
 	sc := bufio.NewScanner(r)
@@ -389,7 +373,9 @@ func readSSEJSONRPCResponse(r io.Reader, wantID int64) (map[string]any, error) {
 	buf := make([]byte, 0, 64*1024)
 	sc.Buffer(buf, 4<<20)
 	var dataLines []string
+	dataBytes := 0
 	flush := func() (map[string]any, bool, error) {
+		dataBytes = 0
 		if len(dataLines) == 0 {
 			return nil, false, nil
 		}
@@ -426,6 +412,10 @@ func readSSEJSONRPCResponse(r io.Reader, wantID int64) (map[string]any, error) {
 			continue
 		}
 		if strings.HasPrefix(line, "data:") {
+			dataBytes += len(line) + 1
+			if dataBytes > maxRPCMessageBytes {
+				return nil, errors.New("mcp SSE event exceeds 8 MiB")
+			}
 			dataLines = append(dataLines, strings.TrimSpace(strings.TrimPrefix(line, "data:")))
 			continue
 		}
@@ -464,20 +454,19 @@ func (c *RemoteClient) startLegacySSE(ctx context.Context) error {
 
 	// Single reader: wait for endpoint, then dispatch JSON-RPC responses.
 	endpointCh := make(chan string, 1)
-	errCh := make(chan error, 1)
 	sseCtx, cancel := context.WithCancel(context.Background())
 	c.sseCancel = cancel
 	c.sseDone = make(chan struct{})
-	go c.legacySSELoop(sseCtx, resp.Body, endpointCh, errCh)
+	go c.legacySSELoop(sseCtx, resp.Body, endpointCh)
 
 	select {
 	case <-ctx.Done():
 		cancel()
 		_ = resp.Body.Close()
 		return ctx.Err()
-	case err := <-errCh:
+	case <-c.sseDone:
 		cancel()
-		return err
+		return fmt.Errorf("mcp %s sse ended: %w", c.name, c.sseErr)
 	case <-time.After(15 * time.Second):
 		cancel()
 		return errors.New("mcp sse: timeout waiting for endpoint event")
@@ -508,20 +497,28 @@ func resolveMessageURL(sseBase, endpoint string) (string, error) {
 	return base.ResolveReference(ref).String(), nil
 }
 
-func (c *RemoteClient) legacySSELoop(ctx context.Context, body io.ReadCloser, endpointCh chan<- string, errCh chan<- error) {
-	defer close(c.sseDone)
+func (c *RemoteClient) legacySSELoop(ctx context.Context, body io.ReadCloser, endpointCh chan<- string) {
+	var readErr error = io.EOF
+	defer func() {
+		c.sseErr = readErr
+		close(c.sseDone)
+	}()
 	defer body.Close()
+	stop := context.AfterFunc(ctx, func() { _ = body.Close() })
+	defer stop()
 	sc := bufio.NewScanner(body)
 	buf := make([]byte, 0, 64*1024)
 	sc.Buffer(buf, 4<<20)
 	var eventType string
 	var dataLines []string
+	dataBytes := 0
 	endpointSent := false
 	flush := func() {
 		data := strings.TrimSpace(strings.Join(dataLines, "\n"))
 		et := eventType
 		eventType = ""
 		dataLines = nil
+		dataBytes = 0
 		if data == "" {
 			return
 		}
@@ -558,14 +555,12 @@ func (c *RemoteClient) legacySSELoop(ctx context.Context, body io.ReadCloser, en
 	}
 	for {
 		if ctx.Err() != nil {
+			readErr = ctx.Err()
 			return
 		}
 		if !sc.Scan() {
-			if !endpointSent {
-				select {
-				case errCh <- errors.New("sse stream ended without endpoint event"):
-				default:
-				}
+			if err := sc.Err(); err != nil {
+				readErr = err
 			}
 			return
 		}
@@ -582,6 +577,11 @@ func (c *RemoteClient) legacySSELoop(ctx context.Context, body io.ReadCloser, en
 			continue
 		}
 		if strings.HasPrefix(line, "data:") {
+			dataBytes += len(line) + 1
+			if dataBytes > maxRPCMessageBytes {
+				readErr = errors.New("mcp SSE event exceeds 8 MiB")
+				return
+			}
 			dataLines = append(dataLines, strings.TrimSpace(strings.TrimPrefix(line, "data:")))
 		}
 	}
@@ -593,6 +593,11 @@ func (c *RemoteClient) callLegacy(ctx context.Context, method string, params any
 	}
 	if c.messageURL == "" {
 		return errors.New("mcp sse: message endpoint not ready")
+	}
+	select {
+	case <-c.sseDone:
+		return fmt.Errorf("mcp %s sse ended: %w", c.name, c.sseErr)
+	default:
 	}
 	id := c.nextID.Add(1)
 	reqBody := map[string]any{
@@ -631,9 +636,12 @@ func (c *RemoteClient) callLegacy(ctx context.Context, method string, params any
 	// Some servers return JSON on POST; others return 202 and reply on SSE.
 	ct := strings.ToLower(resp.Header.Get("Content-Type"))
 	status := resp.StatusCode
-	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+	raw, readErr := readRPCBody(resp.Body)
 	_ = resp.Body.Close()
 	c.mu.Unlock()
+	if readErr != nil {
+		return fmt.Errorf("mcp %s %s: %w", c.name, method, readErr)
+	}
 
 	if status < 200 || status >= 300 {
 		return fmt.Errorf("mcp %s %s: status %d: %s", c.name, method, status, strings.TrimSpace(string(raw)))
@@ -641,22 +649,34 @@ func (c *RemoteClient) callLegacy(ctx context.Context, method string, params any
 
 	if strings.Contains(ct, "application/json") && len(bytes.TrimSpace(raw)) > 0 {
 		var msg map[string]any
-		if err := json.Unmarshal(raw, &msg); err == nil {
-			if _, hasID := msg["id"]; hasID {
-				return decodeRPCResult(c.name, method, msg, result)
+		if err := json.Unmarshal(raw, &msg); err != nil {
+			return fmt.Errorf("mcp %s %s: decode: %w", c.name, method, err)
+		}
+		if _, hasID := msg["id"]; hasID {
+			if !idEqual(msg["id"], id) {
+				return fmt.Errorf("mcp %s %s: response ID does not match request %d", c.name, method, id)
 			}
+			return decodeRPCResult(c.name, method, msg, result)
 		}
 	}
 
+	var msg map[string]any
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
-	case msg, ok := <-respCh:
-		if !ok || msg == nil {
-			return errors.New("mcp sse: connection closed")
+	case msg = <-respCh:
+	case <-c.sseDone:
+		// The reader may have queued the matching response immediately before EOF.
+		select {
+		case msg = <-respCh:
+		default:
+			return fmt.Errorf("mcp %s sse ended: %w", c.name, c.sseErr)
 		}
-		return decodeRPCResult(c.name, method, msg, result)
 	}
+	if msg == nil {
+		return errors.New("mcp sse: connection closed")
+	}
+	return decodeRPCResult(c.name, method, msg, result)
 }
 
 func (c *RemoteClient) notifyLegacy(ctx context.Context, method string, params any) error {
